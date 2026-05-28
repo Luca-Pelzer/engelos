@@ -1,0 +1,30 @@
+{
+  "name": "@engelos/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "svelte": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "svelte": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./components": {
+      "svelte": "./src/components/index.ts",
+      "default": "./src/components/index.ts"
+    },
+    "./lib": {
+      "default": "./src/lib/index.ts"
+    },
+    "./styles/tokens.css": "./src/styles/tokens.css"
+  },
+  "files": [
+    "src"
+  ],
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  }
+}

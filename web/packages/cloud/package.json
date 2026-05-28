@@ -1,0 +1,11 @@
+{
+  "name": "@engelos/cloud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "engelOS Cloud (SaaS) variant. Skeleton only — Phase 2.",
+  "scripts": {
+    "dev": "echo 'cloud variant not yet scaffolded — see README.md' && exit 0"
+  }
+}

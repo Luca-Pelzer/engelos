@@ -1,0 +1,67 @@
+@theme {
+  --color-bg:           #0a0a0c;
+  --color-bg-soft:      #0f0f12;
+  --color-surface:      #131318;
+  --color-surface-2:    #1a1a21;
+  --color-border:       #26262e;
+  --color-border-soft:  #1d1d24;
+  --color-muted:        #6b6b7b;
+  --color-fg-soft:      #a4a4b5;
+  --color-fg:           #e8e8ef;
+  --color-fg-strong:    #ffffff;
+
+  --color-accent:        #8b5cf6;
+  --color-accent-hover:  #a78bfa;
+  --color-accent-active: #7c3aed;
+  --color-accent-soft:   color-mix(in srgb, #8b5cf6 14%, transparent);
+  --color-accent-glow:   color-mix(in srgb, #8b5cf6 28%, transparent);
+  --color-accent-fg:     #ffffff;
+
+  --color-success:  #22c55e;
+  --color-warn:     #f59e0b;
+  --color-danger:   #ef4444;
+  --color-info:     #38bdf8;
+
+  --font-sans: "Inter", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+  --font-display: "Inter", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+  --shadow-md: 0 4px 16px -4px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 20px 50px -20px rgb(0 0 0 / 0.6);
+  --shadow-glow: 0 0 0 1px var(--color-accent-glow), 0 8px 32px -8px var(--color-accent-glow);
+
+  --ease-out-quad:    cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-out-expo:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quad: cubic-bezier(0.45, 0, 0.55, 1);
+  --duration-fast:    120ms;
+  --duration-base:    200ms;
+  --duration-slow:    400ms;
+}
+
+:root[data-theme="light"] {
+  --color-bg:          #fafafb;
+  --color-bg-soft:     #f4f4f6;
+  --color-surface:     #ffffff;
+  --color-surface-2:   #f7f7fa;
+  --color-border:      #e4e4e9;
+  --color-border-soft: #ededf2;
+  --color-muted:       #8b8b9a;
+  --color-fg-soft:     #4b4b58;
+  --color-fg:          #1a1a22;
+  --color-fg-strong:   #000000;
+
+  --color-accent-soft: color-mix(in srgb, #8b5cf6 10%, transparent);
+  --color-accent-glow: color-mix(in srgb, #8b5cf6 20%, transparent);
+
+  --shadow-sm: 0 1px 2px 0 rgb(15 15 20 / 0.06);
+  --shadow-md: 0 6px 24px -8px rgb(15 15 20 / 0.1);
+  --shadow-lg: 0 24px 60px -24px rgb(15 15 20 / 0.18);
+}
