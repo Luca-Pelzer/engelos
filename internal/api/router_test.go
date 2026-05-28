@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/engelos-bot/engelos/internal/api"
-	"github.com/engelos-bot/engelos/internal/api/handlers"
+	"github.com/engelswtf/engelos/internal/api"
+	"github.com/engelswtf/engelos/internal/api/handlers"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {

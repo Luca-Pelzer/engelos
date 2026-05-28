@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/engelos-bot/engelos/internal/api/ws"
+	"github.com/engelswtf/engelos/internal/api/ws"
 )
 
 func newHubServer(t *testing.T) (*ws.Hub, *httptest.Server, context.CancelFunc) {

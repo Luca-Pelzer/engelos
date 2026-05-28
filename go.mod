@@ -1,4 +1,4 @@
-module github.com/engelos-bot/engelos
+module github.com/engelswtf/engelos
 
 go 1.25.0
 

@@ -49,7 +49,7 @@ Apache-2.0.
 ### Quick start
 
 ```bash
-git clone https://github.com/engelos-bot/engelos
+git clone https://github.com/engelswtf/engelos
 cd engelos
 
 go mod download
@@ -147,7 +147,7 @@ If you find a security issue, please follow [`SECURITY.md`](SECURITY.md).
 
 ## Asking Questions
 
-Use [GitHub Discussions](https://github.com/engelos-bot/engelos/discussions)
+Use [GitHub Discussions](https://github.com/engelswtf/engelos/discussions)
 once we open them (Phase 1D, with OSS launch). Until then, issues are open
 for bug reports only.
 

@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for suggesting a feature. Please check the
-        [Master Vision Plan](https://github.com/engelos-bot/engelos/blob/main/docs/MASTER-VISION.md)
+        [Master Vision Plan](https://github.com/engelswtf/engelos/blob/main/docs/MASTER-VISION.md)
         first — many ideas are already on the roadmap.
 
   - type: textarea
@@ -72,5 +72,5 @@ body:
     attributes:
       label: Code of Conduct
       options:
-        - label: I agree to follow the [Code of Conduct](https://github.com/engelos-bot/engelos/blob/main/CODE_OF_CONDUCT.md).
+        - label: I agree to follow the [Code of Conduct](https://github.com/engelswtf/engelos/blob/main/CODE_OF_CONDUCT.md).
           required: true

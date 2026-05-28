@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/engelos-bot/engelos/internal/eventsourcing"
+	"github.com/engelswtf/engelos/internal/eventsourcing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

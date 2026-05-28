@@ -17,10 +17,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/engelos-bot/engelos/internal/api"
-	"github.com/engelos-bot/engelos/internal/api/handlers"
-	"github.com/engelos-bot/engelos/internal/api/ws"
-	"github.com/engelos-bot/engelos/internal/server"
+	"github.com/engelswtf/engelos/internal/api"
+	"github.com/engelswtf/engelos/internal/api/handlers"
+	"github.com/engelswtf/engelos/internal/api/ws"
+	"github.com/engelswtf/engelos/internal/server"
 )
 
 // Version is set at build time via -ldflags "-X main.Version=...".

@@ -8,9 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/engelos-bot/engelos/internal/api/handlers"
-	apimw "github.com/engelos-bot/engelos/internal/api/middleware"
-	"github.com/engelos-bot/engelos/internal/api/ws"
+	"github.com/engelswtf/engelos/internal/api/handlers"
+	apimw "github.com/engelswtf/engelos/internal/api/middleware"
+	"github.com/engelswtf/engelos/internal/api/ws"
 )
 
 // WSHandler is the narrow interface the router needs from the WebSocket hub.

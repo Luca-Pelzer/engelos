@@ -20,7 +20,7 @@ Instead, please use one of:
 
 1. **GitHub Security Advisories** — preferred, end-to-end encrypted, integrates
    with our patch workflow. Once the repo is public:
-   <https://github.com/engelos-bot/engelos/security/advisories/new>
+   <https://github.com/engelswtf/engelos/security/advisories/new>
 
 2. **Email** — `security@engelos.org` (not yet active in Phase 0; until then,
    reach Luca via Twitch DMs at twitch.tv/engelswtf).
@@ -53,7 +53,7 @@ Critical issues with active exploitation will be prioritized over the timeline.
 - The engelOS core daemon (this repository)
 - The SDK (`pkg/sdk/`)
 - The official Cloud service (`engelos.com`, when launched)
-- Official Docker images at `ghcr.io/engelos-bot/engelos`
+- Official Docker images at `ghcr.io/engelswtf/engelos`
 
 ### Out-of-scope
 

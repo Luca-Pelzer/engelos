@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/engelos-bot/engelos/internal/adapters"
-	"github.com/engelos-bot/engelos/internal/adapters/mock"
+	"github.com/engelswtf/engelos/internal/adapters"
+	"github.com/engelswtf/engelos/internal/adapters/mock"
 )
 
 func sampleMessageEvent(text string) adapters.Event {
