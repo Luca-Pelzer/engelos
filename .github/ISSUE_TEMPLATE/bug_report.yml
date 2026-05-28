@@ -1,0 +1,91 @@
+name: Bug Report
+description: Something is broken or doesn't work as expected.
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill in as much as you can — the
+        more detail, the faster we can help.
+
+        **Before submitting:** please search existing issues to avoid
+        duplicates.
+
+  - type: input
+    id: version
+    attributes:
+      label: engelOS version
+      description: Output of `engelos --version`
+      placeholder: "0.0.1-alpha.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running engelOS?
+      options:
+        - Self-hosted Linux (systemd)
+        - Self-hosted Linux (Docker)
+        - Self-hosted macOS
+        - Self-hosted Windows
+        - Raspberry Pi
+        - engelOS Cloud (managed)
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux (specify distribution in description)
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, what did you observe, what was the difference?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered list of steps that reliably reproduces the issue.
+      placeholder: |
+        1. Start engelos with `...`
+        2. Connect to Twitch channel `...`
+        3. Run command `...`
+        4. Observe `...`
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste logs that show the issue. Redact any secrets first!
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Anything else?
+      description: Screenshots, related issues, things you tried, etc.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the [Code of Conduct](https://github.com/engelos-bot/engelos/blob/main/CODE_OF_CONDUCT.md).
+          required: true

@@ -1,0 +1,100 @@
+# engelOS — golangci-lint configuration
+# Docs: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.24"
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - goprintffuncname
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - revive
+    - tparallel
+    - unconvert
+    - whitespace
+
+  settings:
+    errcheck:
+      check-blank: true
+      exclude-functions:
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - hugeParam
+        - ifElseChain
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    gosec:
+      excludes:
+        - G104
+      severity: medium
+
+  exclusions:
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - bodyclose
+      - path: cmd/
+        linters:
+          - gochecknoglobals
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

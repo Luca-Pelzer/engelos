@@ -1,0 +1,76 @@
+name: Feature Request
+description: Suggest a new feature or improvement.
+title: "[feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature. Please check the
+        [Master Vision Plan](https://github.com/engelos-bot/engelos/blob/main/docs/MASTER-VISION.md)
+        first — many ideas are already on the roadmap.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the streamer/user need this addresses. Skip if it's a small UX polish.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What's your proposed solution?
+      description: A clear description of what you want to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other approaches and why you prefer this one.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Where does this belong?
+      options:
+        - Core daemon (Go)
+        - Web UI (Svelte)
+        - SDK / Plugin API (Apache-2.0)
+        - Cloud-only feature
+        - Native GUI (Wails)
+        - TUI (Bubble Tea)
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: which-platform
+    attributes:
+      label: Which streaming platforms does this affect?
+      multiple: true
+      options:
+        - Twitch
+        - Discord
+        - YouTube Live
+        - Kick
+        - TikTok Live
+        - All / Platform-agnostic
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, links, examples from other bots, anything else useful.
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow the [Code of Conduct](https://github.com/engelos-bot/engelos/blob/main/CODE_OF_CONDUCT.md).
+          required: true

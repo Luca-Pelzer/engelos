@@ -1,0 +1,33 @@
+services:
+  engelos:
+    build:
+      context: .
+      args:
+        VERSION: "0.0.1-alpha.1-compose"
+    image: engelos:dev
+    container_name: engelos
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - engelos_data:/data
+    environment:
+      ENGELOS_ADDR: "0.0.0.0:8080"
+      ENGELOS_ALLOW_LAN: "true"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/engelos", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    cap_drop:
+      - ALL
+
+volumes:
+  engelos_data:
+    driver: local
