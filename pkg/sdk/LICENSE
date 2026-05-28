@@ -1,0 +1,25 @@
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+ Copyright 2026 engelOS contributors
+
+ The full Apache-2.0 license text MUST be added here before public release.
+ Source: https://www.apache.org/licenses/LICENSE-2.0.txt
+
+ This file is a placeholder. Before the OSS public launch (Phase 1D, December
+ 2026), replace this entire file with the verbatim Apache-2.0 text.
+
+ ── Why Apache-2.0 for the SDK? ──
+ The SDK is dual-licensed separately from the AGPL-3.0 core so that:
+ - Tool vendors (Stream Deck, Razer, OBS plugin authors) can build engelOS
+   integrations without AGPL compliance burden.
+ - Companies whose policies forbid AGPL contributions (Google, Meta, Apple,
+   many enterprises) can still build against the SDK and submit plugins.
+ - Independent plugin authors can publish their plugins under any license
+   they choose (MIT, BSD, proprietary, etc.).
+ 
+ This follows the same pattern as Grafana (server AGPL, plugin SDK Apache)
+ and Sentry (server BUSL, SDK MIT).
+
+ See https://www.apache.org/licenses/LICENSE-2.0 for the actual license terms.

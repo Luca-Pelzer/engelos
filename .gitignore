@@ -1,0 +1,45 @@
+# Binaries
+/engelos
+/engelos.exe
+/dist/
+/bin/
+
+# Go
+*.test
+*.out
+go.work
+go.work.sum
+vendor/
+
+# Local data
+/data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (for web/)
+node_modules/
+web/**/dist/
+web/**/.svelte-kit/
+web/**/build/
+.pnpm-store/
+
+# GoReleaser
+dist/

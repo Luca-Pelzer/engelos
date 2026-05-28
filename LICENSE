@@ -1,0 +1,38 @@
+                    GNU AFFERO GENERAL PUBLIC LICENSE
+                       Version 3, 19 November 2007
+
+ Copyright (C) 2026 engelOS contributors
+
+ The full text of the AGPL-3.0 license MUST be added here before public release.
+ Source: https://www.gnu.org/licenses/agpl-3.0.txt
+
+ This file is a placeholder. Before the OSS public launch (Phase 1D, December
+ 2026), replace this entire file with the verbatim AGPL-3.0 text.
+
+ ── Why AGPL-3.0 for the core daemon? ──
+ The core daemon is licensed under AGPL-3.0 to protect against cloud resellers
+ (e.g. AWS, Amazon, Twitch itself) taking the code, hosting it as a SaaS, and
+ capturing all the value without contributing back. Under AGPL-3.0, anyone who
+ modifies engelOS and offers it as a network service must release their
+ modifications under the same license.
+
+ ── What is NOT AGPL? ──
+ - The SDK (pkg/sdk/) is licensed under Apache-2.0 so that tool vendors like
+   Elgato, Razer, or independent developers can build integrations without
+   their work being captured by AGPL. See pkg/sdk/LICENSE.
+ - The Cloud features (not in this repo, hosted at engelos.com) are proprietary.
+
+ ── For end users ──
+ You can:
+ - Use engelOS for any purpose, including commercial streaming
+ - Modify it
+ - Self-host it on your own server or PC
+ - Distribute modified versions
+
+ You must:
+ - Keep the source available if you offer the modified version as a network
+   service (this is the "Affero" clause)
+ - Preserve copyright notices
+
+ This is a placeholder. See https://www.gnu.org/licenses/agpl-3.0.html for the
+ actual license terms.
