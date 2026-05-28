@@ -11,16 +11,19 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
+
+	"github.com/engelos-bot/engelos/internal/api"
+	"github.com/engelos-bot/engelos/internal/api/handlers"
+	"github.com/engelos-bot/engelos/internal/api/ws"
+	"github.com/engelos-bot/engelos/internal/server"
 )
 
-// Version is set at build time via -ldflags "-X main.Version=..."
+// Version is set at build time via -ldflags "-X main.Version=...".
 var Version = "0.0.0-dev"
 
 func main() {
@@ -40,57 +43,31 @@ func main() {
 	)
 	defer cancel()
 
-	if err := run(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := run(ctx, logger); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 	slog.Info("engelOS stopped cleanly")
 }
 
-func run(ctx context.Context) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","version":%q}`, Version)
-	})
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>engelOS — Phase 0 skeleton</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1rem;line-height:1.6;color:#111}
-code{background:#f4f4f5;padding:.1rem .3rem;border-radius:.25rem;font-size:.9em}
-.muted{color:#71717a}
-</style>
-</head>
-<body>
-<h1>engelOS</h1>
-<p class="muted">Phase 0 — skeleton. No features yet.</p>
-<p>The daemon is running. Health check: <code>GET /healthz</code></p>
-<p>Roadmap: <a href="https://github.com/engelos-bot/engelos">github.com/engelos-bot/engelos</a></p>
-</body>
-</html>`)
+func run(ctx context.Context, logger *slog.Logger) error {
+	hub := ws.NewHub(logger)
+	go hub.Run(ctx)
+
+	router := api.NewRouter(api.Deps{
+		Logger: logger,
+		Version: handlers.Version{
+			Version: Version,
+			Phase:   "0",
+		},
+		WS: hub,
 	})
 
-	srv := &http.Server{
-		Addr:              "127.0.0.1:8080",
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	srv := server.New(server.Config{
+		Addr:     "127.0.0.1:8080",
+		AllowLAN: false,
+		Logger:   logger,
+	}, router)
 
-	go func() {
-		<-ctx.Done()
-		slog.Info("shutting down")
-		shutdownCtx, cancel := context.WithTimeout(
-			context.Background(), 10*time.Second,
-		)
-		defer cancel()
-		_ = srv.Shutdown(shutdownCtx)
-	}()
-
-	slog.Info("HTTP listening", "addr", srv.Addr)
-	return srv.ListenAndServe()
+	return srv.Run(ctx)
 }
