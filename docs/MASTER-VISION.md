@@ -286,6 +286,47 @@ web/                         # ein Svelte-Monorepo
 - Bei `0.0.0.0`-Binding wird 2FA-Pflicht empfohlen
 - CSP-Header, CSRF-Tokens, Rate-Limiting by default
 
+### 4a. **Bot-Identität & "Login mit Twitch" (Architektur-Entscheidung)**
+
+**Entscheidung:** engelOS betreibt **gebrandete Bot-Accounts** (`engelOS_bot` auf
+Twitch, eine gebrandete Discord-Application) zentral auf der eigenen Infra. Ein
+Streamer onboardet per **"Login mit Twitch"**, das in einem Flow zwei Dinge tut:
+SSO-Login ins Dashboard **und** Autorisierung des Bots für den eigenen Channel.
+Kein manuelles Token-Kopieren. Das spiegelt das Onboarding von
+Nightbot/StreamElements.
+
+**Warum gebrandet + zentral (statt jeder ein eigener Bot):**
+- Ein einzelner gebrandeter Account, der in *jedem* Channel als `engelOS_bot`
+  auftritt, ist technisch nur möglich, wenn **wir** sein OAuth-Token halten.
+  Das Token an Self-Hoster zu verteilen wäre ein Credential-GAU → ein geteilter
+  Marken-Bot ist zwingend ein **zentral gehostetes** Feature.
+- Für die Owner-Instanz (engels.wtf) und frühe User ist das der Zero-Setup-Pfad:
+  Account anlegen, "Login mit Twitch", fertig.
+
+**Self-Hosting bleibt voll funktional (kein Lock-in):** Der OSS-Daemon nutzt
+denselben Twitch-OAuth-Flow, aber mit der **eigenen** Twitch-App-Registrierung
+des Self-Hosters (eigene `client_id`/`secret` in Settings). Sein Bot läuft unter
+seinem eigenen Account, sein Token bleibt bei ihm. Bis das OAuth-Onboarding
+steht, funktioniert weiterhin der BYOK-Pfad über Env-Vars
+(`ENGELOS_TWITCH_OAUTH`, `ENGELOS_DISCORD_TOKEN`).
+
+| Deployment | Bot-Identität | Onboarding |
+|---|---|---|
+| **Cloud / Owner-Infra** | gebrandeter `engelOS_bot` (wir hosten Token) | "Login mit Twitch" → SSO + Bot-Auth in einem Klick |
+| **Self-Hosted** | eigener Account/Bot des Hosters | gleicher OAuth-Flow mit eigener App-Registrierung; Fallback BYOK via Env-Var |
+
+**Twitch-Lesezugriff** braucht keinen Account (anonymer IRC, bereits
+implementiert). Account/OAuth ist nur für **Schreiben + Mod-Actions** nötig.
+
+**Implikationen fürs Auth-Backend (Folge-Arbeit, noch nicht gebaut):**
+- Eine registrierte Twitch-App (`client_id`/`secret`) für die Cloud-Instanz.
+- OAuth-Callback-Handler + verschlüsselte Token-Speicherung im auth-Store, inkl.
+  Refresh-Token-Rotation.
+- Discord: gebrandete Application + Invite-Flow (`bot`+`applications.commands`
+  Scopes); Self-Hoster registrieren ihre eigene Application.
+- Bot-Adapter konsumieren das gespeicherte Token statt der Env-Var, sobald der
+  OAuth-Pfad live ist.
+
 ### 5. **Event-Sourcing von Tag 1**
 
 ```
