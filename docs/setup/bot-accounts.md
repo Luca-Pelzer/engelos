@@ -99,11 +99,13 @@ Aktueller Stand der Verkabelung im Daemon (`cmd/engelos`):
 | `ENGELOS_TWITCH_USERNAME` | optional | Bot-Login (`engelosbot`) für authentifizierten Modus. Leer = anonym (nur lesen). |
 | `ENGELOS_TWITCH_OAUTH` | optional | Chat-/Helix-Token. Leer = anonym. |
 | `ENGELOS_TWITCH_CLIENT_ID` | mit OAUTH | Client ID der Dev-App (Schritt 2). |
-| `ENGELOS_DISCORD_TOKEN` | — | **Noch nicht verdrahtet** — kommt im nächsten Schritt. |
+| `ENGELOS_DISCORD_TOKEN` | — | Discord-Bot-Token (Schritt 3). Leer = Discord aus. |
+| `ENGELOS_DISCORD_CHANNELS` | optional | Komma-Liste erlaubter Channel-IDs. Leer = alle sichtbaren Channels. |
 
-> **Discord ist im Daemon noch nicht verkabelt** — das ist der nächste
-> Implementierungsschritt. Twitch-Mitlesen funktioniert bereits anonym, ganz
-> ohne die obigen Accounts.
+> **Discord ist jetzt im Daemon verkabelt.** Setze `ENGELOS_DISCORD_TOKEN`, und
+> der Bot verbindet sich beim Start. (Discord hat keinen Anonym-Modus — ohne
+> Token bleibt es aus.) Twitch-Mitlesen funktioniert weiterhin anonym, ganz ohne
+> die obigen Accounts.
 
 ### Schnelltest (Twitch anonym, ohne Accounts)
 

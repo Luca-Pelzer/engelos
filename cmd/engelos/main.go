@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Luca-Pelzer/engelos/internal/adapters"
+	"github.com/Luca-Pelzer/engelos/internal/adapters/discord"
 	"github.com/Luca-Pelzer/engelos/internal/adapters/twitch"
 	"github.com/Luca-Pelzer/engelos/internal/api"
 	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
@@ -215,6 +216,12 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 //   - ENGELOS_TWITCH_OAUTH     optional oauth token for authenticated mode.
 //   - ENGELOS_TWITCH_USERNAME  optional bot username (required with OAUTH).
 //   - ENGELOS_TWITCH_CLIENT_ID optional Helix client id (required with OAUTH).
+//
+// Discord is controlled by:
+//   - ENGELOS_DISCORD_TOKEN     bot token. If empty, Discord is not started
+//     (Discord has no anonymous mode).
+//   - ENGELOS_DISCORD_CHANNELS  optional comma-separated channel-id allowlist;
+//     empty means every channel the bot can see.
 func startPlatforms(ctx context.Context, logger *slog.Logger) ([]adapters.Platform, func()) {
 	var (
 		started []adapters.Platform
@@ -250,6 +257,29 @@ func startPlatforms(ctx context.Context, logger *slog.Logger) ([]adapters.Platfo
 			anon := cfg.OAuthToken == ""
 			logger.Info("twitch adapter connected",
 				"channels", channels, "anonymous", anon)
+		}
+	}
+
+	if token := os.Getenv("ENGELOS_DISCORD_TOKEN"); token != "" {
+		cfg := discord.Config{
+			Token:    token,
+			Channels: splitCSV(os.Getenv("ENGELOS_DISCORD_CHANNELS")),
+			Logger:   logger.With("platform", "discord"),
+		}
+		dc := discord.New(cfg)
+		if err := dc.Connect(ctx); err != nil {
+			logger.Error("discord adapter connect failed", "err", err)
+		} else {
+			started = append(started, dc)
+			closers = append(closers, func() {
+				disconnectCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+				defer c()
+				if err := dc.Disconnect(disconnectCtx); err != nil {
+					logger.Warn("discord disconnect", "err", err)
+				}
+			})
+			logger.Info("discord adapter connected",
+				"channel_allowlist", len(cfg.Channels))
 		}
 	}
 
