@@ -8,18 +8,28 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Message is the platform-neutral command-invocation context the engine
 // needs. The runtime dispatcher fills it from an adapters.Event before
 // calling [Engine.Handle]. Username is informational only — routing keys
 // off Channel/UserID/Text.
+//
+// The IsBroadcaster/IsModerator/IsVIP/IsSubscriber flags carry the
+// author's role badges as reported by the source platform. They are
+// consumed by [Engine.Handle] for permission gating against a command's
+// [Command.MinRole]. See [Message.satisfies] for the implication ordering.
 type Message struct {
-	Platform string
-	Channel  string
-	UserID   string
-	Username string
-	Text     string
+	Platform      string
+	Channel       string
+	UserID        string
+	Username      string
+	IsBroadcaster bool
+	IsModerator   bool
+	IsVIP         bool
+	IsSubscriber  bool
+	Text          string
 }
 
 // Reply is what a [Handler] returns. An empty Text means "no reply" — the
@@ -33,14 +43,74 @@ type Reply struct {
 // dispatcher. args are the whitespace-split tokens AFTER the command name.
 type Handler func(ctx context.Context, msg Message, args []string) Reply
 
+// Role is the minimum privilege a command requires. Roles are ordered:
+// RoleEveryone < RoleSubscriber < RoleVIP < RoleModerator < RoleBroadcaster.
+type Role int
+
+// Role ordering. Higher-numbered roles imply every lower-numbered role for
+// command-gating purposes (see [Message.satisfies]).
+const (
+	RoleEveryone Role = iota
+	RoleSubscriber
+	RoleVIP
+	RoleModerator
+	RoleBroadcaster
+)
+
+// satisfies reports whether the message author holds at least min. The
+// implication ordering is the non-obvious bit: a Broadcaster passes every
+// gate (broadcaster ⇒ moderator ⇒ VIP ⇒ subscriber ⇒ everyone); a
+// Moderator passes mod/VIP/subscriber/everyone gates (mods can run
+// sub-gated and VIP-gated commands); a VIP passes VIP/subscriber/everyone;
+// a Subscriber passes subscriber/everyone; RoleEveryone always passes.
+//
+// The implications are an authorisation convenience, not a claim about
+// platform semantics — a Twitch mod is not literally a subscriber, but for
+// the purpose of "can this user run a sub-only command?" the answer is
+// yes.
+func (m Message) satisfies(min Role) bool {
+	highest := RoleEveryone
+	switch {
+	case m.IsBroadcaster:
+		highest = RoleBroadcaster
+	case m.IsModerator:
+		highest = RoleModerator
+	case m.IsVIP:
+		highest = RoleVIP
+	case m.IsSubscriber:
+		highest = RoleSubscriber
+	}
+	return highest >= min
+}
+
 // Command is a registered command: its primary Name (without prefix),
 // optional Aliases, a one-line Help string, and the Handler. Names and
 // aliases are compared case-insensitively.
+//
+// MinRole gates who may invoke the command (default RoleEveryone = open).
+// A request that fails the gate is silently consumed (see [Engine.Handle]).
+//
+// Cooldown and UserCooldown throttle successful invocations per-channel
+// (global) and per-(command,user) respectively. Either zero disables that
+// dimension. See the package doc for the precise arming semantics.
 type Command struct {
 	Name    string
 	Aliases []string
 	Help    string
 	Handler Handler
+
+	// MinRole is the minimum [Role] required to invoke this command. The
+	// zero value [RoleEveryone] keeps the command open to all viewers and
+	// is backward-compatible with pre-gating registrations.
+	MinRole Role
+
+	// Cooldown is the minimum interval between successful invocations of
+	// this command in a given channel (global cooldown). Zero disables.
+	Cooldown time.Duration
+
+	// UserCooldown is the minimum interval between successful invocations
+	// by the SAME user (per-user cooldown). Zero disables.
+	UserCooldown time.Duration
 }
 
 // Config configures an [Engine].
@@ -51,26 +121,49 @@ type Config struct {
 	// Logger receives handler-panic and registration logs. When nil,
 	// [slog.Default] is used.
 	Logger *slog.Logger
+	// Now overrides the clock for cooldown bookkeeping. Defaults to
+	// [time.Now]. Tests inject a controllable fake clock here.
+	Now func() time.Time
 }
 
 // Engine parses prefixed chat messages and dispatches them to registered
 // [Command]s. Handle is safe for concurrent use; Register and Handle are
 // serialised via an RWMutex so late registration is race-free.
 //
-// See the package doc for parsing rules and the silent-unknown-command
-// rationale.
+// Cooldown bookkeeping lives behind a dedicated [sync.Mutex] (cdMu) — kept
+// separate from the registration RWMutex so the hot path (a successful
+// invocation) takes one short write-lock on cdMu instead of upgrading the
+// registration RWMutex.
+//
+// See the package doc for parsing rules, the silent-unknown-command and
+// silent-denied/throttled rationale, and the cooldown arming semantics.
 type Engine struct {
 	prefix string
 	logger *slog.Logger
+	now    func() time.Time
 
 	mu       sync.RWMutex
 	primary  []Command
 	byName   map[string]Command
 	primName map[string]bool
+
+	// cdMu guards the cooldown maps. globalCD records the last successful
+	// fire time per primary command name. userCD records the last
+	// successful fire per (name, userID) keyed as name+"\x00"+userID to
+	// avoid a nested map allocation per command.
+	//
+	// Memory note: userCD grows with unique (command, user) pairs. No
+	// eviction is performed yet; for long-running bots with many viewers
+	// this map is bounded only by user count × cooldown'd command count.
+	// Eviction is future work; today's scale (one Twitch channel) keeps it
+	// well below any concern.
+	cdMu     sync.Mutex
+	globalCD map[string]time.Time
+	userCD   map[string]time.Time
 }
 
 // New constructs an [Engine] from cfg. An empty Prefix defaults to "!"; a
-// nil Logger defaults to [slog.Default].
+// nil Logger defaults to [slog.Default]; a nil Now defaults to [time.Now].
 func New(cfg Config) *Engine {
 	prefix := cfg.Prefix
 	if prefix == "" {
@@ -80,11 +173,18 @@ func New(cfg Config) *Engine {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &Engine{
 		prefix:   prefix,
 		logger:   logger.With("component", "commands.engine"),
+		now:      now,
 		byName:   make(map[string]Command),
 		primName: make(map[string]bool),
+		globalCD: make(map[string]time.Time),
+		userCD:   make(map[string]time.Time),
 	}
 }
 
@@ -129,10 +229,13 @@ func (e *Engine) Register(c Command) error {
 	}
 
 	stored := Command{
-		Name:    name,
-		Aliases: aliases,
-		Help:    c.Help,
-		Handler: c.Handler,
+		Name:         name,
+		Aliases:      aliases,
+		Help:         c.Help,
+		Handler:      c.Handler,
+		MinRole:      c.MinRole,
+		Cooldown:     c.Cooldown,
+		UserCooldown: c.UserCooldown,
 	}
 	e.byName[name] = stored
 	for _, a := range aliases {
@@ -150,9 +253,16 @@ func (e *Engine) Register(c Command) error {
 //     prefix, or unknown name). The dispatcher should ignore it. Unknown
 //     names are intentionally silent so chat is not spammed with
 //     "unknown command" responses.
-//   - (reply, true): the command ran. reply may be the zero Reply{} when
-//     the handler chose not to respond or when the handler panicked
-//     (recovered + logged).
+//   - (reply, true): the command WAS recognised. reply may be the zero
+//     Reply{} when (a) the handler chose not to respond, (b) the handler
+//     panicked (recovered + logged), (c) the author failed the permission
+//     gate, or (d) a cooldown was active. Cases (c) and (d) are
+//     intentionally silent — telling chat "you lack permission" or "wait
+//     5s" invites spam and leaks information.
+//
+// Order: name lookup → permission gate → cooldown gate → handler. The
+// cooldown timers are armed AFTER a successful handler return only;
+// denied or throttled attempts do NOT reset the window.
 func (e *Engine) Handle(ctx context.Context, msg Message) (Reply, bool) {
 	text := strings.TrimLeft(msg.Text, " \t\r\n")
 	if !strings.HasPrefix(text, e.prefix) {
@@ -172,8 +282,59 @@ func (e *Engine) Handle(ctx context.Context, msg Message) (Reply, bool) {
 		return Reply{}, false
 	}
 
+	if !msg.satisfies(cmd.MinRole) {
+		return Reply{}, true
+	}
+
+	if e.onCooldown(cmd, msg) {
+		return Reply{}, true
+	}
+
 	reply := e.invoke(ctx, cmd, msg, args)
+	e.armCooldown(cmd, msg)
 	return reply, true
+}
+
+// onCooldown reports whether either the global or per-user cooldown is
+// currently active for cmd. Either dimension being active suppresses the
+// invocation. A zero Cooldown / UserCooldown disables that dimension.
+func (e *Engine) onCooldown(cmd Command, msg Message) bool {
+	if cmd.Cooldown <= 0 && cmd.UserCooldown <= 0 {
+		return false
+	}
+	now := e.now()
+	e.cdMu.Lock()
+	defer e.cdMu.Unlock()
+	if cmd.Cooldown > 0 {
+		if last, ok := e.globalCD[cmd.Name]; ok && now.Sub(last) < cmd.Cooldown {
+			return true
+		}
+	}
+	if cmd.UserCooldown > 0 {
+		key := cmd.Name + "\x00" + msg.UserID
+		if last, ok := e.userCD[key]; ok && now.Sub(last) < cmd.UserCooldown {
+			return true
+		}
+	}
+	return false
+}
+
+// armCooldown records cmd's last-fire timestamp for both dimensions. It is
+// called only after a successful handler return so denied/throttled
+// attempts do not extend the window.
+func (e *Engine) armCooldown(cmd Command, msg Message) {
+	if cmd.Cooldown <= 0 && cmd.UserCooldown <= 0 {
+		return
+	}
+	now := e.now()
+	e.cdMu.Lock()
+	defer e.cdMu.Unlock()
+	if cmd.Cooldown > 0 {
+		e.globalCD[cmd.Name] = now
+	}
+	if cmd.UserCooldown > 0 {
+		e.userCD[cmd.Name+"\x00"+msg.UserID] = now
+	}
 }
 
 // invoke runs the handler under a deferred panic recovery so a single bad
@@ -204,10 +365,13 @@ func (e *Engine) Commands() []Command {
 		aliasesCopy := make([]string, len(c.Aliases))
 		copy(aliasesCopy, c.Aliases)
 		out = append(out, Command{
-			Name:    c.Name,
-			Aliases: aliasesCopy,
-			Help:    c.Help,
-			Handler: c.Handler,
+			Name:         c.Name,
+			Aliases:      aliasesCopy,
+			Help:         c.Help,
+			Handler:      c.Handler,
+			MinRole:      c.MinRole,
+			Cooldown:     c.Cooldown,
+			UserCooldown: c.UserCooldown,
 		})
 	}
 	e.mu.RUnlock()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -74,13 +75,19 @@ type Broadcaster interface {
 
 // CommandInvocation is the platform-neutral context a [CommandRouter] needs
 // to route a chat command. The dispatcher fills it from an incoming
-// message event.
+// message event, including the author's privilege flags so the router can
+// enforce per-command permissions.
 type CommandInvocation struct {
 	Platform string
 	Channel  string
 	UserID   string
 	Username string
 	Text     string
+
+	IsBroadcaster bool
+	IsModerator   bool
+	IsVIP         bool
+	IsSubscriber  bool
 }
 
 // CommandReply is the result of routing a [CommandInvocation]. Text is the
@@ -383,6 +390,13 @@ func (d *Dispatcher) routeCommand(ctx context.Context, p adapters.Platform, ev a
 		UserID:   ev.Message.UserID,
 		Username: ev.Message.Username,
 		Text:     ev.Message.Content,
+		// The broadcaster's chat login equals the channel name on Twitch;
+		// no badge flag is emitted for it, so derive it here.
+		IsBroadcaster: ev.Message.Username != "" &&
+			strings.EqualFold(ev.Message.Username, ev.Channel),
+		IsModerator:  ev.Message.IsModerator,
+		IsVIP:        ev.Message.IsVIP,
+		IsSubscriber: ev.Message.IsSubscriber,
 	})
 	if !handled || reply.Text == "" {
 		return

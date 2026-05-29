@@ -5,7 +5,24 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 )
+
+// defaultBuiltinUserCooldown throttles per-user spam of the read-only
+// !pity / !streak status commands. 5s is long enough to stop trivial
+// double-taps but short enough that a viewer who legitimately mistyped
+// is not noticeably blocked.
+const defaultBuiltinUserCooldown = 5 * time.Second
+
+// defaultLeaderboardCooldown throttles the channel-wide !leaderboard
+// command. 10s keeps the chat tidy when several viewers ask back-to-back
+// without making the board feel stale.
+const defaultLeaderboardCooldown = 10 * time.Second
+
+// defaultLeaderboardTopN is the number of viewers rendered on a board.
+// Three keeps the reply on one line under ~400 chars for both pity and
+// streak boards.
+const defaultLeaderboardTopN = 3
 
 // PityStatus is the read-only snapshot the !pity built-in needs. It is
 // declared here (rather than imported from internal/features/pity) so this
@@ -53,8 +70,9 @@ type StreakQuerier interface {
 // handler defensively tolerates a zero-value [PityStatus].
 func NewPityCommand(tenantID string, q PityQuerier) Command {
 	return Command{
-		Name: "pity",
-		Help: "Show your current pity points and win chance.",
+		Name:         "pity",
+		Help:         "Show your current pity points and win chance.",
+		UserCooldown: defaultBuiltinUserCooldown,
 		Handler: func(_ context.Context, msg Message, _ []string) Reply {
 			if q == nil {
 				return Reply{}
@@ -90,8 +108,9 @@ func NewPityCommand(tenantID string, q PityQuerier) Command {
 // rendering the "no active streak" branch.
 func NewStreakCommand(tenantID string, q StreakQuerier) Command {
 	return Command{
-		Name: "streak",
-		Help: "Show your current activity streak.",
+		Name:         "streak",
+		Help:         "Show your current activity streak.",
+		UserCooldown: defaultBuiltinUserCooldown,
 		Handler: func(_ context.Context, msg Message, _ []string) Reply {
 			if q == nil {
 				return Reply{}
@@ -147,6 +166,84 @@ func NewHelpCommand(e *Engine) Command {
 			}
 			return Reply{Text: fmt.Sprintf("%sAvailable commands: %s",
 				mentionPrefix(msg), strings.Join(parts, " "))}
+		},
+	}
+}
+
+// LeaderboardEntry is one row on a leaderboard. Score is the ranking
+// metric — pity points or current streak days, depending on which board
+// produced the entry. The renderer formats Score per board (bare integer
+// for pity, "Nd" for streak).
+type LeaderboardEntry struct {
+	Username string
+	Score    int
+}
+
+// LeaderboardQuerier exposes the read-only top-N boards the !leaderboard
+// built-in needs. It is declared here (not imported from features/*) to
+// keep this package decoupled from the feature implementations; main.go
+// wires a thin adapter that translates feature-side leaderboard rows into
+// [LeaderboardEntry].
+type LeaderboardQuerier interface {
+	PityTop(tenantID, channel string, n int) []LeaderboardEntry
+	StreakTop(tenantID, channel string, n int) []LeaderboardEntry
+}
+
+// NewLeaderboardCommand returns the "!leaderboard" command (alias "!top").
+//
+// Args:
+//   - no arg or "pity": render the pity board.
+//   - "streak":         render the streak board.
+//
+// Pity rows render as "1. alice (47)"; streak rows as "1. alice (30d)".
+// An empty board returns the "no data yet" line; a nil querier yields an
+// empty reply (consistent with !pity / !streak when wiring is missing).
+// The returned Command has a 10s global Cooldown to throttle channel-wide
+// spam; wiring code may override by constructing a Command with different
+// values.
+func NewLeaderboardCommand(tenantID string, q LeaderboardQuerier) Command {
+	return Command{
+		Name:     "leaderboard",
+		Aliases:  []string{"top"},
+		Help:     "Show the top viewers — !leaderboard [pity|streak].",
+		Cooldown: defaultLeaderboardCooldown,
+		Handler: func(_ context.Context, msg Message, args []string) Reply {
+			if q == nil {
+				return Reply{}
+			}
+			board := "pity"
+			if len(args) > 0 {
+				board = strings.ToLower(args[0])
+			}
+
+			var (
+				entries []LeaderboardEntry
+				header  string
+				suffix  string
+			)
+			switch board {
+			case "streak":
+				entries = q.StreakTop(tenantID, msg.Channel, defaultLeaderboardTopN)
+				header = "🔥 Streak leaders:"
+				suffix = "d"
+			default:
+				entries = q.PityTop(tenantID, msg.Channel, defaultLeaderboardTopN)
+				header = "🏆 Pity leaders:"
+			}
+
+			if len(entries) == 0 {
+				return Reply{Text: "No leaderboard data yet — start chatting!"}
+			}
+
+			parts := make([]string, 0, len(entries))
+			for i, e := range entries {
+				name := strings.TrimSpace(e.Username)
+				if name == "" {
+					name = "viewer"
+				}
+				parts = append(parts, fmt.Sprintf("%d. %s (%d%s)", i+1, name, e.Score, suffix))
+			}
+			return Reply{Text: fmt.Sprintf("%s %s", header, strings.Join(parts, " "))}
 		},
 	}
 }

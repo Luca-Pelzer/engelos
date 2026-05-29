@@ -380,6 +380,7 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	}
 	register(commands.NewPityCommand(tenantID, pityQuerier{sys: pity}))
 	register(commands.NewStreakCommand(tenantID, streakQuerier{sys: streak}))
+	register(commands.NewLeaderboardCommand(tenantID, leaderboardQuerier{pity: pity, streak: streak}))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
@@ -390,11 +391,15 @@ type commandRouterAdapter struct{ engine *commands.Engine }
 
 func (a commandRouterAdapter) Route(ctx context.Context, inv runtime.CommandInvocation) (runtime.CommandReply, bool) {
 	reply, handled := a.engine.Handle(ctx, commands.Message{
-		Platform: inv.Platform,
-		Channel:  inv.Channel,
-		UserID:   inv.UserID,
-		Username: inv.Username,
-		Text:     inv.Text,
+		Platform:      inv.Platform,
+		Channel:       inv.Channel,
+		UserID:        inv.UserID,
+		Username:      inv.Username,
+		Text:          inv.Text,
+		IsBroadcaster: inv.IsBroadcaster,
+		IsModerator:   inv.IsModerator,
+		IsVIP:         inv.IsVIP,
+		IsSubscriber:  inv.IsSubscriber,
 	})
 	return runtime.CommandReply{Text: reply.Text}, handled
 }
@@ -424,6 +429,32 @@ func (q streakQuerier) Status(tenantID, channel, viewerID string) commands.Strea
 		FreezesAvailable: s.FreezesAvailable,
 		NextMilestone:    s.NextMilestone,
 	}
+}
+
+// leaderboardQuerier maps the pity and streak systems onto
+// commands.LeaderboardQuerier, projecting each board's ranking metric
+// (pity points / current streak days) into the decoupled Score field.
+type leaderboardQuerier struct {
+	pity   *pity.System
+	streak *streak.System
+}
+
+func (q leaderboardQuerier) PityTop(tenantID, channel string, n int) []commands.LeaderboardEntry {
+	rows := q.pity.Leaderboard(tenantID, channel, n)
+	out := make([]commands.LeaderboardEntry, len(rows))
+	for i, r := range rows {
+		out[i] = commands.LeaderboardEntry{Username: r.Username, Score: r.Points}
+	}
+	return out
+}
+
+func (q leaderboardQuerier) StreakTop(tenantID, channel string, n int) []commands.LeaderboardEntry {
+	rows := q.streak.Leaderboard(tenantID, channel, n)
+	out := make([]commands.LeaderboardEntry, len(rows))
+	for i, r := range rows {
+		out[i] = commands.LeaderboardEntry{Username: r.Username, Score: r.DaysCurrent}
+	}
+	return out
 }
 
 // startPlatforms inspects environment variables and starts every platform

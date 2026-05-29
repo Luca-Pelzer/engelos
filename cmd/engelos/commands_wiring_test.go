@@ -61,11 +61,17 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.Contains(t, streakReply.Text, "@alice")
 	require.Contains(t, streakReply.Text, "1-day streak")
 
+	lbReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!leaderboard",
+	})
+	require.True(t, handled)
+	require.Contains(t, lbReply.Text, "alice")
+
 	helpReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!commands",
 	})
 	require.True(t, handled)
-	for _, want := range []string{"!pity", "!streak", "!commands"} {
+	for _, want := range []string{"!pity", "!streak", "!leaderboard", "!commands"} {
 		require.True(t, strings.Contains(helpReply.Text, want),
 			"help reply %q missing %q", helpReply.Text, want)
 	}

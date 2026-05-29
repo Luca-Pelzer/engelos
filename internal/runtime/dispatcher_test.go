@@ -596,6 +596,65 @@ func TestDispatcher_NonCommandSendsNothing(t *testing.T) {
 	assert.Empty(t, plat.Actions(), "non-command must not trigger a send")
 }
 
+func TestDispatcher_ThreadsPermissionFlags(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("test-platform")
+	require.NoError(t, plat.Connect(context.Background()))
+	router := &fakeCommandRouter{handled: true}
+	_, stop := runDispatcherWithCommands(t, plat, router)
+	defer stop()
+
+	plat.EmitEvent(adapters.Event{
+		ID:         adapters.NewEventID(),
+		Type:       adapters.EventMessageCreated,
+		Platform:   "test-platform",
+		Channel:    "engelswtf",
+		OccurredAt: time.Now(),
+		Message: &adapters.MessageEvent{
+			ID:           "m1",
+			UserID:       "u1",
+			Username:     "engelswtf",
+			Content:      "!mod",
+			IsModerator:  true,
+			IsSubscriber: true,
+			IsVIP:        false,
+		},
+	})
+
+	require.Eventually(t, func() bool { return len(router.Calls()) == 1 }, time.Second, 5*time.Millisecond)
+	inv := router.Calls()[0]
+	assert.True(t, inv.IsModerator)
+	assert.True(t, inv.IsSubscriber)
+	assert.False(t, inv.IsVIP)
+	assert.True(t, inv.IsBroadcaster, "username == channel must derive broadcaster")
+}
+
+func TestDispatcher_NonBroadcasterFlagFalse(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("test-platform")
+	require.NoError(t, plat.Connect(context.Background()))
+	router := &fakeCommandRouter{handled: true}
+	_, stop := runDispatcherWithCommands(t, plat, router)
+	defer stop()
+
+	plat.EmitEvent(adapters.Event{
+		ID:         adapters.NewEventID(),
+		Type:       adapters.EventMessageCreated,
+		Platform:   "test-platform",
+		Channel:    "engelswtf",
+		OccurredAt: time.Now(),
+		Message: &adapters.MessageEvent{
+			ID:       "m2",
+			UserID:   "u2",
+			Username: "randomviewer",
+			Content:  "!pity",
+		},
+	})
+
+	require.Eventually(t, func() bool { return len(router.Calls()) == 1 }, time.Second, 5*time.Millisecond)
+	assert.False(t, router.Calls()[0].IsBroadcaster)
+}
+
 func TestDispatcher_HandledEmptyReplySendsNothing(t *testing.T) {
 	t.Parallel()
 	plat := mock.New("test-platform")

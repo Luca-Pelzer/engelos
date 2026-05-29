@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/stretchr/testify/assert"
@@ -445,4 +446,427 @@ func (t threadSafeWriter) Write(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.w.Write(p)
+}
+
+// ---- permissions ----
+
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func newFakeClock() *fakeClock {
+	return &fakeClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+func TestSatisfies_RoleEveryoneAlwaysPasses(t *testing.T) {
+	for _, m := range []commands.Message{
+		{},
+		{IsSubscriber: true},
+		{IsVIP: true},
+		{IsModerator: true},
+		{IsBroadcaster: true},
+	} {
+		assert.True(t, exportedSatisfies(m, commands.RoleEveryone),
+			"RoleEveryone should accept %#v", m)
+	}
+}
+
+func TestSatisfies_ImplicationLadder(t *testing.T) {
+	cases := []struct {
+		name     string
+		msg      commands.Message
+		minRole  commands.Role
+		expected bool
+	}{
+		{"bare → sub gate", commands.Message{}, commands.RoleSubscriber, false},
+		{"bare → vip gate", commands.Message{}, commands.RoleVIP, false},
+		{"bare → mod gate", commands.Message{}, commands.RoleModerator, false},
+		{"bare → bcaster gate", commands.Message{}, commands.RoleBroadcaster, false},
+
+		{"sub → sub", commands.Message{IsSubscriber: true}, commands.RoleSubscriber, true},
+		{"sub → vip", commands.Message{IsSubscriber: true}, commands.RoleVIP, false},
+		{"sub → mod", commands.Message{IsSubscriber: true}, commands.RoleModerator, false},
+		{"sub → bcaster", commands.Message{IsSubscriber: true}, commands.RoleBroadcaster, false},
+
+		{"vip → sub", commands.Message{IsVIP: true}, commands.RoleSubscriber, true},
+		{"vip → vip", commands.Message{IsVIP: true}, commands.RoleVIP, true},
+		{"vip → mod", commands.Message{IsVIP: true}, commands.RoleModerator, false},
+		{"vip → bcaster", commands.Message{IsVIP: true}, commands.RoleBroadcaster, false},
+
+		{"mod → sub", commands.Message{IsModerator: true}, commands.RoleSubscriber, true},
+		{"mod → vip", commands.Message{IsModerator: true}, commands.RoleVIP, true},
+		{"mod → mod", commands.Message{IsModerator: true}, commands.RoleModerator, true},
+		{"mod → bcaster", commands.Message{IsModerator: true}, commands.RoleBroadcaster, false},
+
+		{"bcaster → sub", commands.Message{IsBroadcaster: true}, commands.RoleSubscriber, true},
+		{"bcaster → vip", commands.Message{IsBroadcaster: true}, commands.RoleVIP, true},
+		{"bcaster → mod", commands.Message{IsBroadcaster: true}, commands.RoleModerator, true},
+		{"bcaster → bcaster", commands.Message{IsBroadcaster: true}, commands.RoleBroadcaster, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, exportedSatisfies(tc.msg, tc.minRole))
+		})
+	}
+}
+
+// exportedSatisfies probes the satisfies semantics through the public API
+// (Handle) since the method itself is unexported. It returns whether the
+// gated command actually ran for the given Message + MinRole.
+func exportedSatisfies(msg commands.Message, min commands.Role) bool {
+	e := commands.New(commands.Config{Logger: silentLogger()})
+	var ran atomic.Bool
+	_ = e.Register(commands.Command{
+		Name:    "gated",
+		MinRole: min,
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			ran.Store(true)
+			return commands.Reply{Text: "ok"}
+		},
+	})
+	msg.Text = "!gated"
+	if msg.Channel == "" {
+		msg.Channel = testChannel
+	}
+	if msg.UserID == "" {
+		msg.UserID = testViewer
+	}
+	_, _ = e.Handle(context.Background(), msg)
+	return ran.Load()
+}
+
+func TestHandle_PermissionDenied_SilentlyConsumed(t *testing.T) {
+	e := newEngine()
+	var ran atomic.Bool
+	require.NoError(t, e.Register(commands.Command{
+		Name:    "modonly",
+		MinRole: commands.RoleModerator,
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			ran.Store(true)
+			return commands.Reply{Text: "ran"}
+		},
+	}))
+
+	reply, ok := e.Handle(context.Background(), msgText("!modonly"))
+	assert.True(t, ok, "denied invocation is handled (consumed)")
+	assert.Empty(t, reply.Text, "denied invocation produces no text")
+	assert.False(t, ran.Load(), "handler must not run when denied")
+}
+
+func TestHandle_ModeratorPassesSubAndVIPGates(t *testing.T) {
+	e := newEngine()
+	require.NoError(t, e.Register(commands.Command{
+		Name: "subonly", MinRole: commands.RoleSubscriber, Handler: okHandler("s"),
+	}))
+	require.NoError(t, e.Register(commands.Command{
+		Name: "viponly", MinRole: commands.RoleVIP, Handler: okHandler("v"),
+	}))
+
+	mod := msgText("!subonly")
+	mod.IsModerator = true
+	reply, ok := e.Handle(context.Background(), mod)
+	assert.True(t, ok)
+	assert.Equal(t, "s", reply.Text)
+
+	mod.Text = "!viponly"
+	reply, ok = e.Handle(context.Background(), mod)
+	assert.True(t, ok)
+	assert.Equal(t, "v", reply.Text)
+}
+
+func TestHandle_BroadcasterPassesModGate(t *testing.T) {
+	e := newEngine()
+	require.NoError(t, e.Register(commands.Command{
+		Name: "modonly", MinRole: commands.RoleModerator, Handler: okHandler("m"),
+	}))
+
+	bc := msgText("!modonly")
+	bc.IsBroadcaster = true
+	reply, ok := e.Handle(context.Background(), bc)
+	assert.True(t, ok)
+	assert.Equal(t, "m", reply.Text)
+}
+
+// ---- cooldowns ----
+
+func TestCooldown_GlobalSuppressionAndRecovery(t *testing.T) {
+	clk := newFakeClock()
+	e := commands.New(commands.Config{Logger: silentLogger(), Now: clk.Now})
+	var calls atomic.Int32
+	require.NoError(t, e.Register(commands.Command{
+		Name:     "cd",
+		Cooldown: 5 * time.Second,
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			calls.Add(1)
+			return commands.Reply{Text: "ok"}
+		},
+	}))
+
+	reply, ok := e.Handle(context.Background(), msgText("!cd"))
+	assert.True(t, ok)
+	assert.Equal(t, "ok", reply.Text)
+	assert.EqualValues(t, 1, calls.Load())
+
+	reply, ok = e.Handle(context.Background(), msgText("!cd"))
+	assert.True(t, ok, "throttled invocation is still consumed")
+	assert.Empty(t, reply.Text)
+	assert.EqualValues(t, 1, calls.Load(), "throttled invocation must not run handler")
+
+	clk.Advance(5 * time.Second)
+	reply, ok = e.Handle(context.Background(), msgText("!cd"))
+	assert.True(t, ok)
+	assert.Equal(t, "ok", reply.Text)
+	assert.EqualValues(t, 2, calls.Load())
+}
+
+func TestCooldown_PerUser(t *testing.T) {
+	clk := newFakeClock()
+	e := commands.New(commands.Config{Logger: silentLogger(), Now: clk.Now})
+	var calls atomic.Int32
+	require.NoError(t, e.Register(commands.Command{
+		Name:         "cd",
+		UserCooldown: 5 * time.Second,
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			calls.Add(1)
+			return commands.Reply{Text: "ok"}
+		},
+	}))
+
+	msgA := msgText("!cd")
+	msgA.UserID = "user-A"
+	msgB := msgText("!cd")
+	msgB.UserID = "user-B"
+
+	_, ok := e.Handle(context.Background(), msgA)
+	require.True(t, ok)
+	assert.EqualValues(t, 1, calls.Load())
+
+	reply, ok := e.Handle(context.Background(), msgA)
+	assert.True(t, ok)
+	assert.Empty(t, reply.Text)
+	assert.EqualValues(t, 1, calls.Load(), "A throttled")
+
+	reply, ok = e.Handle(context.Background(), msgB)
+	assert.True(t, ok)
+	assert.Equal(t, "ok", reply.Text)
+	assert.EqualValues(t, 2, calls.Load(), "B is independent of A's cooldown")
+
+	clk.Advance(5 * time.Second)
+	reply, ok = e.Handle(context.Background(), msgA)
+	assert.True(t, ok)
+	assert.Equal(t, "ok", reply.Text)
+	assert.EqualValues(t, 3, calls.Load(), "A recovers after window")
+}
+
+func TestCooldown_PermissionDeniedDoesNotArm(t *testing.T) {
+	clk := newFakeClock()
+	e := commands.New(commands.Config{Logger: silentLogger(), Now: clk.Now})
+	var calls atomic.Int32
+	require.NoError(t, e.Register(commands.Command{
+		Name:     "modcd",
+		MinRole:  commands.RoleModerator,
+		Cooldown: 5 * time.Second,
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			calls.Add(1)
+			return commands.Reply{Text: "ok"}
+		},
+	}))
+
+	denied := msgText("!modcd")
+	_, ok := e.Handle(context.Background(), denied)
+	assert.True(t, ok)
+	assert.EqualValues(t, 0, calls.Load())
+
+	mod := msgText("!modcd")
+	mod.IsModerator = true
+	reply, ok := e.Handle(context.Background(), mod)
+	assert.True(t, ok, "denied invocation must not arm the global cooldown")
+	assert.Equal(t, "ok", reply.Text)
+	assert.EqualValues(t, 1, calls.Load())
+}
+
+func TestCooldown_ThrottledAttemptDoesNotExtendWindow(t *testing.T) {
+	clk := newFakeClock()
+	e := commands.New(commands.Config{Logger: silentLogger(), Now: clk.Now})
+	var calls atomic.Int32
+	require.NoError(t, e.Register(commands.Command{
+		Name:     "cd",
+		Cooldown: 5 * time.Second,
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			calls.Add(1)
+			return commands.Reply{Text: "ok"}
+		},
+	}))
+
+	_, ok := e.Handle(context.Background(), msgText("!cd"))
+	require.True(t, ok)
+	assert.EqualValues(t, 1, calls.Load())
+
+	clk.Advance(2 * time.Second)
+	reply, ok := e.Handle(context.Background(), msgText("!cd"))
+	assert.True(t, ok)
+	assert.Empty(t, reply.Text, "still throttled at t=2s")
+	assert.EqualValues(t, 1, calls.Load())
+
+	clk.Advance(3 * time.Second)
+	reply, ok = e.Handle(context.Background(), msgText("!cd"))
+	assert.True(t, ok)
+	assert.Equal(t, "ok", reply.Text,
+		"window is measured from first success (t=0+5=5s), not from suppressed attempt")
+	assert.EqualValues(t, 2, calls.Load())
+}
+
+func TestCooldown_ZeroMeansNoThrottle(t *testing.T) {
+	e := newEngine()
+	var calls atomic.Int32
+	require.NoError(t, e.Register(commands.Command{
+		Name: "free",
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			calls.Add(1)
+			return commands.Reply{Text: "ok"}
+		},
+	}))
+
+	for i := 0; i < 25; i++ {
+		_, ok := e.Handle(context.Background(), msgText("!free"))
+		require.True(t, ok)
+	}
+	assert.EqualValues(t, 25, calls.Load())
+}
+
+func TestCooldown_ConcurrentRace(t *testing.T) {
+	clk := newFakeClock()
+	e := commands.New(commands.Config{Logger: silentLogger(), Now: clk.Now})
+	var calls atomic.Int32
+	require.NoError(t, e.Register(commands.Command{
+		Name:     "cd",
+		Cooldown: time.Hour,
+		Handler: func(_ context.Context, _ commands.Message, _ []string) commands.Reply {
+			calls.Add(1)
+			return commands.Reply{Text: "ok"}
+		},
+	}))
+
+	const n = 50
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = e.Handle(context.Background(), msgText("!cd"))
+		}()
+	}
+	wg.Wait()
+
+	assert.GreaterOrEqual(t, calls.Load(), int32(1),
+		"at least one of the racing calls must run")
+}
+
+// ---- leaderboard ----
+
+type fakeLeaderboard struct {
+	pity   []commands.LeaderboardEntry
+	streak []commands.LeaderboardEntry
+}
+
+func (f *fakeLeaderboard) PityTop(_, _ string, _ int) []commands.LeaderboardEntry {
+	return f.pity
+}
+
+func (f *fakeLeaderboard) StreakTop(_, _ string, _ int) []commands.LeaderboardEntry {
+	return f.streak
+}
+
+func TestLeaderboardCommand_PityDefault(t *testing.T) {
+	q := &fakeLeaderboard{
+		pity: []commands.LeaderboardEntry{
+			{Username: "alice", Score: 47},
+			{Username: "bob", Score: 33},
+			{Username: "carol", Score: 12},
+		},
+	}
+	cmd := commands.NewLeaderboardCommand(testTenant, q)
+	reply := cmd.Handler(context.Background(), msgText("!leaderboard"), nil)
+	assert.Equal(t, "🏆 Pity leaders: 1. alice (47) 2. bob (33) 3. carol (12)", reply.Text)
+}
+
+func TestLeaderboardCommand_PityExplicitArg(t *testing.T) {
+	q := &fakeLeaderboard{
+		pity: []commands.LeaderboardEntry{{Username: "alice", Score: 1}},
+	}
+	cmd := commands.NewLeaderboardCommand(testTenant, q)
+	reply := cmd.Handler(context.Background(), msgText("!leaderboard pity"), []string{"pity"})
+	assert.Equal(t, "🏆 Pity leaders: 1. alice (1)", reply.Text)
+}
+
+func TestLeaderboardCommand_StreakArg(t *testing.T) {
+	q := &fakeLeaderboard{
+		streak: []commands.LeaderboardEntry{
+			{Username: "alice", Score: 30},
+			{Username: "bob", Score: 12},
+		},
+	}
+	cmd := commands.NewLeaderboardCommand(testTenant, q)
+	reply := cmd.Handler(context.Background(), msgText("!leaderboard streak"), []string{"streak"})
+	assert.Equal(t, "🔥 Streak leaders: 1. alice (30d) 2. bob (12d)", reply.Text)
+}
+
+func TestLeaderboardCommand_EmptyBoard(t *testing.T) {
+	q := &fakeLeaderboard{}
+	cmd := commands.NewLeaderboardCommand(testTenant, q)
+	reply := cmd.Handler(context.Background(), msgText("!leaderboard"), nil)
+	assert.Equal(t, "No leaderboard data yet — start chatting!", reply.Text)
+}
+
+func TestLeaderboardCommand_NilQuerier(t *testing.T) {
+	cmd := commands.NewLeaderboardCommand(testTenant, nil)
+	reply := cmd.Handler(context.Background(), msgText("!leaderboard"), nil)
+	assert.Empty(t, reply.Text)
+}
+
+func TestLeaderboardCommand_Alias(t *testing.T) {
+	cmd := commands.NewLeaderboardCommand(testTenant, &fakeLeaderboard{})
+	assert.Equal(t, "leaderboard", cmd.Name)
+	assert.Contains(t, cmd.Aliases, "top")
+}
+
+func TestLeaderboardCommand_ReplyLengthBounded(t *testing.T) {
+	q := &fakeLeaderboard{
+		pity: []commands.LeaderboardEntry{
+			{Username: "alice", Score: 99999},
+			{Username: "bob", Score: 88888},
+			{Username: "carol", Score: 77777},
+		},
+	}
+	cmd := commands.NewLeaderboardCommand(testTenant, q)
+	reply := cmd.Handler(context.Background(), msgText("!leaderboard"), nil)
+	assert.Less(t, len(reply.Text), 400)
+	assert.NotContains(t, reply.Text, "\n")
+}
+
+// ---- defensive sanity: pity/streak builtin defaults ----
+
+func TestBuiltins_HaveDefaultUserCooldown(t *testing.T) {
+	pity := commands.NewPityCommand(testTenant, &fakePity{})
+	streak := commands.NewStreakCommand(testTenant, &fakeStreak{})
+	assert.Equal(t, 5*time.Second, pity.UserCooldown)
+	assert.Equal(t, 5*time.Second, streak.UserCooldown)
+}
+
+func TestLeaderboard_HasDefaultGlobalCooldown(t *testing.T) {
+	cmd := commands.NewLeaderboardCommand(testTenant, &fakeLeaderboard{})
+	assert.Equal(t, 10*time.Second, cmd.Cooldown)
 }
