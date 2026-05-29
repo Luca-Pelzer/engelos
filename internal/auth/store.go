@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	_ "modernc.org/sqlite"
 )
 
@@ -48,15 +49,54 @@ type Store interface {
 	RevokeAPIKey(ctx context.Context, keyID string) error
 	UpdateAPIKeyLastUsed(ctx context.Context, keyID string, when time.Time) error
 
+	// CreateOAuthIdentity inserts a new linked external identity or, on
+	// conflict over (provider, provider_user_id), updates the existing
+	// row with the new tokens/scopes/login/expiry/user/purpose
+	// (upsert semantics). Token fields are encrypted at rest. Returns
+	// ErrCryptoRequired if the Store was opened without WithCrypto.
+	CreateOAuthIdentity(ctx context.Context, o OAuthIdentity) (OAuthIdentity, error)
+
+	// GetOAuthIdentityByProviderUserID looks up an identity by its
+	// external provider+account-id. Returns ErrOAuthIdentityNotFound
+	// when absent.
+	GetOAuthIdentityByProviderUserID(ctx context.Context, provider, providerUserID string) (OAuthIdentity, error)
+
+	// GetOAuthIdentitiesByUser returns every identity linked to the
+	// given local user, across providers.
+	GetOAuthIdentitiesByUser(ctx context.Context, tenantID, userID string) ([]OAuthIdentity, error)
+
+	// GetBotIdentity returns the single purpose="bot" identity for
+	// (tenant, provider). Returns ErrOAuthIdentityNotFound when none.
+	GetBotIdentity(ctx context.Context, tenantID, provider string) (OAuthIdentity, error)
+
+	// UpdateOAuthTokens replaces the encrypted access/refresh tokens
+	// and the expiry of an existing identity. An empty refresh token
+	// stores SQL NULL. A zero expiresAt stores SQL NULL.
+	UpdateOAuthTokens(ctx context.Context, id string, accessToken, refreshToken string, expiresAt time.Time) error
+
+	// DeleteOAuthIdentity removes an identity by its ULID.
+	DeleteOAuthIdentity(ctx context.Context, id string) error
+
 	Close() error
+}
+
+// StoreOption configures a sqliteStore at construction time.
+type StoreOption func(*sqliteStore)
+
+// WithCrypto wires an authenticated-encryption Box into the Store so
+// that OAuth token fields are encrypted at rest. Required for any of
+// the OAuth identity methods.
+func WithCrypto(box *secrets.Box) StoreOption {
+	return func(s *sqliteStore) { s.crypto = box }
 }
 
 // sqliteStore is a pure-Go SQLite implementation of Store backed by
 // modernc.org/sqlite. It enables WAL and foreign-key enforcement and
 // runs all embedded migrations on open.
 type sqliteStore struct {
-	db  *sql.DB
-	log *slog.Logger
+	db     *sql.DB
+	log    *slog.Logger
+	crypto *secrets.Box
 
 	// mu serialises writes that need to atomically check uniqueness and
 	// insert. SQLite already serialises writers at the engine level,
@@ -71,7 +111,7 @@ type sqliteStore struct {
 //
 // The returned Store has WAL journal mode, foreign-keys ON, and
 // synchronous=NORMAL.
-func OpenSQLiteStore(ctx context.Context, dsn string, logger *slog.Logger) (Store, error) {
+func OpenSQLiteStore(ctx context.Context, dsn string, logger *slog.Logger, opts ...StoreOption) (Store, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -98,6 +138,11 @@ func OpenSQLiteStore(ctx context.Context, dsn string, logger *slog.Logger) (Stor
 	}
 
 	s := &sqliteStore{db: db, log: logger}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
