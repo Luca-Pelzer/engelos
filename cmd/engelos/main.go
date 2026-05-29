@@ -29,6 +29,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
+	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/server"
 	"github.com/Luca-Pelzer/engelos/internal/web"
@@ -111,6 +112,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		"soft_pity_fraction", pitySystem.Config().SoftPityFraction,
 	)
 
+	streakSystem, err := streak.New(streak.DefaultConfig(), eventStore, logger)
+	if err != nil {
+		return fmt.Errorf("init streak system: %w", err)
+	}
+	if err := streakSystem.Recover(ctx, defaultTenantID); err != nil {
+		return fmt.Errorf("recover streak read model: %w", err)
+	}
+	logger.Info("streak system ready",
+		"max_freezes_held", streakSystem.Config().MaxFreezesHeld,
+		"grace_window", streakSystem.Config().GraceWindow,
+	)
+
 	hub := ws.NewHub(logger)
 	go hub.Run(ctx)
 
@@ -122,6 +135,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Platforms:        platforms,
 		Pity:             pitySystem,
 		PointsPerMessage: pitySystem.Config().PointsPerMessage,
+		Streak:           streakTickAdapter{sys: streakSystem},
 		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
 		Logger:           logger,
 	})
@@ -149,6 +163,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		AuthStore: authStore,
 		TenantID:  defaultTenantID,
 		Pity:      pitySystem,
+		Streak:    streakSystem,
 	})
 
 	srv := server.New(server.Config{
@@ -158,6 +173,16 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}, router)
 
 	return srv.Run(ctx)
+}
+
+// streakTickAdapter wraps streak.System to satisfy runtime.StreakTicker
+// without forcing the runtime package to import internal/features/streak
+// (and its concrete Result type).
+type streakTickAdapter struct{ sys *streak.System }
+
+func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, viewerID, username string) error {
+	_, err := s.sys.Tick(ctx, tenantID, channel, viewerID, username)
+	return err
 }
 
 // startPlatforms inspects environment variables and starts every platform
