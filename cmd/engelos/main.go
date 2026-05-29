@@ -32,8 +32,11 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
+	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
 	"github.com/Luca-Pelzer/engelos/internal/web"
+	"golang.org/x/oauth2"
+	twitchoauth "golang.org/x/oauth2/twitch"
 )
 
 // Version is set at build time via -ldflags "-X main.Version=...".
@@ -77,8 +80,28 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	logger.Info("data directory ready", "path", dataDir)
 
+	// Optional encryption-at-rest key. When ENGELOS_SECRETS_KEY is a valid
+	// 32-byte base64 key, OAuth token storage is enabled; when unset, the
+	// daemon still runs but OAuth/login-with-Twitch is disabled. A malformed
+	// key is fatal so misconfiguration cannot silently drop encryption.
+	var cryptoBox *secrets.Box
+	if raw := os.Getenv("ENGELOS_SECRETS_KEY"); raw != "" {
+		box, berr := secrets.NewBoxFromBase64(raw)
+		if berr != nil {
+			return fmt.Errorf("ENGELOS_SECRETS_KEY invalid: %w", berr)
+		}
+		cryptoBox = box
+		logger.Info("encryption-at-rest enabled")
+	} else {
+		logger.Warn("ENGELOS_SECRETS_KEY not set; OAuth token storage disabled")
+	}
+
 	authDSN := filepath.Join(dataDir, "auth.db")
-	authStore, err := auth.OpenSQLiteStore(ctx, authDSN, logger)
+	var authOpts []auth.StoreOption
+	if cryptoBox != nil {
+		authOpts = append(authOpts, auth.WithCrypto(cryptoBox))
+	}
+	authStore, err := auth.OpenSQLiteStore(ctx, authDSN, logger, authOpts...)
 	if err != nil {
 		return fmt.Errorf("open auth store %s: %w", authDSN, err)
 	}
@@ -153,6 +176,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		logger.Info("no embedded web dashboard; serving JSON landing page at /")
 	}
 
+	oauthTwitch := buildTwitchOAuth(authStore, cryptoBox, logger)
+
 	router := api.NewRouter(api.Deps{
 		Logger: logger,
 		Version: handlers.Version{
@@ -167,6 +192,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Pity:          pitySystem,
 		Streak:        streakSystem,
 		StatsProvider: dispatcherStatsAdapter{d: dispatcher},
+		OAuthTwitch:   oauthTwitch,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")
@@ -193,6 +219,33 @@ func envBool(name string) bool {
 	default:
 		return false
 	}
+}
+
+// buildTwitchOAuth assembles the "Login with Twitch" handler, or returns nil
+// (OAuth disabled) when its prerequisites are missing. It requires an
+// encryption box (so tokens can be stored encrypted) and the three
+// ENGELOS_TWITCH_CLIENT_ID/SECRET/REDIRECT_URL env vars; absence of any is a
+// normal, non-fatal "feature off" state, not an error.
+func buildTwitchOAuth(store auth.Store, box *secrets.Box, logger *slog.Logger) *handlers.OAuth {
+	clientID := os.Getenv("ENGELOS_TWITCH_CLIENT_ID")
+	clientSecret := os.Getenv("ENGELOS_TWITCH_CLIENT_SECRET")
+	redirectURL := os.Getenv("ENGELOS_TWITCH_REDIRECT_URL")
+	if box == nil || clientID == "" || clientSecret == "" || redirectURL == "" {
+		logger.Info("twitch oauth disabled",
+			"has_key", box != nil, "has_client_id", clientID != "",
+			"has_secret", clientSecret != "", "has_redirect", redirectURL != "")
+		return nil
+	}
+	cfg := &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Scopes:       []string{"user:read:email"},
+		Endpoint:     twitchoauth.Endpoint,
+	}
+	logger.Info("twitch oauth enabled", "redirect_url", redirectURL)
+	return handlers.NewOAuth(store, defaultTenantID, logger, cfg).
+		WithCookieSecure(false)
 }
 
 // streakTickAdapter wraps streak.System to satisfy runtime.StreakTicker

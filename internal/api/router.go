@@ -78,6 +78,11 @@ type Deps struct {
 	// GET /api/v1/stats. Nil hides the dispatcher block — the version
 	// payload is still served.
 	StatsProvider handlers.StatsProvider
+
+	// OAuthTwitch, when non-nil, mounts the "Login with Twitch" routes
+	// at GET /api/v1/auth/twitch/login and GET /api/v1/auth/twitch/callback.
+	// Nil leaves the OAuth feature disabled (the routes are not mounted).
+	OAuthTwitch *handlers.OAuth
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -124,6 +129,10 @@ func NewRouter(deps Deps) chi.Router {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", authH.Login)
 			r.Post("/logout", authH.Logout)
+			if deps.OAuthTwitch != nil {
+				r.Get("/twitch/login", deps.OAuthTwitch.Login)
+				r.Get("/twitch/callback", deps.OAuthTwitch.Callback)
+			}
 		})
 		r.Route("/users", func(r chi.Router) {
 			r.Get("/me", authH.Me)

@@ -103,6 +103,18 @@ Aktueller Stand der Verkabelung im Daemon (`cmd/engelos`):
 | `ENGELOS_DISCORD_CHANNELS` | optional | Komma-Liste erlaubter Channel-IDs. Leer = alle sichtbaren Channels. |
 | `ENGELOS_ADDR` | optional | Listen-Adresse (host:port). Default `127.0.0.1:8080`. |
 | `ENGELOS_ALLOW_LAN` | optional | `true`/`1` = an Nicht-Loopback binden (für Container/LAN/Tailnet). Default `false` (nur loopback). |
+| `ENGELOS_SECRETS_KEY` | für OAuth | 32-Byte base64 Schlüssel für Verschlüsselung-at-rest (OAuth-Tokens). Leer = OAuth aus. Ungültig = Start bricht ab. Erzeugen: `openssl rand -base64 32`. |
+| `ENGELOS_TWITCH_CLIENT_SECRET` | für OAuth | Client Secret der Twitch-Dev-App. |
+| `ENGELOS_TWITCH_REDIRECT_URL` | für OAuth | exakte Callback-URL, z.B. `https://dashboard.example/api/v1/auth/twitch/callback`. Muss zur App-Registrierung passen. |
+
+### "Login mit Twitch" (OAuth) aktivieren
+
+Setze `ENGELOS_SECRETS_KEY` + `ENGELOS_TWITCH_CLIENT_ID` + `ENGELOS_TWITCH_CLIENT_SECRET`
++ `ENGELOS_TWITCH_REDIRECT_URL`. Dann mountet der Daemon:
+`GET /api/v1/auth/twitch/login` (startet den Flow) und
+`/api/v1/auth/twitch/callback`. Fehlt einer der Werte, bleibt OAuth lautlos aus
+(die Routen werden nicht gemountet). Tokens werden mit `ENGELOS_SECRETS_KEY`
+verschlüsselt in der DB abgelegt.
 
 > **Discord ist jetzt im Daemon verkabelt.** Setze `ENGELOS_DISCORD_TOKEN`, und
 > der Bot verbindet sich beim Start. (Discord hat keinen Anonym-Modus — ohne

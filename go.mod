@@ -14,6 +14,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.52.0
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.34.0
 )
 
