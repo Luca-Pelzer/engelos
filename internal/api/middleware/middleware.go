@@ -3,7 +3,10 @@
 package middleware
 
 import (
+	"bufio"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -119,6 +122,17 @@ func (h *headerSetterWriter) Flush() {
 	if f, ok := h.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// Hijack forwards Hijacker calls so the WebSocket upgrade on /api/v1/ws works
+// through this wrapper. Without it the connection cannot be taken over and the
+// upgrade fails with "http.ResponseWriter does not implement http.Hijacker".
+func (h *headerSetterWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := h.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("middleware: underlying ResponseWriter is not an http.Hijacker")
+	}
+	return hj.Hijack()
 }
 
 // SecurityHeaders sets baseline security response headers.

@@ -2,6 +2,7 @@ package runtime_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -52,6 +53,70 @@ type fakeBroadcaster struct {
 }
 
 func (b *fakeBroadcaster) Broadcast(_ string, _ any) { b.count.Add(1) }
+
+type fakeStreak struct {
+	mu      sync.Mutex
+	calls   []streakCall
+	outcome runtime.StreakOutcome
+	failErr error
+}
+
+type streakCall struct {
+	TenantID, Channel, ViewerID, Username string
+}
+
+func (f *fakeStreak) TickStreak(_ context.Context, tenant, channel, viewer, username string) (runtime.StreakOutcome, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, streakCall{tenant, channel, viewer, username})
+	if f.failErr != nil {
+		return runtime.StreakOutcome{}, f.failErr
+	}
+	return f.outcome, nil
+}
+
+func (f *fakeStreak) Calls() []streakCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]streakCall, len(f.calls))
+	copy(out, f.calls)
+	return out
+}
+
+type recordedEvent struct {
+	Type    string
+	Payload any
+}
+
+type recordingBroadcaster struct {
+	mu     sync.Mutex
+	events []recordedEvent
+}
+
+func (b *recordingBroadcaster) Broadcast(eventType string, payload any) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.events = append(b.events, recordedEvent{Type: eventType, Payload: payload})
+}
+
+func (b *recordingBroadcaster) Events() []recordedEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]recordedEvent, len(b.events))
+	copy(out, b.events)
+	return out
+}
+
+func (b *recordingBroadcaster) FilterByType(eventType string) []recordedEvent {
+	all := b.Events()
+	var out []recordedEvent
+	for _, ev := range all {
+		if ev.Type == eventType {
+			out = append(out, ev)
+		}
+	}
+	return out
+}
 
 func newDispatcher(t *testing.T, platforms []adapters.Platform, pity runtime.PityGranter, bcast runtime.Broadcaster) *runtime.Dispatcher {
 	t.Helper()
@@ -251,6 +316,170 @@ func TestDispatcher_StopsOnPlatformChannelClose(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("dispatcher did not stop after platform closed")
 	}
+}
+
+func newStreakDispatcher(t *testing.T, plat adapters.Platform, streak runtime.StreakTicker, bcast runtime.Broadcaster) *runtime.Dispatcher {
+	t.Helper()
+	return runtime.New(runtime.Config{
+		TenantID:         "test",
+		Platforms:        []adapters.Platform{plat},
+		Streak:           streak,
+		PointsPerMessage: 0,
+		Broadcaster:      bcast,
+		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+}
+
+func emitChatMsg(plat interface {
+	EmitEvent(adapters.Event)
+}, platName, channel, userID, username string) {
+	plat.EmitEvent(adapters.Event{
+		ID:         adapters.NewEventID(),
+		Type:       adapters.EventMessageCreated,
+		Platform:   platName,
+		Channel:    channel,
+		OccurredAt: time.Now(),
+		Message: &adapters.MessageEvent{
+			ID: "msg-1", UserID: userID, Username: username, Content: "hi",
+		},
+	})
+}
+
+func TestDispatcher_BroadcastsStreakMilestone(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("twitch")
+	require.NoError(t, plat.Connect(context.Background()))
+
+	streak := &fakeStreak{outcome: runtime.StreakOutcome{
+		DaysCurrent: 7, DaysLongest: 7, Milestone: 7,
+	}}
+	bcast := &recordingBroadcaster{}
+	d := newStreakDispatcher(t, plat, streak, bcast)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = d.Run(ctx); close(done) }()
+
+	emitChatMsg(plat, "twitch", "engelswtf", "user-42", "alice")
+
+	require.Eventually(t, func() bool {
+		return len(bcast.FilterByType("feature.streak.milestone")) == 1
+	}, time.Second, 5*time.Millisecond)
+
+	evs := bcast.FilterByType("feature.streak.milestone")
+	require.Len(t, evs, 1)
+	buf, err := json.Marshal(evs[0].Payload)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf, &got))
+	assert.Equal(t, "twitch", got["platform"])
+	assert.Equal(t, "engelswtf", got["channel"])
+	assert.Equal(t, "user-42", got["viewer_id"])
+	assert.Equal(t, "alice", got["username"])
+	assert.EqualValues(t, 7, got["days_current"])
+	assert.EqualValues(t, 7, got["days_longest"])
+	assert.EqualValues(t, 7, got["milestone"])
+
+	cancel()
+	require.NoError(t, plat.Disconnect(context.Background()))
+	<-done
+}
+
+func TestDispatcher_BroadcastsStreakBroken(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("twitch")
+	require.NoError(t, plat.Connect(context.Background()))
+
+	streak := &fakeStreak{outcome: runtime.StreakOutcome{
+		DaysCurrent: 1, BrokenFromDays: 30,
+	}}
+	bcast := &recordingBroadcaster{}
+	d := newStreakDispatcher(t, plat, streak, bcast)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = d.Run(ctx); close(done) }()
+
+	emitChatMsg(plat, "twitch", "engelswtf", "user-42", "alice")
+
+	require.Eventually(t, func() bool {
+		return len(bcast.FilterByType("feature.streak.broken")) == 1
+	}, time.Second, 5*time.Millisecond)
+
+	evs := bcast.FilterByType("feature.streak.broken")
+	require.Len(t, evs, 1)
+	buf, err := json.Marshal(evs[0].Payload)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf, &got))
+	assert.EqualValues(t, 30, got["broken_from_days"])
+	assert.EqualValues(t, 1, got["days_current"])
+	assert.Equal(t, "engelswtf", got["channel"])
+
+	cancel()
+	require.NoError(t, plat.Disconnect(context.Background()))
+	<-done
+}
+
+func TestDispatcher_NoStreakBroadcastOnNoOp(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("twitch")
+	require.NoError(t, plat.Connect(context.Background()))
+
+	streak := &fakeStreak{outcome: runtime.StreakOutcome{
+		DaysCurrent: 5, SameDayReTick: true,
+	}}
+	bcast := &recordingBroadcaster{}
+	d := newStreakDispatcher(t, plat, streak, bcast)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = d.Run(ctx); close(done) }()
+
+	emitChatMsg(plat, "twitch", "engelswtf", "user-42", "alice")
+
+	require.Eventually(t, func() bool {
+		return len(streak.Calls()) == 1
+	}, time.Second, 5*time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+
+	assert.Empty(t, bcast.FilterByType("feature.streak.milestone"))
+	assert.Empty(t, bcast.FilterByType("feature.streak.broken"))
+
+	cancel()
+	require.NoError(t, plat.Disconnect(context.Background()))
+	<-done
+}
+
+func TestDispatcher_StreakTickErrorStillCountsAndNoBroadcast(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("twitch")
+	require.NoError(t, plat.Connect(context.Background()))
+
+	streak := &fakeStreak{failErr: errors.New("simulated streak failure")}
+	bcast := &recordingBroadcaster{}
+	d := newStreakDispatcher(t, plat, streak, bcast)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = d.Run(ctx); close(done) }()
+
+	emitChatMsg(plat, "twitch", "engelswtf", "user-42", "alice")
+
+	require.Eventually(t, func() bool {
+		return d.Stats().StreakTickErrors == 1
+	}, time.Second, 5*time.Millisecond)
+
+	assert.Empty(t, bcast.FilterByType("feature.streak.milestone"))
+	assert.Empty(t, bcast.FilterByType("feature.streak.broken"))
+
+	cancel()
+	require.NoError(t, plat.Disconnect(context.Background()))
+	<-done
 }
 
 func TestDispatcher_NoPlatformsIdle(t *testing.T) {

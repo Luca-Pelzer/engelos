@@ -19,11 +19,51 @@ type PityGranter interface {
 }
 
 // StreakTicker is the narrow contract the dispatcher needs from the streak
-// subsystem. Implementations wrap internal/features/streak.System and discard
-// the returned Result so the runtime stays decoupled from the concrete
-// Result type (which would otherwise force a streak import here).
+// subsystem. Implementations wrap internal/features/streak.System and return
+// a decoupled [StreakOutcome] (mirroring the fields of streak.Result that the
+// dispatcher needs to broadcast) so the runtime stays free of any streak
+// import. The returned outcome drives the "feature.streak.milestone" and
+// "feature.streak.broken" feature-event broadcasts emitted from onMessage.
 type StreakTicker interface {
-	TickStreak(ctx context.Context, tenantID, channel, viewerID, username string) error
+	TickStreak(ctx context.Context, tenantID, channel, viewerID, username string) (StreakOutcome, error)
+}
+
+// StreakOutcome is the decoupled result of a streak tick. It mirrors the
+// fields of internal/features/streak.Result that the dispatcher needs to
+// broadcast, without importing the streak package (which would create a
+// dependency cycle and couple the runtime to a concrete feature type).
+type StreakOutcome struct {
+	// DaysCurrent is the viewer's streak length after this tick.
+	DaysCurrent int
+	// DaysLongest is the viewer's all-time longest streak after this tick.
+	DaysLongest int
+	// Milestone is >0 when this tick crossed a milestone (e.g. 7/30/100/365 days).
+	Milestone int
+	// BrokenFromDays is >0 when this tick broke a prior streak of that length.
+	BrokenFromDays int
+	// SameDayReTick is true when the viewer already ticked today (no-op day).
+	SameDayReTick bool
+}
+
+// streakMilestonePayload is the JSON shape broadcast as "feature.streak.milestone".
+type streakMilestonePayload struct {
+	Platform    string `json:"platform"`
+	Channel     string `json:"channel"`
+	ViewerID    string `json:"viewer_id"`
+	Username    string `json:"username"`
+	DaysCurrent int    `json:"days_current"`
+	DaysLongest int    `json:"days_longest"`
+	Milestone   int    `json:"milestone"`
+}
+
+// streakBrokenPayload is the JSON shape broadcast as "feature.streak.broken".
+type streakBrokenPayload struct {
+	Platform       string `json:"platform"`
+	Channel        string `json:"channel"`
+	ViewerID       string `json:"viewer_id"`
+	Username       string `json:"username"`
+	BrokenFromDays int    `json:"broken_from_days"`
+	DaysCurrent    int    `json:"days_current"`
 }
 
 // Broadcaster is the narrow contract for fanning out normalized events to
@@ -256,8 +296,9 @@ func (d *Dispatcher) onMessage(ctx context.Context, ev adapters.Event) {
 	}
 
 	if d.cfg.Streak != nil {
-		if err := d.cfg.Streak.TickStreak(ctx, d.cfg.TenantID,
-			ev.Channel, ev.Message.UserID, ev.Message.Username); err != nil {
+		outcome, err := d.cfg.Streak.TickStreak(ctx, d.cfg.TenantID,
+			ev.Channel, ev.Message.UserID, ev.Message.Username)
+		if err != nil {
 			d.stats.mu.Lock()
 			d.stats.streakTickErrors++
 			d.stats.mu.Unlock()
@@ -267,6 +308,30 @@ func (d *Dispatcher) onMessage(ctx context.Context, ev adapters.Event) {
 				"viewer", ev.Message.UserID,
 				"err", err,
 			)
+			return
+		}
+		if d.cfg.Broadcaster != nil {
+			if outcome.Milestone > 0 {
+				d.cfg.Broadcaster.Broadcast("feature.streak.milestone", streakMilestonePayload{
+					Platform:    ev.Platform,
+					Channel:     ev.Channel,
+					ViewerID:    ev.Message.UserID,
+					Username:    ev.Message.Username,
+					DaysCurrent: outcome.DaysCurrent,
+					DaysLongest: outcome.DaysLongest,
+					Milestone:   outcome.Milestone,
+				})
+			}
+			if outcome.BrokenFromDays > 0 {
+				d.cfg.Broadcaster.Broadcast("feature.streak.broken", streakBrokenPayload{
+					Platform:       ev.Platform,
+					Channel:        ev.Channel,
+					ViewerID:       ev.Message.UserID,
+					Username:       ev.Message.Username,
+					BrokenFromDays: outcome.BrokenFromDays,
+					DaysCurrent:    outcome.DaysCurrent,
+				})
+			}
 		}
 	}
 }

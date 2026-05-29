@@ -179,12 +179,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 // streakTickAdapter wraps streak.System to satisfy runtime.StreakTicker
 // without forcing the runtime package to import internal/features/streak
-// (and its concrete Result type).
+// (and its concrete Result type). It maps the concrete streak.Result onto
+// the decoupled runtime.StreakOutcome so the dispatcher can broadcast
+// feature events without depending on the streak package.
 type streakTickAdapter struct{ sys *streak.System }
 
-func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, viewerID, username string) error {
-	_, err := s.sys.Tick(ctx, tenantID, channel, viewerID, username)
-	return err
+func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, viewerID, username string) (runtime.StreakOutcome, error) {
+	res, err := s.sys.Tick(ctx, tenantID, channel, viewerID, username)
+	if err != nil {
+		return runtime.StreakOutcome{}, err
+	}
+	return runtime.StreakOutcome{
+		DaysCurrent:    res.DaysCurrent,
+		DaysLongest:    res.DaysLongest,
+		Milestone:      res.Milestone,
+		BrokenFromDays: res.BrokenFromDays,
+		SameDayReTick:  res.SameDayReTick,
+	}, nil
 }
 
 // dispatcherStatsAdapter wraps runtime.Dispatcher to satisfy

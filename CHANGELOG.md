@@ -11,6 +11,25 @@ individual commits.
 
 ## [Unreleased]
 
+## [0.0.7-alpha.1] — 2026-05-29
+
+### Added
+- **Live streak feature-events over WebSocket**: the runtime dispatcher now
+  threads the streak tick outcome through and broadcasts
+  `feature.streak.milestone` (when a viewer crosses 7/30/100/365 days) and
+  `feature.streak.broken` (when a streak ends) to all connected WS clients, so
+  dashboards can render live milestone moments. Decoupled via a new
+  `runtime.StreakOutcome` type — the runtime package retains zero dependency on
+  `internal/features/*` (verified with `go list -deps`).
+
+### Fixed
+- **WebSocket upgrade was silently broken** (`501 Not Implemented`): the
+  `JSONContentType` middleware wrapped the `ResponseWriter` for all `/api/*`
+  paths without implementing `http.Hijacker`, so `/api/v1/ws` could never be
+  upgraded. Added a `Hijack` passthrough; the upgrade now returns
+  `101 Switching Protocols` (verified live). This latent bug would have made the
+  new feature-event broadcasts — and any browser/TUI live feed — undeliverable.
+
 ## [0.0.6-alpha.1] — 2026-05-29
 
 ### Added
