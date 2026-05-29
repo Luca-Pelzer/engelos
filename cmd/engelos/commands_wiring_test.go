@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
@@ -28,6 +29,10 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
+	customStore, err := customcommands.OpenSQLiteStore(ctx, "file:cc?mode=memory&cache=shared", logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = customStore.Close() })
+
 	pitySys, err := pity.New(pity.DefaultConfig(), store, logger)
 	require.NoError(t, err)
 	streakSys, err := streak.New(streak.DefaultConfig(), store, logger)
@@ -45,7 +50,7 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	_, err = streakSys.Tick(ctx, tenant, channel, viewer, user)
 	require.NoError(t, err)
 
-	router := buildCommandRouter(tenant, pitySys, streakSys, logger)
+	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, logger)
 
 	pityReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!pity",
@@ -80,4 +85,33 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "not a command",
 	})
 	require.False(t, handled)
+
+	// Custom-command lifecycle: a mod adds "!discord", then any viewer
+	// triggering it gets the response with $user expanded — proving the
+	// admin command, the SQLite store, the dynamic resolver, and variable
+	// expansion are all wired together end to end.
+	_, handled = router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
+		Text: "!addcom !discord Hey $user join discord.gg/x", IsModerator: true,
+	})
+	require.True(t, handled)
+
+	ccReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!discord",
+	})
+	require.True(t, handled, "custom command must resolve dynamically")
+	require.Equal(t, "Hey alice join discord.gg/x", ccReply.Text)
+
+	// A non-mod cannot add commands (mod-gated, silent deny → empty reply).
+	denyReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user,
+		Text: "!addcom !nope blocked",
+	})
+	require.True(t, handled)
+	require.Empty(t, denyReply.Text)
+
+	_, handled = router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!nope",
+	})
+	require.False(t, handled, "non-mod add must not have created the command")
 }

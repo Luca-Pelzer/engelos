@@ -124,6 +124,31 @@ type Config struct {
 	// Now overrides the clock for cooldown bookkeeping. Defaults to
 	// [time.Now]. Tests inject a controllable fake clock here.
 	Now func() time.Time
+	// Resolver, when non-nil, is consulted by Handle for any prefixed
+	// token that does not match a statically-registered command, BEFORE
+	// giving up. It lets dynamic (e.g. database-backed) commands extend
+	// the engine without pre-registration.
+	Resolver Resolver
+}
+
+// ResolvedCommand is a dynamically-resolved command returned by a
+// [Resolver]. Response is the raw text (may contain $user/$channel/$args
+// placeholders that the engine expands before returning the reply).
+type ResolvedCommand struct {
+	Response     string
+	MinRole      Role
+	Cooldown     time.Duration
+	UserCooldown time.Duration
+}
+
+// Resolver looks up a command by name at invocation time. ok=false means
+// "no such dynamic command" — the engine then treats the message as a
+// non-command (Handle returns (Reply{}, false)).
+//
+// A statically-registered command always takes precedence over a
+// resolver hit; the resolver is consulted only on a static miss.
+type Resolver interface {
+	Resolve(ctx context.Context, channel, name string) (ResolvedCommand, bool)
 }
 
 // Engine parses prefixed chat messages and dispatches them to registered
@@ -138,9 +163,10 @@ type Config struct {
 // See the package doc for parsing rules, the silent-unknown-command and
 // silent-denied/throttled rationale, and the cooldown arming semantics.
 type Engine struct {
-	prefix string
-	logger *slog.Logger
-	now    func() time.Time
+	prefix   string
+	logger   *slog.Logger
+	now      func() time.Time
+	resolver Resolver
 
 	mu       sync.RWMutex
 	primary  []Command
@@ -181,6 +207,7 @@ func New(cfg Config) *Engine {
 		prefix:   prefix,
 		logger:   logger.With("component", "commands.engine"),
 		now:      now,
+		resolver: cfg.Resolver,
 		byName:   make(map[string]Command),
 		primName: make(map[string]bool),
 		globalCD: make(map[string]time.Time),
@@ -279,7 +306,7 @@ func (e *Engine) Handle(ctx context.Context, msg Message) (Reply, bool) {
 	cmd, ok := e.byName[name]
 	e.mu.RUnlock()
 	if !ok {
-		return Reply{}, false
+		return e.handleDynamic(ctx, name, msg, args)
 	}
 
 	if !msg.satisfies(cmd.MinRole) {
@@ -293,6 +320,55 @@ func (e *Engine) Handle(ctx context.Context, msg Message) (Reply, bool) {
 	reply := e.invoke(ctx, cmd, msg, args)
 	e.armCooldown(cmd, msg)
 	return reply, true
+}
+
+// handleDynamic consults the configured [Resolver] for a name that did
+// NOT match any static registration. A miss (or a nil/panicking
+// resolver) yields (Reply{}, false) so the dispatcher treats the
+// message as a non-command. A hit goes through the SAME permission and
+// cooldown gates as a static command — the cooldown maps are keyed by
+// command name, and because we only get here after the static lookup
+// missed, that name is unambiguous between static and dynamic spaces.
+func (e *Engine) handleDynamic(ctx context.Context, name string, msg Message, args []string) (Reply, bool) {
+	if e.resolver == nil {
+		return Reply{}, false
+	}
+	rc, ok := e.safeResolve(ctx, msg.Channel, name)
+	if !ok {
+		return Reply{}, false
+	}
+	synth := Command{
+		Name:         name,
+		MinRole:      rc.MinRole,
+		Cooldown:     rc.Cooldown,
+		UserCooldown: rc.UserCooldown,
+	}
+	if !msg.satisfies(synth.MinRole) {
+		return Reply{}, true
+	}
+	if e.onCooldown(synth, msg) {
+		return Reply{}, true
+	}
+	expanded := ExpandVariables(rc.Response, msg, args)
+	e.armCooldown(synth, msg)
+	return Reply{Text: expanded}, true
+}
+
+// safeResolve wraps the Resolver call in a deferred recover so a
+// panicking resolver is treated as a miss rather than crashing Handle.
+func (e *Engine) safeResolve(ctx context.Context, channel, name string) (rc ResolvedCommand, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			e.logger.Error("commands: resolver panic recovered",
+				"channel", channel,
+				"name", name,
+				"panic", fmt.Sprint(r),
+			)
+			rc = ResolvedCommand{}
+			ok = false
+		}
+	}()
+	return e.resolver.Resolve(ctx, channel, name)
 }
 
 // onCooldown reports whether either the global or per-user cooldown is

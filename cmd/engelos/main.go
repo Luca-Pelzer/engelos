@@ -29,6 +29,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
+	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
@@ -126,6 +127,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("event store opened", "dsn", eventsDSN)
 
+	customDSN := filepath.Join(dataDir, "custom_commands.db")
+	customStore, err := customcommands.OpenSQLiteStore(ctx, customDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open custom command store %s: %w", customDSN, err)
+	}
+	defer func() {
+		if cerr := customStore.Close(); cerr != nil {
+			logger.Warn("custom command store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("custom command store opened", "dsn", customDSN)
+
 	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
 	if err != nil {
 		return fmt.Errorf("init pity system: %w", err)
@@ -156,7 +169,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, logger)
 
 	dispatcher := runtime.New(runtime.Config{
 		TenantID:         defaultTenantID,
@@ -366,13 +379,19 @@ type dispatcherStatsAdapter struct{ d *runtime.Dispatcher }
 
 func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 
-// buildCommandRouter assembles the chat-command engine with the built-in
-// !pity, !streak and !commands commands wired to the live feature systems,
-// and returns it as a runtime.CommandRouter. Registration failures are
-// fatal-free: they are logged and the command is skipped, so a wiring bug
-// degrades to "command missing" rather than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, logger *slog.Logger) runtime.CommandRouter {
-	engine := commands.New(commands.Config{Logger: logger})
+// buildCommandRouter assembles the chat-command engine wired to the live
+// feature systems and the custom-command store, and returns it as a
+// runtime.CommandRouter. Static built-ins (!pity, !streak, !leaderboard,
+// !commands) plus the mod-gated admin commands (!addcom/!editcom/!delcom)
+// are registered; unknown prefixed tokens fall back to the custom-command
+// Resolver. Registration failures are fatal-free: they are logged and the
+// command is skipped, so a wiring bug degrades to "command missing" rather
+// than crashing the daemon.
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, logger *slog.Logger) runtime.CommandRouter {
+	engine := commands.New(commands.Config{
+		Logger:   logger,
+		Resolver: customResolver{tenantID: tenantID, store: custom},
+	})
 	register := func(c commands.Command) {
 		if err := engine.Register(c); err != nil {
 			logger.Warn("command registration failed", "command", c.Name, "err", err)
@@ -381,8 +400,79 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewPityCommand(tenantID, pityQuerier{sys: pity}))
 	register(commands.NewStreakCommand(tenantID, streakQuerier{sys: streak}))
 	register(commands.NewLeaderboardCommand(tenantID, leaderboardQuerier{pity: pity, streak: streak}))
+	adminStore := customCommandAdmin{tenantID: tenantID, store: custom}
+	register(commands.NewAddCommand(adminStore))
+	register(commands.NewEditCommand(adminStore))
+	register(commands.NewDeleteCommand(adminStore))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
+}
+
+// customResolver maps customcommands.Store onto commands.Resolver: it looks
+// up a stored command by (tenant, channel, name) and projects it into a
+// commands.ResolvedCommand, translating the stored role string into a
+// commands.Role. A miss (or any store error) resolves to ok=false so the
+// engine treats the token as a non-command.
+type customResolver struct {
+	tenantID string
+	store    customcommands.Store
+}
+
+func (r customResolver) Resolve(ctx context.Context, channel, name string) (commands.ResolvedCommand, bool) {
+	cc, err := r.store.Get(ctx, r.tenantID, channel, name)
+	if err != nil {
+		return commands.ResolvedCommand{}, false
+	}
+	return commands.ResolvedCommand{
+		Response: cc.Response,
+		MinRole:  parseRole(cc.MinRole),
+	}, true
+}
+
+// customCommandAdmin maps customcommands.Store onto the narrow
+// commands.CustomCommandStore the !addcom/!editcom/!delcom built-ins need,
+// binding the tenant id the daemon serves.
+type customCommandAdmin struct {
+	tenantID string
+	store    customcommands.Store
+}
+
+func (a customCommandAdmin) Add(ctx context.Context, channel, name, response, minRole, createdBy string) error {
+	_, err := a.store.Create(ctx, customcommands.CustomCommand{
+		TenantID:  a.tenantID,
+		Channel:   channel,
+		Name:      name,
+		Response:  response,
+		MinRole:   minRole,
+		CreatedBy: createdBy,
+	})
+	return err
+}
+
+func (a customCommandAdmin) Edit(ctx context.Context, channel, name, response string) error {
+	_, err := a.store.Update(ctx, a.tenantID, channel, name, response, "")
+	return err
+}
+
+func (a customCommandAdmin) Remove(ctx context.Context, channel, name string) error {
+	return a.store.Delete(ctx, a.tenantID, channel, name)
+}
+
+// parseRole maps a stored role string onto a commands.Role, defaulting to
+// RoleEveryone for empty or unrecognised values.
+func parseRole(s string) commands.Role {
+	switch s {
+	case "subscriber":
+		return commands.RoleSubscriber
+	case "vip":
+		return commands.RoleVIP
+	case "moderator":
+		return commands.RoleModerator
+	case "broadcaster":
+		return commands.RoleBroadcaster
+	default:
+		return commands.RoleEveryone
+	}
 }
 
 // commandRouterAdapter maps the commands.Engine onto runtime.CommandRouter,

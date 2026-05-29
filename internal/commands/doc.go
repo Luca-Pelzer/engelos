@@ -83,4 +83,32 @@
 // A panic in a handler is recovered, logged, and reported to the caller as
 // (Reply{}, true) — i.e. the message WAS a command but produced no reply.
 // One bad command can never crash the dispatcher.
+//
+// # Custom commands
+//
+// Streamer-defined "!hello"-style commands are NOT stored in the engine's
+// static registration table; they are looked up at invocation time via
+// the optional Config.Resolver. The lookup order is:
+//
+//  1. Static byName table (always wins on a hit).
+//  2. Config.Resolver.Resolve(ctx, channel, name) (when configured).
+//  3. Otherwise: not a command, (Reply{}, false).
+//
+// A resolver hit goes through the SAME permission and cooldown gates as
+// a static command; the cooldown maps share the same name keyspace, which
+// is safe precisely because the static lookup is checked first (a name
+// can never be both static and dynamic for any given Handle call).
+//
+// The resolved Response is passed through [ExpandVariables] which
+// substitutes $user, $channel and $args before the reply is returned.
+// Substitution is case-sensitive and non-recursive; unknown $-tokens
+// are left untouched. A panicking Resolver is recovered, logged, and
+// treated as a miss — never crashes the dispatcher.
+//
+// Mods manage custom commands through the [NewAddCommand],
+// [NewEditCommand] and [NewDeleteCommand] built-ins, which speak to a
+// narrow [CustomCommandStore] interface so this package stays
+// decoupled from the persistence-side
+// [github.com/Luca-Pelzer/engelos/internal/customcommands] package
+// (main.go wires the adapter).
 package commands

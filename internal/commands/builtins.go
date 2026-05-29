@@ -248,6 +248,149 @@ func NewLeaderboardCommand(tenantID string, q LeaderboardQuerier) Command {
 	}
 }
 
+// defaultAdminUserCooldown throttles per-mod double-fires of the
+// !addcom / !editcom / !delcom built-ins. 2s is short enough to feel
+// instant but long enough to swallow an accidental Enter-spam.
+const defaultAdminUserCooldown = 2 * time.Second
+
+// CustomCommandStore is the narrow management surface the !addcom /
+// !editcom / !delcom built-ins need. An adapter over
+// [github.com/Luca-Pelzer/engelos/internal/customcommands.Store] is
+// wired in main; this interface lives HERE so internal/commands does
+// NOT import internal/customcommands (avoids an import cycle since
+// internal/customcommands needs the persistence-side types and main
+// already depends on both).
+//
+// All three methods take channel + name; main's adapter is responsible
+// for choosing the tenant_id (typically the host's tenant for that
+// channel) and any normalisation beyond what the built-in already does.
+//
+// Errors are returned as opaque error values: the built-in handlers
+// render a single generic "couldn't <verb> !name (already exists,
+// missing, or invalid)" reply on any non-nil error and log the detail
+// at INFO. This keeps internal/commands free of the
+// customcommands-package sentinel error symbols while still surfacing
+// failures to mods in chat.
+type CustomCommandStore interface {
+	Add(ctx context.Context, channel, name, response, minRole, createdBy string) error
+	Edit(ctx context.Context, channel, name, response string) error
+	Remove(ctx context.Context, channel, name string) error
+}
+
+// parseAdminTarget normalises args[0] as a command-name target: lower
+// case, trim, strip a leading "!". Returns "" when the slice is empty.
+func parseAdminTarget(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	t := strings.ToLower(strings.TrimSpace(args[0]))
+	t = strings.TrimPrefix(t, "!")
+	return t
+}
+
+// NewAddCommand returns "!addcom" (alias "!addcmd"). Mods-only.
+//
+// Usage: "!addcom !name response text with $user". The response text
+// is everything after the first whitespace-separated token; multiple
+// spaces between args are collapsed to single spaces (the engine has
+// already strings.Fields-split the input). MinRole on the created
+// custom command is always "everyone" — per-command role for custom
+// commands is future work.
+//
+// A nil store yields a one-line "custom commands are unavailable"
+// reply so the streamer sees something happened rather than the
+// silence of a denied invocation.
+func NewAddCommand(store CustomCommandStore) Command {
+	return Command{
+		Name:         "addcom",
+		Aliases:      []string{"addcmd"},
+		Help:         "Add a custom command — !addcom !name response with $user.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scustom commands are unavailable",
+					mentionPrefix(msg))}
+			}
+			target := parseAdminTarget(args)
+			if target == "" || len(args) < 2 {
+				return Reply{Text: fmt.Sprintf("%susage: !addcom !name response text",
+					mentionPrefix(msg))}
+			}
+			response := strings.Join(args[1:], " ")
+			if err := store.Add(ctx, msg.Channel, target, response, "everyone", msg.UserID); err != nil {
+				return Reply{Text: fmt.Sprintf(
+					"%scouldn't add !%s (already exists, missing, or invalid)",
+					mentionPrefix(msg), target)}
+			}
+			return Reply{Text: fmt.Sprintf("%sadded !%s", mentionPrefix(msg), target)}
+		},
+	}
+}
+
+// NewEditCommand returns "!editcom" (alias "!editcmd"). Mods-only.
+//
+// Usage: "!editcom !name new response text". A nil store yields the
+// "custom commands are unavailable" reply (see [NewAddCommand]).
+func NewEditCommand(store CustomCommandStore) Command {
+	return Command{
+		Name:         "editcom",
+		Aliases:      []string{"editcmd"},
+		Help:         "Edit a custom command — !editcom !name new response.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scustom commands are unavailable",
+					mentionPrefix(msg))}
+			}
+			target := parseAdminTarget(args)
+			if target == "" || len(args) < 2 {
+				return Reply{Text: fmt.Sprintf("%susage: !editcom !name new response",
+					mentionPrefix(msg))}
+			}
+			response := strings.Join(args[1:], " ")
+			if err := store.Edit(ctx, msg.Channel, target, response); err != nil {
+				return Reply{Text: fmt.Sprintf(
+					"%scouldn't edit !%s (already exists, missing, or invalid)",
+					mentionPrefix(msg), target)}
+			}
+			return Reply{Text: fmt.Sprintf("%sedited !%s", mentionPrefix(msg), target)}
+		},
+	}
+}
+
+// NewDeleteCommand returns "!delcom" (alias "!delcmd"). Mods-only.
+//
+// Usage: "!delcom !name". A nil store yields the "custom commands are
+// unavailable" reply (see [NewAddCommand]).
+func NewDeleteCommand(store CustomCommandStore) Command {
+	return Command{
+		Name:         "delcom",
+		Aliases:      []string{"delcmd"},
+		Help:         "Delete a custom command — !delcom !name.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scustom commands are unavailable",
+					mentionPrefix(msg))}
+			}
+			target := parseAdminTarget(args)
+			if target == "" {
+				return Reply{Text: fmt.Sprintf("%susage: !delcom !name",
+					mentionPrefix(msg))}
+			}
+			if err := store.Remove(ctx, msg.Channel, target); err != nil {
+				return Reply{Text: fmt.Sprintf(
+					"%scouldn't delete !%s (already exists, missing, or invalid)",
+					mentionPrefix(msg), target)}
+			}
+			return Reply{Text: fmt.Sprintf("%sdeleted !%s", mentionPrefix(msg), target)}
+		},
+	}
+}
+
 // mentionOf returns "@username" when Username is set, falling back to
 // "@viewer" so replies never read as "you have X points".
 func mentionOf(msg Message) string {
