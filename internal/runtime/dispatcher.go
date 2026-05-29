@@ -18,6 +18,14 @@ type PityGranter interface {
 	GrantPoints(ctx context.Context, tenantID, channel, viewerID, username, reason string, amount int) (int, error)
 }
 
+// StreakTicker is the narrow contract the dispatcher needs from the streak
+// subsystem. Implementations wrap internal/features/streak.System and discard
+// the returned Result so the runtime stays decoupled from the concrete
+// Result type (which would otherwise force a streak import here).
+type StreakTicker interface {
+	TickStreak(ctx context.Context, tenantID, channel, viewerID, username string) error
+}
+
 // Broadcaster is the narrow contract for fanning out normalized events to
 // real-time consumers (WebSocket clients, SSE clients, ...).
 type Broadcaster interface {
@@ -43,6 +51,10 @@ type Config struct {
 	// negative disables pity grants even when Pity is non-nil.
 	PointsPerMessage int
 
+	// Streak, when non-nil, receives a TickStreak call for every chat
+	// message that crosses the dispatcher.
+	Streak StreakTicker
+
 	// Broadcaster, when non-nil, receives every event the dispatcher sees
 	// so WebSocket / SSE consumers can render live activity.
 	Broadcaster Broadcaster
@@ -65,12 +77,13 @@ type Dispatcher struct {
 }
 
 type stats struct {
-	mu              sync.Mutex
-	messages        int64
-	subs            int64
-	raids           int64
-	pityGrantErrors int64
-	lastEventAt     time.Time
+	mu               sync.Mutex
+	messages         int64
+	subs             int64
+	raids            int64
+	pityGrantErrors  int64
+	streakTickErrors int64
+	lastEventAt      time.Time
 }
 
 // New constructs a Dispatcher.
@@ -133,40 +146,44 @@ func (d *Dispatcher) Stats() Stats { return d.stats.snapshot().public() }
 
 // Stats is the public counter view returned by [Dispatcher.Stats].
 type Stats struct {
-	Messages        int64     `json:"messages"`
-	Subscriptions   int64     `json:"subscriptions"`
-	Raids           int64     `json:"raids"`
-	PityGrantErrors int64     `json:"pity_grant_errors"`
-	LastEventAt     time.Time `json:"last_event_at"`
+	Messages         int64     `json:"messages"`
+	Subscriptions    int64     `json:"subscriptions"`
+	Raids            int64     `json:"raids"`
+	PityGrantErrors  int64     `json:"pity_grant_errors"`
+	StreakTickErrors int64     `json:"streak_tick_errors"`
+	LastEventAt      time.Time `json:"last_event_at"`
 }
 
 func (s *stats) snapshot() statsSnap {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return statsSnap{
-		messages:        s.messages,
-		subs:            s.subs,
-		raids:           s.raids,
-		pityGrantErrors: s.pityGrantErrors,
-		lastEventAt:     s.lastEventAt,
+		messages:         s.messages,
+		subs:             s.subs,
+		raids:            s.raids,
+		pityGrantErrors:  s.pityGrantErrors,
+		streakTickErrors: s.streakTickErrors,
+		lastEventAt:      s.lastEventAt,
 	}
 }
 
 type statsSnap struct {
-	messages        int64
-	subs            int64
-	raids           int64
-	pityGrantErrors int64
-	lastEventAt     time.Time
+	messages         int64
+	subs             int64
+	raids            int64
+	pityGrantErrors  int64
+	streakTickErrors int64
+	lastEventAt      time.Time
 }
 
 func (s statsSnap) public() Stats {
 	return Stats{
-		Messages:        s.messages,
-		Subscriptions:   s.subs,
-		Raids:           s.raids,
-		PityGrantErrors: s.pityGrantErrors,
-		LastEventAt:     s.lastEventAt,
+		Messages:         s.messages,
+		Subscriptions:    s.subs,
+		Raids:            s.raids,
+		PityGrantErrors:  s.pityGrantErrors,
+		StreakTickErrors: s.streakTickErrors,
+		LastEventAt:      s.lastEventAt,
 	}
 }
 
@@ -218,25 +235,39 @@ func (d *Dispatcher) onMessage(ctx context.Context, ev adapters.Event) {
 	d.stats.messages++
 	d.stats.mu.Unlock()
 
-	if d.cfg.Pity == nil || d.cfg.PointsPerMessage <= 0 {
-		return
-	}
 	if ev.Message.UserID == "" || ev.Channel == "" {
 		return
 	}
 
-	if _, err := d.cfg.Pity.GrantPoints(ctx, d.cfg.TenantID,
-		ev.Channel, ev.Message.UserID, ev.Message.Username,
-		"chat:"+ev.Platform, d.cfg.PointsPerMessage); err != nil {
-		d.stats.mu.Lock()
-		d.stats.pityGrantErrors++
-		d.stats.mu.Unlock()
-		d.logger.Warn("pity grant failed",
-			"platform", ev.Platform,
-			"channel", ev.Channel,
-			"viewer", ev.Message.UserID,
-			"err", err,
-		)
+	if d.cfg.Pity != nil && d.cfg.PointsPerMessage > 0 {
+		if _, err := d.cfg.Pity.GrantPoints(ctx, d.cfg.TenantID,
+			ev.Channel, ev.Message.UserID, ev.Message.Username,
+			"chat:"+ev.Platform, d.cfg.PointsPerMessage); err != nil {
+			d.stats.mu.Lock()
+			d.stats.pityGrantErrors++
+			d.stats.mu.Unlock()
+			d.logger.Warn("pity grant failed",
+				"platform", ev.Platform,
+				"channel", ev.Channel,
+				"viewer", ev.Message.UserID,
+				"err", err,
+			)
+		}
+	}
+
+	if d.cfg.Streak != nil {
+		if err := d.cfg.Streak.TickStreak(ctx, d.cfg.TenantID,
+			ev.Channel, ev.Message.UserID, ev.Message.Username); err != nil {
+			d.stats.mu.Lock()
+			d.stats.streakTickErrors++
+			d.stats.mu.Unlock()
+			d.logger.Warn("streak tick failed",
+				"platform", ev.Platform,
+				"channel", ev.Channel,
+				"viewer", ev.Message.UserID,
+				"err", err,
+			)
+		}
 	}
 }
 
