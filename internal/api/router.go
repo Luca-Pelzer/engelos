@@ -13,6 +13,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
+	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 )
 
 // WSHandler is the narrow interface the router needs from the WebSocket hub.
@@ -62,6 +63,10 @@ type Deps struct {
 	// Pity, when non-nil, exposes the pity-system endpoints under
 	// /api/v1/pity/*. Nil disables the feature (handlers return 501).
 	Pity *pity.System
+
+	// Streak, when non-nil, exposes the streak-system endpoints under
+	// /api/v1/streak/*. Nil disables the feature (handlers return 501).
+	Streak *streak.System
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -80,6 +85,7 @@ func NewRouter(deps Deps) chi.Router {
 	authH := handlers.NewAuth(deps.AuthStore, deps.TenantID, logger)
 	events := handlers.NewEvents(logger, deps.EventsHeartbeat)
 	pityH := handlers.NewPity(deps.Pity, deps.TenantID, logger)
+	streakH := handlers.NewStreak(deps.Streak, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -120,6 +126,17 @@ func NewRouter(deps Deps) chi.Router {
 			r.Post("/roll", pityH.Roll)
 			r.Get("/status", pityH.Status)
 			r.Post("/reset", pityH.Reset)
+		})
+
+		r.Route("/streak", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Post("/tick", streakH.Tick)
+			r.Post("/freeze", streakH.UseFreeze)
+			r.Get("/status", streakH.Status)
+			r.Get("/leaderboard", streakH.Leaderboard)
+			r.Post("/reset", streakH.Reset)
 		})
 	})
 
