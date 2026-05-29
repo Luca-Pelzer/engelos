@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/engelswtf/engelos/internal/api"
-	"github.com/engelswtf/engelos/internal/api/handlers"
+	"github.com/Luca-Pelzer/engelos/internal/api"
+	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -79,6 +79,49 @@ func TestRouter_Index(t *testing.T) {
 	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "engelOS")
+}
+
+func TestRouter_WebHandlerTakesOverRoot(t *testing.T) {
+	t.Parallel()
+	webBody := "<!doctype html><html><body>embedded UI</body></html>"
+	web := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(webBody))
+	})
+	r := api.NewRouter(api.Deps{
+		Version: handlers.Version{Version: "t", Phase: "0"},
+		Web:     web,
+	})
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "embedded UI")
+}
+
+func TestRouter_WebHandlerDoesNotShadowAPI(t *testing.T) {
+	t.Parallel()
+	web := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("web"))
+	})
+	r := api.NewRouter(api.Deps{
+		Version: handlers.Version{Version: "t", Phase: "0"},
+		Web:     web,
+	})
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/healthz")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.NotContains(t, string(body), "web", "healthz must not be shadowed by Web handler")
 }
 
 func TestRouter_AuthStubs_Return501(t *testing.T) {
