@@ -60,6 +60,12 @@ type Deps struct {
 	// required when AuthStore is set; otherwise the empty string is fine.
 	TenantID string
 
+	// CookieSecure sets the Secure attribute on the session cookie. Must be
+	// false for plain-HTTP loopback deployments (otherwise browsers and Go's
+	// cookiejar refuse to send the cookie back); true once the daemon is
+	// fronted by TLS.
+	CookieSecure bool
+
 	// Pity, when non-nil, exposes the pity-system endpoints under
 	// /api/v1/pity/*. Nil disables the feature (handlers return 501).
 	Pity *pity.System
@@ -67,6 +73,11 @@ type Deps struct {
 	// Streak, when non-nil, exposes the streak-system endpoints under
 	// /api/v1/streak/*. Nil disables the feature (handlers return 501).
 	Streak *streak.System
+
+	// StatsProvider, when non-nil, surfaces dispatcher counters at
+	// GET /api/v1/stats. Nil hides the dispatcher block — the version
+	// payload is still served.
+	StatsProvider handlers.StatsProvider
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -82,10 +93,12 @@ func NewRouter(deps Deps) chi.Router {
 	}
 
 	health := handlers.NewHealth(deps.Version)
-	authH := handlers.NewAuth(deps.AuthStore, deps.TenantID, logger)
+	authH := handlers.NewAuth(deps.AuthStore, deps.TenantID, logger).
+		WithCookieSecure(deps.CookieSecure)
 	events := handlers.NewEvents(logger, deps.EventsHeartbeat)
 	pityH := handlers.NewPity(deps.Pity, deps.TenantID, logger)
 	streakH := handlers.NewStreak(deps.Streak, deps.TenantID, logger)
+	statsH := handlers.NewStats(deps.Version, deps.StatsProvider, logger)
 
 	r := chi.NewRouter()
 
@@ -116,6 +129,7 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/me", authH.Me)
 		})
 		r.Get("/events", events.Stream)
+		r.Get("/stats", statsH.Get)
 		r.HandleFunc("/ws", wsh.ServeHTTP)
 
 		r.Route("/pity", func(r chi.Router) {

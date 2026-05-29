@@ -158,12 +158,14 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			Version: Version,
 			Phase:   "1B",
 		},
-		WS:        hub,
-		Web:       webHandler,
-		AuthStore: authStore,
-		TenantID:  defaultTenantID,
-		Pity:      pitySystem,
-		Streak:    streakSystem,
+		WS:            hub,
+		Web:           webHandler,
+		AuthStore:     authStore,
+		TenantID:      defaultTenantID,
+		CookieSecure:  false,
+		Pity:          pitySystem,
+		Streak:        streakSystem,
+		StatsProvider: dispatcherStatsAdapter{d: dispatcher},
 	})
 
 	srv := server.New(server.Config{
@@ -184,6 +186,13 @@ func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, vi
 	_, err := s.sys.Tick(ctx, tenantID, channel, viewerID, username)
 	return err
 }
+
+// dispatcherStatsAdapter wraps runtime.Dispatcher to satisfy
+// handlers.StatsProvider. Decoupling lets the api/handlers package stay
+// independent of the runtime package.
+type dispatcherStatsAdapter struct{ d *runtime.Dispatcher }
+
+func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 
 // startPlatforms inspects environment variables and starts every platform
 // adapter that is enabled. Returns the connected platforms and a cleanup
