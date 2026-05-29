@@ -1,0 +1,227 @@
+<!doctype html>
+<!--
+  engelOS overlay: events
+  ==============================================================
+  Bottom-anchored live activity feed for OBS browser sources.
+
+  Handled WebSocket envelope types ({type, data}):
+    - message.created          (data.message.username/content/is_subscriber/is_moderator/is_vip)
+    - user.subscribed          (data.subscription.username/tier/months_total/is_gift/gifted_by)
+    - user.resubscribed        (data.subscription.username/tier/months_total)
+    - channel.raided           (data.raid.from_username/viewer_count)
+    - feature.streak.milestone (data.username/days_current/milestone)
+
+  Query parameters:
+    - theme  : "dark" (default) | "light"
+    - accent : 6-digit hex without # (default: a970ff)
+
+  Example: /overlay/events?theme=dark&accent=ff7800
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / events</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;overflow:hidden;width:100%;height:100%}
+  :root{
+    --accent:#a970ff;
+    --fg:#ffffff;
+    --fg-dim:rgba(255,255,255,.78);
+    --card:rgba(20,20,28,.78);
+    --card-border:rgba(255,255,255,.08);
+    --shadow:0 6px 22px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.45);
+    --stroke:0 2px 6px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.95);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  }
+  body.theme-light{
+    --fg:#0c0c12;
+    --fg-dim:rgba(12,12,18,.72);
+    --card:rgba(255,255,255,.86);
+    --card-border:rgba(0,0,0,.08);
+    --stroke:0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.25);
+  }
+  #stage{
+    position:fixed;left:32px;right:32px;bottom:32px;
+    display:flex;flex-direction:column;justify-content:flex-end;gap:8px;
+    max-height:calc(100% - 64px);
+    pointer-events:none;
+  }
+  .chat{
+    display:flex;align-items:baseline;gap:.55em;
+    color:var(--fg);
+    font-size:26px;font-weight:500;line-height:1.25;
+    text-shadow:var(--stroke);
+    padding:4px 2px;
+    opacity:0;transform:translateY(14px);
+    animation:enter .35s cubic-bezier(.2,.7,.2,1) forwards;
+    will-change:transform,opacity;
+  }
+  .chat.leaving{animation:leave .6s ease-in forwards}
+  .chat .u{font-weight:800;color:var(--accent);letter-spacing:.01em}
+  .chat .u.sub::after{content:"★";margin-left:.18em;font-size:.78em;color:var(--accent);opacity:.85}
+  .chat .u.mod::after{content:"⚔";margin-left:.18em;font-size:.78em;opacity:.9}
+  .chat .u.vip::after{content:"◆";margin-left:.18em;font-size:.72em;opacity:.9}
+  .chat .t{flex:1 1 auto;word-break:break-word;overflow-wrap:anywhere}
+
+  .card{
+    align-self:flex-start;
+    display:flex;align-items:center;gap:14px;
+    padding:14px 20px;border-radius:14px;
+    background:var(--card);
+    border:1px solid var(--card-border);
+    backdrop-filter:blur(6px);
+    box-shadow:var(--shadow);
+    color:var(--fg);
+    opacity:0;transform:translateY(20px) scale(.96);
+    animation:cardEnter .45s cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  .card.leaving{animation:cardLeave .7s ease-in forwards}
+  .card .icon{
+    font-size:30px;line-height:1;
+    width:46px;height:46px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),rgba(255,255,255,.15));
+    display:flex;align-items:center;justify-content:center;
+    text-shadow:0 1px 2px rgba(0,0,0,.5);
+    flex:none;
+  }
+  .card .body{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .card .ttl{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);text-shadow:var(--stroke)}
+  .card .msg{font-size:24px;font-weight:600;text-shadow:var(--stroke);word-break:break-word}
+  .card .msg b{color:var(--accent)}
+
+  @keyframes enter{to{opacity:1;transform:translateY(0)}}
+  @keyframes leave{to{opacity:0;transform:translateY(-8px)}}
+  @keyframes cardEnter{to{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes cardLeave{to{opacity:0;transform:translateY(-10px) scale(.98)}}
+
+  #conn{position:fixed;top:8px;right:10px;font-size:10px;letter-spacing:.08em;opacity:.4;color:var(--fg);text-shadow:var(--stroke)}
+</style>
+</head>
+<body>
+<div id="conn">●</div>
+<div id="stage" aria-live="polite"></div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const theme = (params.get("theme") || "dark").toLowerCase();
+  const accent = (params.get("accent") || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 6);
+  if (theme === "light") document.body.classList.add("theme-light");
+  if (accent.length === 6) document.documentElement.style.setProperty("--accent", "#" + accent);
+
+  const stage = document.getElementById("stage");
+  const conn = document.getElementById("conn");
+  const MAX_CHATS = 8;
+  const CHAT_TTL_MS = 20000;
+  const CARD_TTL_MS = 10000;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function trimChats() {
+    const chats = stage.querySelectorAll(".chat:not(.leaving)");
+    if (chats.length <= MAX_CHATS) return;
+    for (let i = 0; i < chats.length - MAX_CHATS; i++) dismiss(chats[i]);
+  }
+
+  function dismiss(el) {
+    if (!el || el.classList.contains("leaving")) return;
+    el.classList.add("leaving");
+    setTimeout(() => el.remove(), 700);
+  }
+
+  function addChat(msg) {
+    if (!msg || !msg.username) return;
+    const el = document.createElement("div");
+    el.className = "chat";
+    const flags = [];
+    if (msg.is_subscriber) flags.push("sub");
+    if (msg.is_moderator) flags.push("mod");
+    if (msg.is_vip) flags.push("vip");
+    el.innerHTML =
+      '<span class="u ' + flags.join(" ") + '">' + esc(msg.username) + "</span>" +
+      '<span class="t">' + esc(msg.content || "") + "</span>";
+    stage.appendChild(el);
+    trimChats();
+    setTimeout(() => dismiss(el), CHAT_TTL_MS);
+  }
+
+  function addCard(icon, ttl, html) {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML =
+      '<div class="icon">' + icon + "</div>" +
+      '<div class="body">' +
+      '<div class="ttl">' + esc(ttl) + "</div>" +
+      '<div class="msg">' + html + "</div>" +
+      "</div>";
+    stage.appendChild(el);
+    setTimeout(() => dismiss(el), CARD_TTL_MS);
+  }
+
+  function handle(envelope) {
+    const data = envelope && envelope.data;
+    if (!data) return;
+    switch (envelope.type) {
+      case "message.created":
+        if (data.message) addChat(data.message);
+        break;
+      case "user.subscribed":
+      case "user.resubscribed": {
+        const s = data.subscription;
+        if (!s) return;
+        const tier = s.tier ? " &mdash; tier " + esc(s.tier) : "";
+        const months = s.months_total > 1 ? " (" + s.months_total + " mo)" : "";
+        const gifted = s.is_gift && s.gifted_by
+          ? " <small>gifted by " + esc(s.gifted_by) + "</small>"
+          : "";
+        const verb = envelope.type === "user.resubscribed" ? "resubscribed" : "subscribed";
+        addCard("✨", "subscriber", "<b>" + esc(s.username) + "</b> " + verb + months + tier + gifted);
+        break;
+      }
+      case "channel.raided": {
+        const r = data.raid;
+        if (!r) return;
+        addCard("🚀", "raid", "<b>" + esc(r.from_username) + "</b> raided with " +
+          (r.viewer_count || 0) + " viewers!");
+        break;
+      }
+      case "feature.streak.milestone":
+        addCard("🔥", "streak", "<b>" + esc(data.username) + "</b> hit a " +
+          (data.days_current || data.milestone || 0) + "-day streak!");
+        break;
+      default:
+        return;
+    }
+  }
+
+  let ws = null;
+  let backoff = 500;
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    try {
+      ws = new WebSocket(proto + location.host + "/api/v1/ws");
+    } catch {
+      schedule();
+      return;
+    }
+    ws.onopen = () => { conn.style.opacity = ".7"; backoff = 500; };
+    ws.onclose = () => { conn.style.opacity = ".25"; schedule(); };
+    ws.onerror = () => { conn.style.opacity = ".25"; };
+    ws.onmessage = ev => {
+      try {
+        handle(JSON.parse(ev.data));
+      } catch { /* ignore malformed frames */ }
+    };
+  }
+  function schedule() {
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 10000);
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

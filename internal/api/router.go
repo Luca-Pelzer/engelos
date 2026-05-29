@@ -51,6 +51,11 @@ type Deps struct {
 	// to the plain handlers.Index landing page at "/".
 	Web http.Handler
 
+	// Overlay, if non-nil, serves the OBS browser-source overlay pages at
+	// /overlay/*. It is mounted OUTSIDE /api so the JSON content-type
+	// middleware does not clobber its text/html responses.
+	Overlay http.Handler
+
 	// AuthStore backs the auth handlers and the SessionAuth middleware.
 	// When nil, the auth routes degrade to 501 "not_implemented" and no
 	// session middleware is mounted; this is the bootstrap-time state.
@@ -163,6 +168,10 @@ func NewRouter(deps Deps) chi.Router {
 			r.Post("/reset", streakH.Reset)
 		})
 	})
+
+	if deps.Overlay != nil {
+		r.Handle("/overlay/*", deps.Overlay)
+	}
 
 	if deps.Web != nil {
 		r.Handle("/*", deps.Web)

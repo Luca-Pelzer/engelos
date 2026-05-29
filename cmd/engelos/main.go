@@ -34,6 +34,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
+	"github.com/Luca-Pelzer/engelos/internal/overlay"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
@@ -248,6 +249,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		},
 		WS:            hub,
 		Web:           webHandler,
+		Overlay:       overlay.Handler(logger),
 		AuthStore:     authStore,
 		TenantID:      defaultTenantID,
 		CookieSecure:  false,

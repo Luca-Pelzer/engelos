@@ -103,6 +103,29 @@ func TestRouter_WebHandlerTakesOverRoot(t *testing.T) {
 	assert.Contains(t, string(body), "embedded UI")
 }
 
+func TestRouter_OverlayServesHTMLOutsideAPI(t *testing.T) {
+	t.Parallel()
+	overlay := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<!doctype html><title>overlay</title>"))
+	})
+	r := api.NewRouter(api.Deps{
+		Version: handlers.Version{Version: "t", Phase: "0"},
+		Overlay: overlay,
+	})
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/overlay/events")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html",
+		"overlay must serve HTML, not be clobbered by the /api JSON middleware")
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "overlay")
+}
+
 func TestRouter_WebHandlerDoesNotShadowAPI(t *testing.T) {
 	t.Parallel()
 	web := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

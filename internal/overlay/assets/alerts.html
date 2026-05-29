@@ -1,0 +1,195 @@
+<!doctype html>
+<!--
+  engelOS overlay: alerts
+  ==============================================================
+  Centered single-alert player (Streamlabs-style). One alert at a time,
+  queued so concurrent events do not overlap. Chat messages are ignored.
+
+  Handled WebSocket envelope types ({type, data}):
+    - user.subscribed          (data.subscription.username/tier/months_total/is_gift/gifted_by)
+    - user.resubscribed        (data.subscription.username/tier/months_total)
+    - channel.raided           (data.raid.from_username/viewer_count)
+    - feature.streak.milestone (data.username/days_current/milestone)
+
+  Query parameters:
+    - theme  : "dark" (default) | "light"
+    - accent : 6-digit hex without # (default: a970ff)
+
+  Example: /overlay/alerts?accent=ff7800
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / alerts</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;width:100%;height:100%;overflow:hidden}
+  :root{
+    --accent:#a970ff;
+    --fg:#ffffff;
+    --card:rgba(20,20,28,.78);
+    --card-border:rgba(255,255,255,.10);
+    --shadow:0 18px 60px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.6);
+    --stroke:0 3px 8px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.95);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  }
+  body.theme-light{
+    --fg:#0c0c12;
+    --card:rgba(255,255,255,.92);
+    --card-border:rgba(0,0,0,.08);
+    --stroke:0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.25);
+  }
+  #stage{
+    position:fixed;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    pointer-events:none;
+  }
+  .alert{
+    display:flex;align-items:center;gap:24px;
+    padding:30px 44px;border-radius:22px;
+    background:var(--card);
+    border:1px solid var(--card-border);
+    backdrop-filter:blur(8px);
+    box-shadow:var(--shadow);
+    color:var(--fg);
+    max-width:78vw;
+    opacity:0;transform:translateY(20px) scale(.86);
+    animation:popIn .55s cubic-bezier(.18,1.2,.35,1) forwards;
+    will-change:transform,opacity;
+  }
+  .alert.leaving{animation:popOut .55s ease-in forwards}
+  .alert .icon{
+    font-size:64px;line-height:1;flex:none;
+    width:96px;height:96px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, rgba(255,255,255,.25), transparent 60%), linear-gradient(135deg,var(--accent),rgba(255,255,255,.10));
+    display:flex;align-items:center;justify-content:center;
+    text-shadow:0 2px 4px rgba(0,0,0,.5);
+    animation:iconPulse 1.8s ease-in-out infinite;
+  }
+  .alert .body{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .alert .ttl{font-size:18px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);text-shadow:var(--stroke)}
+  .alert .msg{font-size:44px;font-weight:700;line-height:1.15;text-shadow:var(--stroke);word-break:break-word}
+  .alert .msg b{color:var(--accent)}
+  .alert .sub{font-size:18px;opacity:.78;margin-top:4px;text-shadow:var(--stroke)}
+
+  @keyframes popIn{to{opacity:1;transform:translateY(0) scale(1)}}
+  @keyframes popOut{to{opacity:0;transform:translateY(-12px) scale(.94)}}
+  @keyframes iconPulse{
+    0%,100%{transform:scale(1)}
+    50%{transform:scale(1.06)}
+  }
+</style>
+</head>
+<body>
+<div id="stage" aria-live="polite"></div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const theme = (params.get("theme") || "dark").toLowerCase();
+  const accent = (params.get("accent") || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 6);
+  if (theme === "light") document.body.classList.add("theme-light");
+  if (accent.length === 6) document.documentElement.style.setProperty("--accent", "#" + accent);
+
+  const stage = document.getElementById("stage");
+  const ALERT_HOLD_MS = 6000;
+  const ALERT_EXIT_MS = 600;
+  const queue = [];
+  let playing = false;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function enqueue(item) {
+    queue.push(item);
+    if (!playing) playNext();
+  }
+
+  function playNext() {
+    const item = queue.shift();
+    if (!item) { playing = false; return; }
+    playing = true;
+    const el = document.createElement("div");
+    el.className = "alert";
+    el.innerHTML =
+      '<div class="icon">' + item.icon + "</div>" +
+      '<div class="body">' +
+      '<div class="ttl">' + esc(item.title) + "</div>" +
+      '<div class="msg">' + item.msg + "</div>" +
+      (item.sub ? '<div class="sub">' + item.sub + "</div>" : "") +
+      "</div>";
+    stage.appendChild(el);
+    setTimeout(() => {
+      el.classList.add("leaving");
+      setTimeout(() => { el.remove(); playNext(); }, ALERT_EXIT_MS);
+    }, ALERT_HOLD_MS);
+  }
+
+  function handle(envelope) {
+    const data = envelope && envelope.data;
+    if (!data) return;
+    switch (envelope.type) {
+      case "user.subscribed":
+      case "user.resubscribed": {
+        const s = data.subscription;
+        if (!s || !s.username) return;
+        const verb = envelope.type === "user.resubscribed" ? "RESUB" : "NEW SUB";
+        const months = s.months_total > 1 ? s.months_total + " months" : "";
+        const tier = s.tier ? "tier " + esc(s.tier) : "";
+        const gift = s.is_gift && s.gifted_by ? "gifted by " + esc(s.gifted_by) : "";
+        const sub = [months, tier, gift].filter(Boolean).join(" • ");
+        enqueue({ icon: "✨", title: verb, msg: "<b>" + esc(s.username) + "</b>", sub });
+        break;
+      }
+      case "channel.raided": {
+        const r = data.raid;
+        if (!r || !r.from_username) return;
+        enqueue({
+          icon: "🚀",
+          title: "RAID",
+          msg: "<b>" + esc(r.from_username) + "</b>",
+          sub: "with " + (r.viewer_count || 0) + " viewers"
+        });
+        break;
+      }
+      case "feature.streak.milestone": {
+        if (!data.username) return;
+        const days = data.days_current || data.milestone || 0;
+        enqueue({
+          icon: "🔥",
+          title: "STREAK",
+          msg: "<b>" + esc(data.username) + "</b>",
+          sub: days + "-day streak"
+        });
+        break;
+      }
+    }
+  }
+
+  let backoff = 500;
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    let ws;
+    try {
+      ws = new WebSocket(proto + location.host + "/api/v1/ws");
+    } catch {
+      schedule();
+      return;
+    }
+    ws.onopen = () => { backoff = 500; };
+    ws.onclose = () => schedule();
+    ws.onerror = () => {};
+    ws.onmessage = ev => {
+      try { handle(JSON.parse(ev.data)); } catch { /* ignore */ }
+    };
+  }
+  function schedule() {
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 10000);
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

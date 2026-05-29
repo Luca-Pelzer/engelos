@@ -1,0 +1,190 @@
+<!doctype html>
+<!--
+  engelOS overlay: leaderboard
+  ==============================================================
+  Corner panel of top viewer streaks.
+
+  Data source: REST GET /api/v1/streak/leaderboard?limit=5
+    Response shape: { "channel": "...", "limit": N, "entries": [
+      { "channel", "viewer_id", "username", "days_current", "days_longest" }
+    ]}
+  WebSocket: only listens for "feature.streak.milestone" to refetch immediately;
+  the WS feed does NOT push leaderboard snapshots.
+
+  Caveat: the REST route may sit behind session auth and return 401 from a
+  raw browser source. On any non-200 response we render a gentle
+  "leaderboard unavailable" placeholder and keep polling silently every 30s.
+
+  Query parameters:
+    - theme  : "dark" (default) | "light"
+    - accent : 6-digit hex without # (default: a970ff)
+    - limit  : integer 1-20 (default: 5)
+    - channel: optional channel filter (passed straight to the REST endpoint)
+    - corner : "tr" (default) | "tl" | "br" | "bl"
+
+  Example: /overlay/leaderboard?limit=5&corner=br
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / leaderboard</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;width:100%;height:100%;overflow:hidden}
+  :root{
+    --accent:#a970ff;
+    --fg:#ffffff;
+    --fg-dim:rgba(255,255,255,.65);
+    --card:rgba(20,20,28,.82);
+    --card-border:rgba(255,255,255,.08);
+    --row:rgba(255,255,255,.04);
+    --shadow:0 8px 28px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.45);
+    --stroke:0 1px 3px rgba(0,0,0,.75);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  }
+  body.theme-light{
+    --fg:#0c0c12;
+    --fg-dim:rgba(12,12,18,.62);
+    --card:rgba(255,255,255,.92);
+    --card-border:rgba(0,0,0,.08);
+    --row:rgba(0,0,0,.03);
+    --stroke:0 1px 0 rgba(255,255,255,.9);
+  }
+  #panel{
+    position:fixed;
+    top:32px;right:32px;
+    min-width:280px;max-width:360px;
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    backdrop-filter:blur(8px);
+    padding:18px 20px 14px;
+    color:var(--fg);
+    transition:opacity .4s ease, transform .4s ease;
+  }
+  body.corner-tl #panel{top:32px;left:32px;right:auto}
+  body.corner-br #panel{top:auto;bottom:32px;right:32px}
+  body.corner-bl #panel{top:auto;bottom:32px;left:32px;right:auto}
+  #panel.hidden{opacity:0;transform:translateY(-8px) scale(.98)}
+  .ttl{
+    display:flex;align-items:center;gap:8px;
+    font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);text-shadow:var(--stroke);
+    margin-bottom:10px;
+  }
+  .ttl .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+  li{
+    display:grid;grid-template-columns:1.5rem 1fr auto;align-items:baseline;
+    gap:10px;padding:6px 8px;border-radius:8px;
+    background:var(--row);
+    font-size:18px;font-weight:600;
+    text-shadow:var(--stroke);
+    animation:rowIn .4s ease forwards;opacity:0;transform:translateY(4px);
+  }
+  li .r{font-variant-numeric:tabular-nums;color:var(--fg-dim);font-weight:700}
+  li.top .r{color:var(--accent)}
+  li .u{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  li .d{font-variant-numeric:tabular-nums;color:var(--accent);font-weight:800}
+  li .d::after{content:"d";color:var(--fg-dim);font-weight:600;margin-left:1px}
+  @keyframes rowIn{to{opacity:1;transform:translateY(0)}}
+  .empty{color:var(--fg-dim);font-size:14px;font-weight:500;padding:6px 8px;text-shadow:var(--stroke)}
+</style>
+</head>
+<body>
+<div id="panel" aria-live="polite">
+  <div class="ttl"><span class="dot"></span><span>top streaks</span></div>
+  <div id="content"><div class="empty">loading…</div></div>
+</div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const theme = (params.get("theme") || "dark").toLowerCase();
+  const accent = (params.get("accent") || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 6);
+  let limit = parseInt(params.get("limit") || "5", 10);
+  if (!Number.isFinite(limit) || limit < 1 || limit > 20) limit = 5;
+  const channel = params.get("channel") || "";
+  const corner = (params.get("corner") || "tr").toLowerCase();
+  if (theme === "light") document.body.classList.add("theme-light");
+  if (accent.length === 6) document.documentElement.style.setProperty("--accent", "#" + accent);
+  if (["tl", "br", "bl"].includes(corner)) document.body.classList.add("corner-" + corner);
+
+  const content = document.getElementById("content");
+  const POLL_MS = 30000;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function render(entries) {
+    if (!entries || entries.length === 0) {
+      content.innerHTML = '<div class="empty">no streaks yet</div>';
+      return;
+    }
+    const rows = entries.slice(0, limit).map((e, i) => {
+      const days = e.days_current != null ? e.days_current : (e.days_longest || 0);
+      return '<li' + (i === 0 ? ' class="top"' : "") + '>' +
+        '<span class="r">' + (i + 1) + "</span>" +
+        '<span class="u">' + esc(e.username || e.viewer_id || "—") + "</span>" +
+        '<span class="d">' + days + "</span>" +
+        "</li>";
+    }).join("");
+    content.innerHTML = "<ol>" + rows + "</ol>";
+  }
+
+  function unavailable() {
+    content.innerHTML = '<div class="empty">leaderboard unavailable</div>';
+  }
+
+  let inflight = null;
+  function fetchBoard() {
+    if (inflight) return;
+    const url = "/api/v1/streak/leaderboard?limit=" + encodeURIComponent(limit) +
+      (channel ? "&channel=" + encodeURIComponent(channel) : "");
+    inflight = fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(r => {
+        if (!r.ok) throw new Error("status " + r.status);
+        return r.json();
+      })
+      .then(body => {
+        const entries = (body && Array.isArray(body.entries)) ? body.entries : [];
+        render(entries);
+      })
+      .catch(() => unavailable())
+      .finally(() => { inflight = null; });
+  }
+
+  fetchBoard();
+  setInterval(fetchBoard, POLL_MS);
+
+  let backoff = 500;
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    let ws;
+    try {
+      ws = new WebSocket(proto + location.host + "/api/v1/ws");
+    } catch {
+      schedule();
+      return;
+    }
+    ws.onopen = () => { backoff = 500; };
+    ws.onclose = () => schedule();
+    ws.onerror = () => {};
+    ws.onmessage = ev => {
+      try {
+        const env = JSON.parse(ev.data);
+        if (env && env.type === "feature.streak.milestone") fetchBoard();
+      } catch { /* ignore */ }
+    };
+  }
+  function schedule() {
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 10000);
+  }
+  connect();
+})();
+</script>
+</body>
+</html>
