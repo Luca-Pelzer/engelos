@@ -3,6 +3,7 @@ package pity
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -30,6 +31,14 @@ type State struct {
 	PointsThisWindow int
 	WindowStartedAt  time.Time
 	UpdatedAt        time.Time
+}
+
+// LeaderboardEntry is one row of a pity leaderboard.
+type LeaderboardEntry struct {
+	Channel  string
+	ViewerID string
+	Username string
+	Points   int
 }
 
 // ReadModel is the in-memory projection of the pity event log.
@@ -83,6 +92,48 @@ func (rm *ReadModel) Snapshot() []State {
 		out = append(out, *s)
 	}
 	return out
+}
+
+// Leaderboard returns the top-limit viewers by accumulated pity points for the
+// given channel (or across all channels in the tenant if channel == ""). The
+// result is sorted by (Points desc, ViewerID asc) so ordering is stable across
+// calls. A limit <= 0 returns the empty slice. Viewers with Points <= 0 are
+// excluded.
+func (rm *ReadModel) Leaderboard(tenantID, channel string, limit int) []LeaderboardEntry {
+	if limit <= 0 {
+		return nil
+	}
+	rm.mu.RLock()
+	entries := make([]LeaderboardEntry, 0, len(rm.states))
+	for k, s := range rm.states {
+		if k.TenantID != tenantID {
+			continue
+		}
+		if channel != "" && k.Channel != channel {
+			continue
+		}
+		if s.Points <= 0 {
+			continue
+		}
+		entries = append(entries, LeaderboardEntry{
+			Channel:  s.Channel,
+			ViewerID: s.ViewerID,
+			Username: s.Username,
+			Points:   s.Points,
+		})
+	}
+	rm.mu.RUnlock()
+
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Points != entries[j].Points {
+			return entries[i].Points > entries[j].Points
+		}
+		return entries[i].ViewerID < entries[j].ViewerID
+	})
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries
 }
 
 // Apply mutates the read model in response to a stored event. Unknown event

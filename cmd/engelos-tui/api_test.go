@@ -154,6 +154,15 @@ func TestStatsAndStatus(t *testing.T) {
 	mux.HandleFunc("/api/v1/streak/status", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"days_current":5,"days_longest":12,"freezes_available":1,"next_milestone":7}`))
 	})
+	mux.HandleFunc("/api/v1/pity/leaderboard", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("channel") != "engelswtf" {
+			t.Errorf("expected channel query, got %q", r.URL.Query().Get("channel"))
+		}
+		_, _ = w.Write([]byte(`{
+			"channel":"engelswtf","limit":10,
+			"entries":[{"viewer_id":"v1","username":"luca","points":42}]
+		}`))
+	})
 	mux.HandleFunc("/api/v1/pity/status", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"points":42,"hard_pity_threshold":90,"effective_chance":0.06}`))
 	})
@@ -195,8 +204,8 @@ func TestStatsAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PityLeaderboard: %v", err)
 	}
-	if pityBoard != nil {
-		t.Fatalf("PityLeaderboard should stub to nil, got %+v", pityBoard)
+	if len(pityBoard) != 1 || pityBoard[0].Username != "luca" || pityBoard[0].Points != 42 {
+		t.Fatalf("pity leaderboard wrong: %+v", pityBoard)
 	}
 
 	streakSt, err := c.StreakStatus(ctx, "engelswtf", "v1")

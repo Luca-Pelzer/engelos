@@ -3,6 +3,7 @@ package pity_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -168,6 +169,135 @@ func TestReadModel_ReplayMatchesLiveSystem(t *testing.T) {
 		assert.Equal(t, live.Points, got.Points, "viewer %s points mismatch", k)
 		assert.Equal(t, live.LastWinAt.Equal(got.LastWinAt), true, "viewer %s last-win mismatch", k)
 	}
+}
+
+func TestReadModel_Leaderboard_EmptyAndLimit(t *testing.T) {
+	t.Parallel()
+	rm := pity.NewReadModel()
+	assert.Empty(t, rm.Leaderboard(testTenant, "", 10))
+	assert.Nil(t, rm.Leaderboard(testTenant, "", 0))
+	assert.Nil(t, rm.Leaderboard(testTenant, "", -1))
+}
+
+func TestReadModel_Leaderboard_OrderingAndTieBreak(t *testing.T) {
+	t.Parallel()
+	rm := pity.NewReadModel()
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	grant := func(viewerID, username string, total int) {
+		require.NoError(t, rm.Apply(mustEvent(t, testTenant, pity.EventTypePointsGranted,
+			pity.PointsGrantedPayload{
+				Channel: testChannel, ViewerID: viewerID, Username: username,
+				Amount: total, NewTotal: total,
+			}, t0)))
+	}
+
+	grant("v-c", "carol", 7)
+	grant("v-a", "alice", 9)
+	grant("v-b", "bob", 9)
+	grant("v-d", "dave", 1)
+
+	got := rm.Leaderboard(testTenant, testChannel, 10)
+	require.Len(t, got, 4)
+	assert.Equal(t, "v-a", got[0].ViewerID, "9 points, alphabetic tie-break wins")
+	assert.Equal(t, 9, got[0].Points)
+	assert.Equal(t, "v-b", got[1].ViewerID)
+	assert.Equal(t, "v-c", got[2].ViewerID)
+	assert.Equal(t, "v-d", got[3].ViewerID)
+}
+
+func TestReadModel_Leaderboard_ChannelFilter(t *testing.T) {
+	t.Parallel()
+	rm := pity.NewReadModel()
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	grant := func(channel, viewerID string, total int) {
+		require.NoError(t, rm.Apply(mustEvent(t, testTenant, pity.EventTypePointsGranted,
+			pity.PointsGrantedPayload{
+				Channel: channel, ViewerID: viewerID,
+				Amount: total, NewTotal: total,
+			}, t0)))
+	}
+
+	grant("c1", "v1", 5)
+	grant("c1", "v2", 3)
+	grant("c2", "v3", 8)
+
+	c1 := rm.Leaderboard(testTenant, "c1", 10)
+	require.Len(t, c1, 2)
+	assert.Equal(t, "v1", c1[0].ViewerID)
+	assert.Equal(t, "c1", c1[0].Channel)
+
+	c2 := rm.Leaderboard(testTenant, "c2", 10)
+	require.Len(t, c2, 1)
+	assert.Equal(t, "v3", c2[0].ViewerID)
+
+	all := rm.Leaderboard(testTenant, "", 10)
+	require.Len(t, all, 3)
+	assert.Equal(t, "v3", all[0].ViewerID, "cross-channel: highest points first")
+	assert.Equal(t, 8, all[0].Points)
+}
+
+func TestReadModel_Leaderboard_ExcludesZeroAndNegative(t *testing.T) {
+	t.Parallel()
+	rm := pity.NewReadModel()
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	require.NoError(t, rm.Apply(mustEvent(t, testTenant, pity.EventTypePointsGranted,
+		pity.PointsGrantedPayload{Channel: testChannel, ViewerID: "winner", Amount: 4, NewTotal: 4},
+		t0)))
+	require.NoError(t, rm.Apply(mustEvent(t, testTenant, pity.EventTypePointsGranted,
+		pity.PointsGrantedPayload{Channel: testChannel, ViewerID: "loser", Amount: 5, NewTotal: 5},
+		t0)))
+	require.NoError(t, rm.Apply(mustEvent(t, testTenant, pity.EventTypeReset,
+		pity.ResetPayload{Channel: testChannel, ViewerID: "loser", Reason: "win"},
+		t0.Add(time.Minute))))
+
+	got := rm.Leaderboard(testTenant, testChannel, 10)
+	require.Len(t, got, 1)
+	assert.Equal(t, "winner", got[0].ViewerID)
+}
+
+func TestReadModel_Leaderboard_Truncation(t *testing.T) {
+	t.Parallel()
+	rm := pity.NewReadModel()
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 5; i++ {
+		require.NoError(t, rm.Apply(mustEvent(t, testTenant, pity.EventTypePointsGranted,
+			pity.PointsGrantedPayload{
+				Channel: testChannel, ViewerID: fmt.Sprintf("v-%02d", i),
+				Amount: 10 - i, NewTotal: 10 - i,
+			}, t0)))
+	}
+
+	got := rm.Leaderboard(testTenant, testChannel, 2)
+	require.Len(t, got, 2)
+	assert.Equal(t, "v-00", got[0].ViewerID)
+	assert.Equal(t, 10, got[0].Points)
+	assert.Equal(t, "v-01", got[1].ViewerID)
+	assert.Equal(t, 9, got[1].Points)
+}
+
+func TestReadModel_Leaderboard_MultiTenantIsolation(t *testing.T) {
+	t.Parallel()
+	rm := pity.NewReadModel()
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	require.NoError(t, rm.Apply(mustEvent(t, "tenant-a", pity.EventTypePointsGranted,
+		pity.PointsGrantedPayload{Channel: "c1", ViewerID: "v1", Username: "alice", Amount: 4, NewTotal: 4},
+		t0)))
+	require.NoError(t, rm.Apply(mustEvent(t, "tenant-b", pity.EventTypePointsGranted,
+		pity.PointsGrantedPayload{Channel: "c1", ViewerID: "v2", Username: "bob", Amount: 9, NewTotal: 9},
+		t0)))
+
+	a := rm.Leaderboard("tenant-a", "", 10)
+	require.Len(t, a, 1)
+	assert.Equal(t, "v1", a[0].ViewerID)
+
+	b := rm.Leaderboard("tenant-b", "", 10)
+	require.Len(t, b, 1)
+	assert.Equal(t, "v2", b[0].ViewerID)
 }
 
 func indexByViewer(states []pity.State) map[string]pity.State {

@@ -143,6 +143,12 @@ func (s *System) Status(tenantID, channel, viewerID string) Status {
 	}
 }
 
+// Leaderboard returns the top-limit viewers by pity points for a channel (or
+// all channels when channel == ""). See [ReadModel.Leaderboard] for ordering.
+func (s *System) Leaderboard(tenantID, channel string, limit int) []LeaderboardEntry {
+	return s.rm.Leaderboard(tenantID, channel, limit)
+}
+
 // Status is a read-only snapshot of the viewer's current pity standing.
 type Status struct {
 	Points          int

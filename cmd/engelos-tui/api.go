@@ -232,13 +232,26 @@ func (c *Client) Stats(ctx context.Context) (Stats, error) {
 	return s, nil
 }
 
-// PityLeaderboard returns the top-N pity holders for a channel.
-//
-// The /api/v1/pity/leaderboard endpoint does not exist yet, so this
-// method currently returns (nil, nil) without contacting the daemon.
-// TODO: wire when /api/v1/pity/leaderboard ships.
-func (c *Client) PityLeaderboard(_ context.Context, _ string, _ int) ([]LeaderboardEntry, error) {
-	return nil, nil
+// PityLeaderboard fetches /api/v1/pity/leaderboard?channel=&limit=.
+// An empty channel asks the daemon for the cross-channel top-N.
+func (c *Client) PityLeaderboard(ctx context.Context, channel string, limit int) ([]LeaderboardEntry, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	q := url.Values{}
+	if channel != "" {
+		q.Set("channel", channel)
+	}
+	q.Set("limit", strconv.Itoa(limit))
+	var payload struct {
+		Channel string             `json:"channel"`
+		Limit   int                `json:"limit"`
+		Entries []LeaderboardEntry `json:"entries"`
+	}
+	if err := c.getJSON(ctx, "/api/v1/pity/leaderboard?"+q.Encode(), &payload); err != nil {
+		return nil, err
+	}
+	return payload.Entries, nil
 }
 
 // StreakLeaderboard fetches /api/v1/streak/leaderboard?channel=&limit=.

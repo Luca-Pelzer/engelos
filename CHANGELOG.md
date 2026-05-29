@@ -11,9 +11,16 @@ individual commits.
 
 ## [Unreleased]
 
+## [0.0.6-alpha.1] — 2026-05-29
+
 ### Added
-- Streak-System (Tier-A feature #2, Duolingo-style watch streaks with
-  freeze-credit mechanic) — _in progress_
+- **Pity-Leaderboard** at `GET /api/v1/pity/leaderboard?channel=&limit=`:
+  ranks viewers by accumulated pity points (Points desc, ViewerID asc tie-break).
+  Empty `channel` aggregates across all channels in the tenant; `limit` defaults
+  to 10 and is validated to 1..100. Mirrors the streak-leaderboard vertical slice
+  end-to-end: `pity.ReadModel.Leaderboard` + `pity.System.Leaderboard` →
+  `handlers.Pity.Leaderboard` → router route → TUI `Client.PityLeaderboard`
+  (previously a stub). Verified live against a running daemon.
 
 ## [0.0.3-alpha.1] — 2026-05-29
 

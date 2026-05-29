@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Luca-Pelzer/engelos/internal/api/middleware"
@@ -146,6 +147,43 @@ func (p *Pity) Status(w http.ResponseWriter, r *http.Request) {
 		"effective_chance":    status.EffectiveChance,
 		"hard_pity_threshold": cfg.HardPityThreshold,
 		"soft_pity_fraction":  cfg.SoftPityFraction,
+	})
+}
+
+// Leaderboard handles GET /api/v1/pity/leaderboard?channel=...&limit=10.
+// Empty channel returns all channels in the tenant.
+func (p *Pity) Leaderboard(w http.ResponseWriter, r *http.Request) {
+	if p.system == nil {
+		p.notImplemented(w)
+		return
+	}
+	channel := strings.TrimSpace(r.URL.Query().Get("channel"))
+	limitStr := strings.TrimSpace(r.URL.Query().Get("limit"))
+	limit := 10
+	if limitStr != "" {
+		n, err := strconv.Atoi(limitStr)
+		if err != nil || n <= 0 || n > 100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "limit must be an integer between 1 and 100",
+			})
+			return
+		}
+		limit = n
+	}
+	rows := p.system.Leaderboard(p.tenantID, channel, limit)
+	out := make([]map[string]any, len(rows))
+	for i, e := range rows {
+		out[i] = map[string]any{
+			"channel":   e.Channel,
+			"viewer_id": e.ViewerID,
+			"username":  e.Username,
+			"points":    e.Points,
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"channel": channel,
+		"limit":   limit,
+		"entries": out,
 	})
 }
 

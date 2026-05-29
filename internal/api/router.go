@@ -139,6 +139,7 @@ func NewRouter(deps Deps) chi.Router {
 			r.Post("/grant", pityH.Grant)
 			r.Post("/roll", pityH.Roll)
 			r.Get("/status", pityH.Status)
+			r.Get("/leaderboard", pityH.Leaderboard)
 			r.Post("/reset", pityH.Reset)
 		})
 

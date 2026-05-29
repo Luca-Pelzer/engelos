@@ -219,6 +219,56 @@ func TestPity_Reset_ClearsPoints(t *testing.T) {
 	assert.Equal(t, 0, sys.Status(pityTenant, "engelswtf", "viewer-reset").Points)
 }
 
+func TestPity_Leaderboard_DefaultLimit(t *testing.T) {
+	t.Parallel()
+	h, sys := newPityHandler(t)
+
+	for i := 0; i < 3; i++ {
+		_, err := sys.GrantPoints(context.Background(), pityTenant,
+			"engelswtf", fmt.Sprintf("viewer-%d", i), fmt.Sprintf("v%d", i),
+			"preseed", i+1)
+		require.NoError(t, err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/pity/leaderboard", h.Leaderboard)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/pity/leaderboard?channel=engelswtf", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	res := rr.Result()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var got struct {
+		Channel string           `json:"channel"`
+		Limit   int              `json:"limit"`
+		Entries []map[string]any `json:"entries"`
+	}
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
+	assert.Equal(t, "engelswtf", got.Channel)
+	assert.Equal(t, 10, got.Limit)
+	require.Len(t, got.Entries, 3)
+	assert.EqualValues(t, 3, got.Entries[0]["points"], "top entry has highest points")
+	assert.Equal(t, "viewer-2", got.Entries[0]["viewer_id"])
+}
+
+func TestPity_Leaderboard_BadLimit(t *testing.T) {
+	t.Parallel()
+	h, _ := newPityHandler(t)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/pity/leaderboard", h.Leaderboard)
+
+	for _, bad := range []string{"0", "-1", "abc", "101"} {
+		req := httptest.NewRequest(http.MethodGet,
+			"/api/v1/pity/leaderboard?limit="+bad, nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusBadRequest, rr.Result().StatusCode, "limit=%s", bad)
+	}
+}
+
 func TestPity_DisabledWhenNilSystem(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -228,15 +278,17 @@ func TestPity_DisabledWhenNilSystem(t *testing.T) {
 	mux.HandleFunc("/api/v1/pity/grant", h.Grant)
 	mux.HandleFunc("/api/v1/pity/roll", h.Roll)
 	mux.HandleFunc("/api/v1/pity/status", h.Status)
+	mux.HandleFunc("/api/v1/pity/leaderboard", h.Leaderboard)
 	mux.HandleFunc("/api/v1/pity/reset", h.Reset)
 
 	for _, p := range []string{"/api/v1/pity/grant", "/api/v1/pity/roll", "/api/v1/pity/reset"} {
 		res := postJSON(t, mux, p, map[string]any{"channel": "c", "viewer_id": "v"})
 		assert.Equal(t, http.StatusNotImplemented, res.StatusCode, p)
 	}
-	req := httptest.NewRequest(http.MethodGet,
-		"/api/v1/pity/status?channel=c&viewer_id=v", nil)
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	assert.Equal(t, http.StatusNotImplemented, rr.Result().StatusCode)
+	for _, p := range []string{"/api/v1/pity/status?channel=c&viewer_id=v", "/api/v1/pity/leaderboard"} {
+		req := httptest.NewRequest(http.MethodGet, p, nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusNotImplemented, rr.Result().StatusCode, p)
+	}
 }
