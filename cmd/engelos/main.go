@@ -169,13 +169,30 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		StatsProvider: dispatcherStatsAdapter{d: dispatcher},
 	})
 
+	addr := os.Getenv("ENGELOS_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:8080"
+	}
 	srv := server.New(server.Config{
-		Addr:     "127.0.0.1:8080",
-		AllowLAN: false,
+		Addr:     addr,
+		AllowLAN: envBool("ENGELOS_ALLOW_LAN"),
 		Logger:   logger,
 	}, router)
 
 	return srv.Run(ctx)
+}
+
+// envBool reports whether the named environment variable is set to a truthy
+// value ("1", "true", "yes", "on", case-insensitive). Anything else — including
+// unset — is false, so the daemon keeps its loopback-only default unless the
+// operator explicitly opts in.
+func envBool(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // streakTickAdapter wraps streak.System to satisfy runtime.StreakTicker

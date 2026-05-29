@@ -101,6 +101,8 @@ Aktueller Stand der Verkabelung im Daemon (`cmd/engelos`):
 | `ENGELOS_TWITCH_CLIENT_ID` | mit OAUTH | Client ID der Dev-App (Schritt 2). |
 | `ENGELOS_DISCORD_TOKEN` | — | Discord-Bot-Token (Schritt 3). Leer = Discord aus. |
 | `ENGELOS_DISCORD_CHANNELS` | optional | Komma-Liste erlaubter Channel-IDs. Leer = alle sichtbaren Channels. |
+| `ENGELOS_ADDR` | optional | Listen-Adresse (host:port). Default `127.0.0.1:8080`. |
+| `ENGELOS_ALLOW_LAN` | optional | `true`/`1` = an Nicht-Loopback binden (für Container/LAN/Tailnet). Default `false` (nur loopback). |
 
 > **Discord ist jetzt im Daemon verkabelt.** Setze `ENGELOS_DISCORD_TOKEN`, und
 > der Bot verbindet sich beim Start. (Discord hat keinen Anonym-Modus — ohne
