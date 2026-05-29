@@ -17,7 +17,7 @@ code{background:#f4f4f5;padding:.1rem .3rem;border-radius:.25rem;font-size:.9em}
 <h1>engelOS</h1>
 <p class="muted">Phase 0 — skeleton. No features yet.</p>
 <p>The daemon is running. Health check: <code>GET /healthz</code></p>
-<p>Roadmap: <a href="https://github.com/engelswtf/engelos">github.com/engelswtf/engelos</a></p>
+<p>Roadmap: <a href="https://github.com/Luca-Pelzer/engelos">github.com/Luca-Pelzer/engelos</a></p>
 </body>
 </html>`
 

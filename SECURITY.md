@@ -20,7 +20,7 @@ Instead, please use one of:
 
 1. **GitHub Security Advisories** — preferred, end-to-end encrypted, integrates
    with our patch workflow. Once the repo is public:
-   <https://github.com/engelswtf/engelos/security/advisories/new>
+   <https://github.com/Luca-Pelzer/engelos/security/advisories/new>
 
 2. **Email** — `security@engelos.org` (not yet active in Phase 0; until then,
    reach Luca via Twitch DMs at twitch.tv/engelswtf).

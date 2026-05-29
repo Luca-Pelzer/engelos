@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/engelswtf/engelos/internal/adapters"
+	"github.com/Luca-Pelzer/engelos/internal/adapters"
 )
 
 const defaultEventBuffer = 64

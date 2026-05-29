@@ -68,4 +68,4 @@ Network effects, 50.000 streamers, "industry standard" perception.
 Strategic inflection point — lifestyle business, VC raise, or strategic
 acquisition.
 
-[Unreleased]: https://github.com/engelswtf/engelos/commits/main
+[Unreleased]: https://github.com/Luca-Pelzer/engelos/commits/main

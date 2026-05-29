@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/engelswtf/engelos/internal/server"
+	"github.com/Luca-Pelzer/engelos/internal/server"
 )
 
 func TestServer_RunServesAndShutsDown(t *testing.T) {

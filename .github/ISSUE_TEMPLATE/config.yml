@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/engelswtf/engelos/security/advisories/new
+    url: https://github.com/Luca-Pelzer/engelos/security/advisories/new
     about: Please use GitHub Security Advisories for security issues — NOT public issues.
   - name: Discord community
     url: https://discord.gg/engelos
     about: For questions, discussion, and live help (active after Phase 1 launch).
   - name: Master Vision Plan
-    url: https://github.com/engelswtf/engelos/blob/main/docs/MASTER-VISION.md
+    url: https://github.com/Luca-Pelzer/engelos/blob/main/docs/MASTER-VISION.md
     about: Check the roadmap before requesting features.

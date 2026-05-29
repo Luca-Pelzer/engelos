@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	apimw "github.com/engelswtf/engelos/internal/api/middleware"
+	apimw "github.com/Luca-Pelzer/engelos/internal/api/middleware"
 )
 
 func TestCORS_Preflight(t *testing.T) {
