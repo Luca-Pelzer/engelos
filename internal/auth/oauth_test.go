@@ -341,6 +341,59 @@ func TestOAuthFKCascadeOnUserDelete(t *testing.T) {
 	assert.ErrorIs(t, err, ErrOAuthIdentityNotFound, "FK cascade should remove oauth identity")
 }
 
+func TestListOAuthIdentitiesExpiringBefore(t *testing.T) {
+	s, _, _ := newOAuthTestStore(t)
+	ctx := context.Background()
+	u := mustSeedUser(t, s, "local")
+
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	past, err := s.CreateOAuthIdentity(ctx, OAuthIdentity{
+		TenantID: "local", UserID: u.ID, Provider: ProviderTwitch,
+		ProviderUserID: "tw-past", Purpose: OAuthPurposeUser, AccessToken: "atk-past",
+		ExpiresAt: base.Add(-time.Hour),
+	})
+	require.NoError(t, err)
+
+	atCutoff, err := s.CreateOAuthIdentity(ctx, OAuthIdentity{
+		TenantID: "local", UserID: u.ID, Provider: ProviderTwitch,
+		ProviderUserID: "tw-cutoff", Purpose: OAuthPurposeUser, AccessToken: "atk-cutoff",
+		ExpiresAt: base,
+	})
+	require.NoError(t, err)
+
+	future, err := s.CreateOAuthIdentity(ctx, OAuthIdentity{
+		TenantID: "local", UserID: u.ID, Provider: ProviderTwitch,
+		ProviderUserID: "tw-future", Purpose: OAuthPurposeUser, AccessToken: "atk-future",
+		ExpiresAt: base.Add(time.Hour),
+	})
+	require.NoError(t, err)
+
+	_, err = s.CreateOAuthIdentity(ctx, OAuthIdentity{
+		TenantID: "local", UserID: u.ID, Provider: ProviderDiscord,
+		ProviderUserID: "dc-null", Purpose: OAuthPurposeUser, AccessToken: "atk-null",
+	})
+	require.NoError(t, err)
+
+	got, err := s.ListOAuthIdentitiesExpiringBefore(ctx, base)
+	require.NoError(t, err)
+	require.Len(t, got, 2, "expected past + at-cutoff (inclusive), excluding future and NULL")
+	assert.Equal(t, past.ID, got[0].ID, "ordered by expires_at ASC")
+	assert.Equal(t, atCutoff.ID, got[1].ID, "cutoff is inclusive (<=)")
+	assert.Equal(t, "atk-past", got[0].AccessToken, "tokens are decrypted on list")
+
+	got, err = s.ListOAuthIdentitiesExpiringBefore(ctx, base.Add(2*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, past.ID, got[0].ID)
+	assert.Equal(t, atCutoff.ID, got[1].ID)
+	assert.Equal(t, future.ID, got[2].ID)
+
+	got, err = s.ListOAuthIdentitiesExpiringBefore(ctx, base.Add(-2*time.Hour))
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 func TestOAuthMethodsRequireCrypto(t *testing.T) {
 	dir := t.TempDir()
 	dsn := filepath.Join(dir, "auth.db") + "?_pragma=busy_timeout(5000)"
@@ -366,6 +419,9 @@ func TestOAuthMethodsRequireCrypto(t *testing.T) {
 	assert.ErrorIs(t, err, ErrCryptoRequired)
 
 	err = s.UpdateOAuthTokens(ctx, "id", "atk", "", time.Time{})
+	assert.ErrorIs(t, err, ErrCryptoRequired)
+
+	_, err = s.ListOAuthIdentitiesExpiringBefore(ctx, time.Now())
 	assert.ErrorIs(t, err, ErrCryptoRequired)
 }
 

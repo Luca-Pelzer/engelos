@@ -214,6 +214,28 @@ UPDATE oauth_identities
 	return nil
 }
 
+func (s *sqliteStore) ListOAuthIdentitiesExpiringBefore(ctx context.Context, cutoff time.Time) ([]OAuthIdentity, error) {
+	if s.crypto == nil {
+		return nil, ErrCryptoRequired
+	}
+	rows, err := s.db.QueryContext(ctx,
+		oauthSelect+`WHERE expires_at IS NOT NULL AND expires_at <= ? ORDER BY expires_at ASC`,
+		cutoff.UTC().UnixNano())
+	if err != nil {
+		return nil, fmt.Errorf("auth: list oauth identities expiring before: %w", err)
+	}
+	defer rows.Close()
+	var out []OAuthIdentity
+	for rows.Next() {
+		o, err := s.scanOAuthIdentity(rows)
+		if err != nil {
+			return nil, fmt.Errorf("auth: scan oauth identity: %w", err)
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
 func (s *sqliteStore) DeleteOAuthIdentity(ctx context.Context, id string) error {
 	res, err := s.db.ExecContext(ctx,
 		`DELETE FROM oauth_identities WHERE id = ?`, id)

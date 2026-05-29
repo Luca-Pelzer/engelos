@@ -31,6 +31,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
@@ -176,7 +177,38 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		logger.Info("no embedded web dashboard; serving JSON landing page at /")
 	}
 
-	oauthTwitch := buildTwitchOAuth(authStore, cryptoBox, logger)
+	twitchOAuthCfg := buildTwitchOAuthConfig(cryptoBox, logger)
+	var oauthTwitch *handlers.OAuth
+	if twitchOAuthCfg != nil {
+		oauthTwitch = handlers.NewOAuth(authStore, defaultTenantID, logger, twitchOAuthCfg).
+			WithCookieSecure(false)
+		// Twitch user-access tokens expire ~4h after issuance; without
+		// proactive refresh the stored bot token goes stale and Helix
+		// calls 401. Live re-application to the connected adapter is
+		// Phase 5b — here only persistence + the OnRefresh hook run.
+		refresher, rerr := oauthrefresh.New(oauthrefresh.Config{
+			Store:  refreshStoreAdapter{store: authStore},
+			Tokens: twitchTokenSource{cfg: twitchOAuthCfg},
+			Logger: logger,
+			OnRefresh: func(ev oauthrefresh.RefreshEvent) {
+				logger.Info("oauth token refreshed",
+					"provider", ev.Identity.Provider,
+					"purpose", ev.Identity.Purpose,
+					"login", ev.Identity.ProviderLogin,
+					"expires_at", ev.ExpiresAt.UTC())
+			},
+		})
+		if rerr != nil {
+			logger.Warn("oauth refresher disabled", "err", rerr)
+		} else {
+			go func() {
+				if err := refresher.Run(ctx); err != nil {
+					logger.Error("oauth refresher exited", "err", err)
+				}
+			}()
+			logger.Info("oauth token refresher started")
+		}
+	}
 
 	router := api.NewRouter(api.Deps{
 		Logger: logger,
@@ -221,12 +253,13 @@ func envBool(name string) bool {
 	}
 }
 
-// buildTwitchOAuth assembles the "Login with Twitch" handler, or returns nil
-// (OAuth disabled) when its prerequisites are missing. It requires an
+// buildTwitchOAuthConfig assembles the Twitch *oauth2.Config shared by the
+// "Login with Twitch" handler and the background token refresher, or returns
+// nil (OAuth disabled) when its prerequisites are missing. It requires an
 // encryption box (so tokens can be stored encrypted) and the three
 // ENGELOS_TWITCH_CLIENT_ID/SECRET/REDIRECT_URL env vars; absence of any is a
 // normal, non-fatal "feature off" state, not an error.
-func buildTwitchOAuth(store auth.Store, box *secrets.Box, logger *slog.Logger) *handlers.OAuth {
+func buildTwitchOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Config {
 	clientID := os.Getenv("ENGELOS_TWITCH_CLIENT_ID")
 	clientSecret := os.Getenv("ENGELOS_TWITCH_CLIENT_SECRET")
 	redirectURL := os.Getenv("ENGELOS_TWITCH_REDIRECT_URL")
@@ -236,16 +269,56 @@ func buildTwitchOAuth(store auth.Store, box *secrets.Box, logger *slog.Logger) *
 			"has_secret", clientSecret != "", "has_redirect", redirectURL != "")
 		return nil
 	}
-	cfg := &oauth2.Config{
+	logger.Info("twitch oauth enabled", "redirect_url", redirectURL)
+	return &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		RedirectURL:  redirectURL,
 		Scopes:       []string{"user:read:email"},
 		Endpoint:     twitchoauth.Endpoint,
 	}
-	logger.Info("twitch oauth enabled", "redirect_url", redirectURL)
-	return handlers.NewOAuth(store, defaultTenantID, logger, cfg).
-		WithCookieSecure(false)
+}
+
+// refreshStoreAdapter maps auth.Store onto the narrow oauthrefresh.Store
+// surface, keeping the refresher package free of any auth import.
+type refreshStoreAdapter struct{ store auth.Store }
+
+func (a refreshStoreAdapter) ListExpiring(ctx context.Context, cutoff time.Time) ([]oauthrefresh.Identity, error) {
+	ids, err := a.store.ListOAuthIdentitiesExpiringBefore(ctx, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]oauthrefresh.Identity, len(ids))
+	for i, id := range ids {
+		out[i] = oauthrefresh.Identity{
+			ID:            id.ID,
+			Provider:      id.Provider,
+			ProviderLogin: id.ProviderLogin,
+			Purpose:       id.Purpose,
+			RefreshToken:  id.RefreshToken,
+			ExpiresAt:     id.ExpiresAt,
+		}
+	}
+	return out, nil
+}
+
+func (a refreshStoreAdapter) UpdateTokens(ctx context.Context, id, accessToken, refreshToken string, expiresAt time.Time) error {
+	return a.store.UpdateOAuthTokens(ctx, id, accessToken, refreshToken, expiresAt)
+}
+
+// twitchTokenSource adapts *oauth2.Config onto oauthrefresh.TokenSource. It
+// exchanges a stored refresh token for a fresh token via the oauth2 library's
+// TokenSource, which performs the provider round-trip. A zero-expiry token
+// (provider returned no expires_in) is passed through unchanged.
+type twitchTokenSource struct{ cfg *oauth2.Config }
+
+func (t twitchTokenSource) Refresh(ctx context.Context, refreshToken string) (string, string, time.Time, error) {
+	src := t.cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken})
+	tok, err := src.Token()
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return tok.AccessToken, tok.RefreshToken, tok.Expiry, nil
 }
 
 // streakTickAdapter wraps streak.System to satisfy runtime.StreakTicker

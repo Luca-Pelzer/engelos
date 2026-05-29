@@ -74,6 +74,14 @@ type Store interface {
 	// stores SQL NULL. A zero expiresAt stores SQL NULL.
 	UpdateOAuthTokens(ctx context.Context, id string, accessToken, refreshToken string, expiresAt time.Time) error
 
+	// ListOAuthIdentitiesExpiringBefore returns every identity whose
+	// expires_at is non-NULL and <= cutoff, across all tenants and
+	// providers, ordered by expires_at ascending. Identities with a
+	// NULL expires_at are EXCLUDED (we cannot know when they expire).
+	// Token fields are decrypted. Returns ErrCryptoRequired if the
+	// Store was opened without a WithCrypto option.
+	ListOAuthIdentitiesExpiringBefore(ctx context.Context, cutoff time.Time) ([]OAuthIdentity, error)
+
 	// DeleteOAuthIdentity removes an identity by its ULID.
 	DeleteOAuthIdentity(ctx context.Context, id string) error
 
