@@ -151,7 +151,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	hub := ws.NewHub(logger)
 	go hub.Run(ctx)
 
-	platforms, cleanupPlatforms := startPlatforms(ctx, logger)
+	platforms, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
 	dispatcher := runtime.New(runtime.Config{
@@ -292,7 +292,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 //     (Discord has no anonymous mode).
 //   - ENGELOS_DISCORD_CHANNELS  optional comma-separated channel-id allowlist;
 //     empty means every channel the bot can see.
-func startPlatforms(ctx context.Context, logger *slog.Logger) ([]adapters.Platform, func()) {
+func startPlatforms(ctx context.Context, logger *slog.Logger, store auth.Store, tenantID string) ([]adapters.Platform, func()) {
 	var (
 		started []adapters.Platform
 		closers []func()
@@ -305,11 +305,27 @@ func startPlatforms(ctx context.Context, logger *slog.Logger) ([]adapters.Platfo
 
 	channels := splitCSV(os.Getenv("ENGELOS_TWITCH_CHANNELS"))
 	if len(channels) > 0 {
+		username := os.Getenv("ENGELOS_TWITCH_USERNAME")
+		oauthToken := os.Getenv("ENGELOS_TWITCH_OAUTH")
+		clientID := os.Getenv("ENGELOS_TWITCH_CLIENT_ID")
+		// Prefer a bot token acquired via "Login with Twitch" (?purpose=bot)
+		// over the static ENV token: it is stored encrypted and is the path
+		// that will gain automatic refresh. The ENV token remains the
+		// fallback for first-run/bootstrap before any OAuth has happened.
+		if bot, err := store.GetBotIdentity(ctx, tenantID, auth.ProviderTwitch); err == nil {
+			oauthToken = bot.AccessToken
+			if bot.ProviderLogin != "" {
+				username = bot.ProviderLogin
+			}
+			logger.Info("twitch bot token loaded from store", "login", bot.ProviderLogin)
+		} else if !errors.Is(err, auth.ErrOAuthIdentityNotFound) && !errors.Is(err, auth.ErrCryptoRequired) {
+			logger.Warn("twitch bot identity lookup failed", "err", err)
+		}
 		cfg := twitch.Config{
 			Channels:   channels,
-			Username:   os.Getenv("ENGELOS_TWITCH_USERNAME"),
-			OAuthToken: os.Getenv("ENGELOS_TWITCH_OAUTH"),
-			ClientID:   os.Getenv("ENGELOS_TWITCH_CLIENT_ID"),
+			Username:   username,
+			OAuthToken: oauthToken,
+			ClientID:   clientID,
 			Logger:     logger.With("platform", "twitch"),
 		}
 		tw := twitch.New(cfg)

@@ -142,6 +142,50 @@ func generateState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
+// purposeDelim separates the random CSRF nonce from the OAuth flow
+// purpose ("user" vs "bot") inside the state cookie value. Base64-URL
+// uses only [A-Za-z0-9_-], so "|" is guaranteed not to collide with
+// any byte produced by generateState — keeping the split unambiguous.
+const purposeDelim = "|"
+
+// normalizePurpose coerces an untrusted purpose string (query param or
+// recovered from a tampered cookie) into one of the two allowed values.
+// Anything other than the literal "bot" collapses to the safe default
+// "user" — we never error here because the callsite has already either
+// satisfied CSRF (cookie path) or is at the start of the flow (Login).
+func normalizePurpose(p string) string {
+	if strings.TrimSpace(p) == auth.OAuthPurposeBot {
+		return auth.OAuthPurposeBot
+	}
+	return auth.OAuthPurposeUser
+}
+
+// buildStateValue concatenates the random CSRF nonce and the chosen
+// purpose into the single string that lives in BOTH the state cookie
+// and the OAuth `state` query parameter. Because both sides hold the
+// SAME composite string, the existing constant-time equality check is
+// what binds the purpose to the request — an attacker cannot change
+// just the purpose suffix without breaking the state match. This is
+// what lets Callback safely recover the purpose from the cookie
+// without trusting any callback-side query parameter.
+func buildStateValue(random, purpose string) string {
+	return random + purposeDelim + purpose
+}
+
+// parseStateValue splits a composite state value (as produced by
+// buildStateValue) back into (random, purpose). The split is on the
+// LAST delimiter so a future random implementation that happened to
+// emit a "|" cannot misclassify the suffix. When the value contains
+// no delimiter (legacy cookie or hand-crafted test fixture) the
+// purpose is empty and normalizePurpose will fall back to "user".
+func parseStateValue(v string) (random, purpose string) {
+	i := strings.LastIndex(v, purposeDelim)
+	if i < 0 {
+		return v, normalizePurpose("")
+	}
+	return v[:i], normalizePurpose(v[i+len(purposeDelim):])
+}
+
 // Login handles GET /api/v1/auth/twitch/login.
 //
 // It mints a fresh CSRF state value, stores it in the short-lived
@@ -154,7 +198,7 @@ func (o *OAuth) Login(w http.ResponseWriter, r *http.Request) {
 		notImplemented(w)
 		return
 	}
-	state, err := generateState()
+	random, err := generateState()
 	if err != nil {
 		o.logger.ErrorContext(r.Context(), "oauth: generate state failed",
 			slog.Any("err", err))
@@ -163,9 +207,11 @@ func (o *OAuth) Login(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	purpose := normalizePurpose(r.URL.Query().Get("purpose"))
+	stateVal := buildStateValue(random, purpose)
 	http.SetCookie(w, &http.Cookie{
 		Name:     OAuthStateCookieName,
-		Value:    state,
+		Value:    stateVal,
 		Path:     "/",
 		MaxAge:   int(oauthStateTTL.Seconds()),
 		HttpOnly: true,
@@ -173,7 +219,7 @@ func (o *OAuth) Login(w http.ResponseWriter, r *http.Request) {
 		// Lax (not Strict) — see OAuthStateCookieName doc comment.
 		SameSite: http.SameSiteLaxMode,
 	})
-	http.Redirect(w, r, o.cfg.AuthCodeURL(state), http.StatusFound)
+	http.Redirect(w, r, o.cfg.AuthCodeURL(stateVal), http.StatusFound)
 }
 
 // clearStateCookie writes a Set-Cookie that immediately expires the
@@ -238,6 +284,10 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Purpose is recovered from the (now CSRF-validated) cookie value,
+	// NOT from any callback query parameter — otherwise an attacker
+	// could downgrade/upgrade the flow without invalidating state.
+	_, purpose := parseStateValue(cookie.Value)
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
@@ -310,7 +360,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		Provider:       auth.ProviderTwitch,
 		ProviderUserID: providerUserID,
 		ProviderLogin:  login,
-		Purpose:        auth.OAuthPurposeUser,
+		Purpose:        purpose,
 		AccessToken:    tok.AccessToken,
 		RefreshToken:   tok.RefreshToken,
 		Scopes:         scopes,

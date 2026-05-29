@@ -580,3 +580,210 @@ func TestOAuth_StateCookieNameStableForCallers(t *testing.T) {
 	assert.True(t, strings.HasPrefix(OAuthStateCookieName, "engelos_"),
 		"state cookie name should be namespaced to engelos so it cannot collide with unrelated cookies")
 }
+
+func TestOAuth_NormalizePurpose(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, auth.OAuthPurposeBot, normalizePurpose("bot"))
+	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose("user"))
+	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose(""))
+	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose("garbage"))
+	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose("BOT"),
+		"normalization is case-sensitive — only exact literal 'bot' opts in")
+	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose("admin"),
+		"unknown purposes must collapse to the safe default, never error")
+}
+
+func TestOAuth_BuildAndParseStateValue_Roundtrip(t *testing.T) {
+	t.Parallel()
+	for _, p := range []string{auth.OAuthPurposeBot, auth.OAuthPurposeUser} {
+		v := buildStateValue("randomXYZ", p)
+		assert.True(t, strings.HasSuffix(v, "|"+p))
+		r, gotP := parseStateValue(v)
+		assert.Equal(t, "randomXYZ", r)
+		assert.Equal(t, p, gotP)
+	}
+}
+
+func TestOAuth_ParseStateValue_NoDelimiter_DefaultsToUser(t *testing.T) {
+	t.Parallel()
+	// Legacy / hand-crafted cookies (and existing test fixtures using
+	// plain values like "tok") must remain backwards compatible.
+	r, p := parseStateValue("plainvalue")
+	assert.Equal(t, "plainvalue", r)
+	assert.Equal(t, auth.OAuthPurposeUser, p,
+		"missing delimiter must default to user, never error")
+}
+
+func TestOAuth_ParseStateValue_MultipleDelimiters_SplitsOnLast(t *testing.T) {
+	t.Parallel()
+	// Defense in depth: even if a future random nonce ever contained a
+	// "|", LastIndex guarantees the trailing purpose token wins.
+	r, p := parseStateValue("ran|dom|bot")
+	assert.Equal(t, "ran|dom", r)
+	assert.Equal(t, auth.OAuthPurposeBot, p)
+}
+
+func TestOAuth_ParseStateValue_GarbagePurpose_FallsBackToUser(t *testing.T) {
+	t.Parallel()
+	r, p := parseStateValue("nonce|attacker-controlled")
+	assert.Equal(t, "nonce", r)
+	assert.Equal(t, auth.OAuthPurposeUser, p)
+}
+
+func TestOAuth_Login_BotPurpose_PropagatesToStateAndCookie(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+
+	w := httptest.NewRecorder()
+	h.Login(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/twitch/login?purpose=bot", nil))
+	resp := w.Result()
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+
+	var stateCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == OAuthStateCookieName {
+			stateCookie = c
+		}
+	}
+	require.NotNil(t, stateCookie)
+	assert.True(t, strings.HasSuffix(stateCookie.Value, "|bot"),
+		"bot purpose must be encoded into the cookie value as the suffix")
+
+	loc, err := resp.Location()
+	require.NoError(t, err)
+	assert.Equal(t, stateCookie.Value, loc.Query().Get("state"),
+		"the OAuth state query param must equal the cookie value verbatim — "+
+			"this is what binds purpose to CSRF without trusting query data")
+}
+
+func TestOAuth_Login_NoPurpose_DefaultsToUser(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+
+	w := httptest.NewRecorder()
+	h.Login(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/twitch/login", nil))
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	var stateCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == OAuthStateCookieName {
+			stateCookie = c
+		}
+	}
+	require.NotNil(t, stateCookie)
+	assert.True(t, strings.HasSuffix(stateCookie.Value, "|user"))
+}
+
+func TestOAuth_Login_GarbagePurpose_DefaultsToUser(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+
+	w := httptest.NewRecorder()
+	h.Login(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/twitch/login?purpose=hacker", nil))
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	var stateCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == OAuthStateCookieName {
+			stateCookie = c
+		}
+	}
+	require.NotNil(t, stateCookie)
+	assert.True(t, strings.HasSuffix(stateCookie.Value, "|user"),
+		"unknown purposes must collapse to user before being signed into state")
+}
+
+// runCallbackWithComposite drives Callback with a composite state value
+// (random|purpose) installed in BOTH the query and the cookie, mirroring
+// what a real browser would replay.
+func runCallbackWithComposite(t *testing.T, h *OAuth, fake *fakeHelix, tok *oauth2.Token, composite string) *http.Response {
+	t.Helper()
+	h.exchange = func(context.Context, string) (*oauth2.Token, error) {
+		return tok, nil
+	}
+	h.newHelix = func(string, string) (helixUserGetter, error) {
+		return fake, nil
+	}
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/auth/twitch/callback?state="+composite+"&code=xyz", nil)
+	req.AddCookie(&http.Cookie{Name: OAuthStateCookieName, Value: composite})
+	w := httptest.NewRecorder()
+	h.Callback(w, req)
+	return w.Result()
+}
+
+func TestOAuth_Callback_BotPurpose_PersistsAsBotIdentity(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+	tok := &oauth2.Token{
+		AccessToken:  "bot-atk",
+		RefreshToken: "bot-rtk",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+	fake := newFakeHelix("tw-bot", "engelguardbot", "bot@example.com", "EngelGuardBot")
+
+	resp := runCallbackWithComposite(t, h, fake, tok, "nonce|bot")
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+
+	ctx := context.Background()
+	identity, err := store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, "tw-bot")
+	require.NoError(t, err)
+	assert.Equal(t, auth.OAuthPurposeBot, identity.Purpose,
+		"purpose must round-trip from the state cookie into the stored identity")
+}
+
+func TestOAuth_Callback_UserPurpose_RegressionStillUser(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+	tok := &oauth2.Token{
+		AccessToken:  "user-atk",
+		RefreshToken: "user-rtk",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+	fake := newFakeHelix("tw-usr", "regularuser", "u@example.com", "Regular")
+
+	resp := runCallbackWithComposite(t, h, fake, tok, "nonce|user")
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+
+	ctx := context.Background()
+	identity, err := store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, "tw-usr")
+	require.NoError(t, err)
+	assert.Equal(t, auth.OAuthPurposeUser, identity.Purpose)
+}
+
+// TestOAuth_Callback_TamperedPurpose_RejectsAsInvalidState proves the
+// CORE security property of this phase: an attacker who swaps the
+// purpose suffix in EITHER the query string OR the cookie (but not
+// both, because that would require also rewriting the cookie which
+// they cannot reach across the SameSite boundary) is still rejected
+// because the constant-time string compare sees two different values.
+func TestOAuth_Callback_TamperedPurpose_RejectsAsInvalidState(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/auth/twitch/callback?state=nonce|user&code=xyz", nil)
+	req.AddCookie(&http.Cookie{Name: OAuthStateCookieName, Value: "nonce|bot"})
+	w := httptest.NewRecorder()
+	h.Callback(w, req)
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode,
+		"tampering with the purpose suffix must break the state match, "+
+			"otherwise the whole 'purpose from cookie' invariant is moot")
+	var body map[string]string
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "invalid_state", body["error"])
+}
