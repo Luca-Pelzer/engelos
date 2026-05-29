@@ -41,5 +41,10 @@ web/**/.svelte-kit/
 web/**/build/
 .pnpm-store/
 
+# Embedded web build (populated by `make web-build`, baked into the binary).
+# Keep .gitkeep so the //go:embed directive in internal/web/ stays valid.
+internal/web/build/*
+!internal/web/build/.gitkeep
+
 # GoReleaser
 dist/

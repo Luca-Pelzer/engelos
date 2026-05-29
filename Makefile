@@ -72,8 +72,12 @@ web-dev: ## Start web dev server (Vite).
 	cd web && $(PNPM) --filter local dev
 
 .PHONY: web-build
-web-build: ## Build web/ static output for embedding.
-	cd web && $(PNPM) --filter local build
+web-build: ## Build web/ static output and copy into internal/web/build/ for embedding.
+	cd web && $(PNPM) install --frozen-lockfile && $(PNPM) --filter @engelos/local build
+	rm -rf internal/web/build
+	mkdir -p internal/web/build
+	cp -r web/packages/local/build/. internal/web/build/
+	touch internal/web/build/.gitkeep
 
 .PHONY: web-check
 web-check: ## TypeScript + Svelte check.
