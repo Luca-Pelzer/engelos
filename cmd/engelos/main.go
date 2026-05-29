@@ -152,7 +152,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	hub := ws.NewHub(logger)
 	go hub.Run(ctx)
 
-	platforms, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
+	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
 	dispatcher := runtime.New(runtime.Config{
@@ -196,6 +196,19 @@ func run(ctx context.Context, logger *slog.Logger) error {
 					"purpose", ev.Identity.Purpose,
 					"login", ev.Identity.ProviderLogin,
 					"expires_at", ev.ExpiresAt.UTC())
+				// Live-apply the rotated bot token to the running Twitch
+				// adapter so chat/Helix keep working without a restart.
+				// SetToken stages the IRC token and updates Helix in place;
+				// it never reconnects, so the dispatcher event stream is
+				// unaffected.
+				if ev.Identity.Provider == auth.ProviderTwitch &&
+					ev.Identity.Purpose == auth.OAuthPurposeBot &&
+					twitchAdapter != nil {
+					if err := twitchAdapter.SetToken(ev.AccessToken); err != nil {
+						logger.Warn("twitch live token rotation failed",
+							"login", ev.Identity.ProviderLogin, "err", err)
+					}
+				}
 			},
 		})
 		if rerr != nil {
@@ -350,7 +363,9 @@ type dispatcherStatsAdapter struct{ d *runtime.Dispatcher }
 func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 
 // startPlatforms inspects environment variables and starts every platform
-// adapter that is enabled. Returns the connected platforms and a cleanup
+// adapter that is enabled. Returns the connected platforms, the Twitch
+// adapter handle (nil when Twitch is not started — used so the OAuth
+// refresher can live-rotate its token via SetToken), and a cleanup
 // function that disconnects them in reverse order.
 //
 // Twitch is controlled by:
@@ -365,10 +380,11 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 //     (Discord has no anonymous mode).
 //   - ENGELOS_DISCORD_CHANNELS  optional comma-separated channel-id allowlist;
 //     empty means every channel the bot can see.
-func startPlatforms(ctx context.Context, logger *slog.Logger, store auth.Store, tenantID string) ([]adapters.Platform, func()) {
+func startPlatforms(ctx context.Context, logger *slog.Logger, store auth.Store, tenantID string) ([]adapters.Platform, *twitch.Adapter, func()) {
 	var (
-		started []adapters.Platform
-		closers []func()
+		started      []adapters.Platform
+		closers      []func()
+		twitchHandle *twitch.Adapter
 	)
 	cleanup := func() {
 		for i := len(closers) - 1; i >= 0; i-- {
@@ -405,6 +421,7 @@ func startPlatforms(ctx context.Context, logger *slog.Logger, store auth.Store, 
 		if err := tw.Connect(ctx); err != nil {
 			logger.Error("twitch adapter connect failed", "err", err)
 		} else {
+			twitchHandle = tw
 			started = append(started, tw)
 			closers = append(closers, func() {
 				disconnectCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
@@ -442,7 +459,7 @@ func startPlatforms(ctx context.Context, logger *slog.Logger, store auth.Store, 
 		}
 	}
 
-	return started, cleanup
+	return started, twitchHandle, cleanup
 }
 
 func splitCSV(s string) []string {

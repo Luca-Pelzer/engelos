@@ -22,8 +22,10 @@ import (
 type fakeIRCClient struct {
 	mu sync.Mutex
 
-	joined []string
-	sent   []sentMessage
+	joined   []string
+	sent     []sentMessage
+	lastTok  string
+	tokCalls int
 
 	onConnect      func()
 	onPrivate      func(irc.PrivateMessage)
@@ -87,6 +89,19 @@ func (f *fakeIRCClient) Disconnect() error {
 	return nil
 }
 
+func (f *fakeIRCClient) SetIRCToken(token string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastTok = token
+	f.tokCalls++
+}
+
+func (f *fakeIRCClient) lastToken() (string, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastTok, f.tokCalls
+}
+
 func (f *fakeIRCClient) sentMessages() []sentMessage {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -103,12 +118,27 @@ type fakeHelix struct {
 	unbanCalls      []*helix.UnbanUserParams
 	deleteCalls     []*helix.DeleteChatMessageParams
 	getUsersCalls   []*helix.UsersParams
+	lastTok         string
+	tokCalls        int
 	banErr          error
 	unbanErr        error
 	deleteErr       error
 	getUsersResp    *helix.UsersResponse
 	getUsersErr     error
 	defaultUsersFor map[string]string
+}
+
+func (h *fakeHelix) SetUserAccessToken(token string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.lastTok = token
+	h.tokCalls++
+}
+
+func (h *fakeHelix) lastToken() (string, int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastTok, h.tokCalls
 }
 
 func (h *fakeHelix) snapshotBan() []*helix.BanUserParams {
@@ -638,4 +668,139 @@ func TestHelixGetUsersFails_BanErrors(t *testing.T) {
 		Ban:     &adapters.BanAction{UserID: "42"},
 	})
 	require.Error(t, err)
+}
+
+func TestSetToken_RawTokenPrefixesIRCAndRawHelix(t *testing.T) {
+	a, fake, hx := newTestAdapter(t, false)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	require.NoError(t, a.SetToken("newtok"))
+
+	ircTok, ircN := fake.lastToken()
+	hxTok, hxN := hx.lastToken()
+	assert.Equal(t, "oauth:newtok", ircTok)
+	assert.Equal(t, 1, ircN)
+	assert.Equal(t, "newtok", hxTok)
+	assert.Equal(t, 1, hxN)
+
+	a.mu.Lock()
+	cfgTok := a.cfg.OAuthToken
+	connected := a.connected
+	a.mu.Unlock()
+	assert.Equal(t, "newtok", cfgTok)
+	assert.True(t, connected, "adapter must remain connected after SetToken")
+	assert.NoError(t, a.Health())
+}
+
+func TestSetToken_AlreadyPrefixedNoDoublePrefix(t *testing.T) {
+	a, fake, hx := newTestAdapter(t, false)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	require.NoError(t, a.SetToken("oauth:newtok"))
+
+	ircTok, _ := fake.lastToken()
+	hxTok, _ := hx.lastToken()
+	assert.Equal(t, "oauth:newtok", ircTok)
+	assert.Equal(t, "newtok", hxTok)
+}
+
+func TestSetToken_EmptyTokenRejected(t *testing.T) {
+	a, fake, hx := newTestAdapter(t, false)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	err := a.SetToken("")
+	assert.ErrorIs(t, err, ErrEmptyToken)
+
+	_, ircN := fake.lastToken()
+	_, hxN := hx.lastToken()
+	assert.Equal(t, 0, ircN)
+	assert.Equal(t, 0, hxN)
+
+	a.mu.Lock()
+	cfgTok := a.cfg.OAuthToken
+	a.mu.Unlock()
+	assert.Equal(t, "oauth:token", cfgTok, "cfg unchanged after empty SetToken")
+}
+
+func TestSetToken_NotConnected(t *testing.T) {
+	a, _, _ := newTestAdapter(t, false)
+	err := a.SetToken("newtok")
+	assert.ErrorIs(t, err, ErrNotConnected)
+}
+
+func TestSetToken_AnonymousRotationRejected(t *testing.T) {
+	a, fake, hx := newTestAdapter(t, true)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	err := a.SetToken("newtok")
+	assert.ErrorIs(t, err, ErrAnonymousRotation)
+
+	_, ircN := fake.lastToken()
+	_, hxN := hx.lastToken()
+	assert.Equal(t, 0, ircN)
+	assert.Equal(t, 0, hxN)
+}
+
+func TestSetToken_DoesNotDisruptEventStream(t *testing.T) {
+	a, fake, _ := newTestAdapter(t, false)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+	<-fake.connectStarted
+
+	require.NoError(t, a.SetToken("rotated"))
+	assert.NoError(t, a.Health())
+
+	fake.onPrivate(irc.PrivateMessage{
+		User:    irc.User{ID: "1", Name: "viewer"},
+		Channel: "broadcaster",
+		ID:      "msg-after-rotate",
+		Message: "still here",
+		Tags:    map[string]string{"id": "msg-after-rotate"},
+	})
+	select {
+	case e := <-a.Events():
+		assert.Equal(t, adapters.EventMessageCreated, e.Type)
+		assert.Equal(t, "msg-after-rotate", e.Message.ID)
+	case <-time.After(time.Second):
+		t.Fatal("events channel disrupted by SetToken")
+	}
+}
+
+func TestSetToken_RaceWithHealthAndDo(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	var wg sync.WaitGroup
+	const iters = 50
+
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			_ = a.SetToken("tok-rotating")
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			_ = a.Health()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iters; i++ {
+			_ = a.Do(context.Background(), adapters.Action{
+				Type:        adapters.ActionSendMessage,
+				Channel:     "broadcaster",
+				SendMessage: &adapters.SendMessageAction{Text: "x"},
+			})
+		}
+	}()
+	wg.Wait()
 }

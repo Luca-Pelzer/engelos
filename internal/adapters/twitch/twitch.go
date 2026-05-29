@@ -29,6 +29,15 @@ var (
 	ErrMissingPayload   = errors.New("twitch: action payload missing")
 	ErrUnknownChannel   = errors.New("twitch: broadcaster id for channel is unknown; have not yet observed a message there")
 	ErrHelixUnavailable = errors.New("twitch: helix client not configured")
+
+	// ErrEmptyToken is returned by [Adapter.SetToken] when called with an
+	// empty access token. No state is mutated in that case.
+	ErrEmptyToken = errors.New("twitch: empty access token")
+
+	// ErrAnonymousRotation is returned by [Adapter.SetToken] when invoked
+	// on an adapter running in anonymous mode — there is no user token to
+	// rotate.
+	ErrAnonymousRotation = errors.New("twitch: cannot rotate token on anonymous adapter")
 )
 
 // Config controls construction of a Twitch [Adapter]. The zero value is a
@@ -79,6 +88,7 @@ type ircClient interface {
 	Say(channel, text string)
 	Connect() error
 	Disconnect() error
+	SetIRCToken(token string)
 }
 
 // helixClient is the minimal surface of [helix.Client] the adapter relies
@@ -88,6 +98,7 @@ type helixClient interface {
 	UnbanUser(*helix.UnbanUserParams) (*helix.UnbanUserResponse, error)
 	DeleteChatMessage(*helix.DeleteChatMessageParams) (*helix.DeleteChatMessageResponse, error)
 	GetUsers(*helix.UsersParams) (*helix.UsersResponse, error)
+	SetUserAccessToken(token string)
 }
 
 // Adapter is the Twitch implementation of [adapters.Platform].
@@ -285,6 +296,56 @@ func (a *Adapter) Health() error {
 		return ErrNotConnected
 	}
 	return a.healthErr
+}
+
+// SetToken applies a freshly refreshed OAuth user-access token to the
+// live adapter WITHOUT reconnecting. The IRC token is staged for the next
+// (re)connect via SetIRCToken — the running IRC session is unaffected
+// because Twitch only validates the token at the PASS/NICK handshake,
+// never mid-session — and the Helix client's bearer is updated in place
+// via SetUserAccessToken so the next REST call uses the new token
+// immediately. cfg.OAuthToken is also updated so a future Connect uses
+// the new token. This method is adapter-specific and intentionally not
+// part of [adapters.Platform], because rotation semantics differ per
+// platform.
+//
+// Returns [ErrEmptyToken] for empty input (no state mutated),
+// [ErrNotConnected] if Connect has not run, and [ErrAnonymousRotation] on
+// an anonymous adapter.
+//
+// Concurrency: a.mu is held only across field reads/writes, NOT across
+// the library setter calls. This is safe because the helix client's
+// SetUserAccessToken is itself mutex-protected and SetIRCToken merely
+// stores a field consulted on (re)connect; holding a.mu across them
+// would risk deadlock with the IRC reader / Do() paths.
+func (a *Adapter) SetToken(accessToken string) error {
+	if strings.TrimSpace(accessToken) == "" {
+		return ErrEmptyToken
+	}
+
+	a.mu.Lock()
+	if !a.connected {
+		a.mu.Unlock()
+		return ErrNotConnected
+	}
+	if a.anon {
+		a.mu.Unlock()
+		return ErrAnonymousRotation
+	}
+	ircc := a.irc
+	hx := a.helix
+	a.cfg.OAuthToken = accessToken
+	a.mu.Unlock()
+
+	raw := strings.TrimPrefix(accessToken, "oauth:")
+	if ircc != nil {
+		ircc.SetIRCToken("oauth:" + raw)
+	}
+	if hx != nil {
+		hx.SetUserAccessToken(raw)
+	}
+	a.logger.Info("twitch token rotated", "anonymous", false)
+	return nil
 }
 
 // Do dispatches a platform action via IRC (send) or the Helix REST API
@@ -634,6 +695,7 @@ func (w *helixWrapper) DeleteChatMessage(p *helix.DeleteChatMessageParams) (*hel
 func (w *helixWrapper) GetUsers(p *helix.UsersParams) (*helix.UsersResponse, error) {
 	return w.c.GetUsers(p)
 }
+func (w *helixWrapper) SetUserAccessToken(token string) { w.c.SetUserAccessToken(token) }
 
 // anonymousUsername returns a fresh Twitch anonymous login of the form
 // justinfanNNNNNN where N is a random digit. crypto/rand is used so two
