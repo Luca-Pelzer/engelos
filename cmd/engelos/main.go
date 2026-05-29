@@ -17,14 +17,19 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
+	"github.com/Luca-Pelzer/engelos/internal/adapters"
+	"github.com/Luca-Pelzer/engelos/internal/adapters/twitch"
 	"github.com/Luca-Pelzer/engelos/internal/api"
 	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
+	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/server"
 	"github.com/Luca-Pelzer/engelos/internal/web"
 )
@@ -40,7 +45,7 @@ func main() {
 
 	slog.Info("engelOS starting",
 		"version", Version,
-		"phase", "1B — adapters + auth + web",
+		"phase", "1B — adapters + auth + web + dispatcher",
 	)
 
 	ctx, cancel := signal.NotifyContext(
@@ -109,6 +114,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	hub := ws.NewHub(logger)
 	go hub.Run(ctx)
 
+	platforms, cleanupPlatforms := startPlatforms(ctx, logger)
+	defer cleanupPlatforms()
+
+	dispatcher := runtime.New(runtime.Config{
+		TenantID:         defaultTenantID,
+		Platforms:        platforms,
+		Pity:             pitySystem,
+		PointsPerMessage: pitySystem.Config().PointsPerMessage,
+		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
+		Logger:           logger,
+	})
+	go func() {
+		if err := dispatcher.Run(ctx); err != nil {
+			logger.Error("dispatcher exited", "err", err)
+		}
+	}()
+
 	webHandler := web.Handler(http.HandlerFunc(handlers.Index))
 	if webHandler != nil {
 		logger.Info("embedded web dashboard available")
@@ -136,6 +158,72 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}, router)
 
 	return srv.Run(ctx)
+}
+
+// startPlatforms inspects environment variables and starts every platform
+// adapter that is enabled. Returns the connected platforms and a cleanup
+// function that disconnects them in reverse order.
+//
+// Twitch is controlled by:
+//   - ENGELOS_TWITCH_CHANNELS  comma-separated channel list (e.g. "engelswtf").
+//     If empty, the Twitch adapter is not started.
+//   - ENGELOS_TWITCH_OAUTH     optional oauth token for authenticated mode.
+//   - ENGELOS_TWITCH_USERNAME  optional bot username (required with OAUTH).
+//   - ENGELOS_TWITCH_CLIENT_ID optional Helix client id (required with OAUTH).
+func startPlatforms(ctx context.Context, logger *slog.Logger) ([]adapters.Platform, func()) {
+	var (
+		started []adapters.Platform
+		closers []func()
+	)
+	cleanup := func() {
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
+		}
+	}
+
+	channels := splitCSV(os.Getenv("ENGELOS_TWITCH_CHANNELS"))
+	if len(channels) > 0 {
+		cfg := twitch.Config{
+			Channels:   channels,
+			Username:   os.Getenv("ENGELOS_TWITCH_USERNAME"),
+			OAuthToken: os.Getenv("ENGELOS_TWITCH_OAUTH"),
+			ClientID:   os.Getenv("ENGELOS_TWITCH_CLIENT_ID"),
+			Logger:     logger.With("platform", "twitch"),
+		}
+		tw := twitch.New(cfg)
+		if err := tw.Connect(ctx); err != nil {
+			logger.Error("twitch adapter connect failed", "err", err)
+		} else {
+			started = append(started, tw)
+			closers = append(closers, func() {
+				disconnectCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+				defer c()
+				if err := tw.Disconnect(disconnectCtx); err != nil {
+					logger.Warn("twitch disconnect", "err", err)
+				}
+			})
+			anon := cfg.OAuthToken == ""
+			logger.Info("twitch adapter connected",
+				"channels", channels, "anonymous", anon)
+		}
+	}
+
+	return started, cleanup
+}
+
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // dataDirectory returns the on-disk location where the daemon stores its
