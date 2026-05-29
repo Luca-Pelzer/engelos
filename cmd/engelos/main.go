@@ -23,6 +23,8 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
+	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/server"
 	"github.com/Luca-Pelzer/engelos/internal/web"
 )
@@ -80,6 +82,30 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("auth store opened", "dsn", authDSN)
 
+	eventsDSN := filepath.Join(dataDir, "events.db")
+	eventStore, err := eventsourcing.OpenSQLite(ctx, eventsDSN)
+	if err != nil {
+		return fmt.Errorf("open event store %s: %w", eventsDSN, err)
+	}
+	defer func() {
+		if cerr := eventStore.Close(); cerr != nil {
+			logger.Warn("event store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("event store opened", "dsn", eventsDSN)
+
+	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
+	if err != nil {
+		return fmt.Errorf("init pity system: %w", err)
+	}
+	if err := pitySystem.Recover(ctx, defaultTenantID); err != nil {
+		return fmt.Errorf("recover pity read model: %w", err)
+	}
+	logger.Info("pity system ready",
+		"hard_pity_threshold", pitySystem.Config().HardPityThreshold,
+		"soft_pity_fraction", pitySystem.Config().SoftPityFraction,
+	)
+
 	hub := ws.NewHub(logger)
 	go hub.Run(ctx)
 
@@ -100,6 +126,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Web:       webHandler,
 		AuthStore: authStore,
 		TenantID:  defaultTenantID,
+		Pity:      pitySystem,
 	})
 
 	srv := server.New(server.Config{

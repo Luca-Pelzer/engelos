@@ -12,6 +12,7 @@ import (
 	apimw "github.com/Luca-Pelzer/engelos/internal/api/middleware"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 )
 
 // WSHandler is the narrow interface the router needs from the WebSocket hub.
@@ -57,6 +58,10 @@ type Deps struct {
 	// TenantID is the single-tenant identifier this daemon serves. It is
 	// required when AuthStore is set; otherwise the empty string is fine.
 	TenantID string
+
+	// Pity, when non-nil, exposes the pity-system endpoints under
+	// /api/v1/pity/*. Nil disables the feature (handlers return 501).
+	Pity *pity.System
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -74,6 +79,7 @@ func NewRouter(deps Deps) chi.Router {
 	health := handlers.NewHealth(deps.Version)
 	authH := handlers.NewAuth(deps.AuthStore, deps.TenantID, logger)
 	events := handlers.NewEvents(logger, deps.EventsHeartbeat)
+	pityH := handlers.NewPity(deps.Pity, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -105,6 +111,16 @@ func NewRouter(deps Deps) chi.Router {
 		})
 		r.Get("/events", events.Stream)
 		r.HandleFunc("/ws", wsh.ServeHTTP)
+
+		r.Route("/pity", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Post("/grant", pityH.Grant)
+			r.Post("/roll", pityH.Roll)
+			r.Get("/status", pityH.Status)
+			r.Post("/reset", pityH.Reset)
+		})
 	})
 
 	if deps.Web != nil {
