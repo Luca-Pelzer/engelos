@@ -72,6 +72,32 @@ type Broadcaster interface {
 	Broadcast(eventType string, payload any)
 }
 
+// CommandInvocation is the platform-neutral context a [CommandRouter] needs
+// to route a chat command. The dispatcher fills it from an incoming
+// message event.
+type CommandInvocation struct {
+	Platform string
+	Channel  string
+	UserID   string
+	Username string
+	Text     string
+}
+
+// CommandReply is the result of routing a [CommandInvocation]. Text is the
+// chat message to send back; an empty Text means "send nothing".
+type CommandReply struct {
+	Text string
+}
+
+// CommandRouter is the narrow contract the dispatcher needs to turn chat
+// messages into command replies. internal/commands.Engine satisfies a thin
+// adapter of this (wired in main), keeping the runtime free of any commands
+// import. Route returns handled=false when the message is not a command, in
+// which case the dispatcher sends nothing.
+type CommandRouter interface {
+	Route(ctx context.Context, inv CommandInvocation) (reply CommandReply, handled bool)
+}
+
 // Config configures the Dispatcher.
 type Config struct {
 	// TenantID is the single-tenant identifier this runtime serves.
@@ -98,6 +124,11 @@ type Config struct {
 	// Broadcaster, when non-nil, receives every event the dispatcher sees
 	// so WebSocket / SSE consumers can render live activity.
 	Broadcaster Broadcaster
+
+	// Commands, when non-nil, routes incoming chat messages to bot
+	// commands (e.g. "!pity"). A non-empty reply is sent back to chat via
+	// the originating platform's Do(ActionSendMessage).
+	Commands CommandRouter
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -239,12 +270,12 @@ func (d *Dispatcher) consume(ctx context.Context, p adapters.Platform) {
 				log.Info("platform events channel closed")
 				return
 			}
-			d.handle(ctx, ev)
+			d.handle(ctx, p, ev)
 		}
 	}
 }
 
-func (d *Dispatcher) handle(ctx context.Context, ev adapters.Event) {
+func (d *Dispatcher) handle(ctx context.Context, p adapters.Platform, ev adapters.Event) {
 	d.stats.mu.Lock()
 	d.stats.lastEventAt = ev.OccurredAt
 	d.stats.mu.Unlock()
@@ -255,7 +286,7 @@ func (d *Dispatcher) handle(ctx context.Context, ev adapters.Event) {
 
 	switch ev.Type {
 	case adapters.EventMessageCreated:
-		d.onMessage(ctx, ev)
+		d.onMessage(ctx, p, ev)
 	case adapters.EventUserSubscribed, adapters.EventUserResubscribed:
 		d.stats.mu.Lock()
 		d.stats.subs++
@@ -267,7 +298,7 @@ func (d *Dispatcher) handle(ctx context.Context, ev adapters.Event) {
 	}
 }
 
-func (d *Dispatcher) onMessage(ctx context.Context, ev adapters.Event) {
+func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adapters.Event) {
 	if ev.Message == nil {
 		return
 	}
@@ -278,6 +309,8 @@ func (d *Dispatcher) onMessage(ctx context.Context, ev adapters.Event) {
 	if ev.Message.UserID == "" || ev.Channel == "" {
 		return
 	}
+
+	d.routeCommand(ctx, p, ev)
 
 	if d.cfg.Pity != nil && d.cfg.PointsPerMessage > 0 {
 		if _, err := d.cfg.Pity.GrantPoints(ctx, d.cfg.TenantID,
@@ -333,6 +366,34 @@ func (d *Dispatcher) onMessage(ctx context.Context, ev adapters.Event) {
 				})
 			}
 		}
+	}
+}
+
+// routeCommand offers the message to the command router (when configured)
+// and sends any non-empty reply back to chat on the originating platform.
+// Send failures are logged but never propagated — a failed reply must not
+// disrupt event consumption.
+func (d *Dispatcher) routeCommand(ctx context.Context, p adapters.Platform, ev adapters.Event) {
+	if d.cfg.Commands == nil || p == nil {
+		return
+	}
+	reply, handled := d.cfg.Commands.Route(ctx, CommandInvocation{
+		Platform: ev.Platform,
+		Channel:  ev.Channel,
+		UserID:   ev.Message.UserID,
+		Username: ev.Message.Username,
+		Text:     ev.Message.Content,
+	})
+	if !handled || reply.Text == "" {
+		return
+	}
+	if err := p.Do(ctx, adapters.Action{
+		Type:        adapters.ActionSendMessage,
+		Channel:     ev.Channel,
+		SendMessage: &adapters.SendMessageAction{Text: reply.Text},
+	}); err != nil {
+		d.logger.Warn("command reply send failed",
+			"platform", ev.Platform, "channel", ev.Channel, "err", err)
 	}
 }
 

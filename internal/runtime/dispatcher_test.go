@@ -494,3 +494,121 @@ func TestDispatcher_NoPlatformsIdle(t *testing.T) {
 	}()
 	require.NoError(t, d.Run(ctx))
 }
+
+type fakeCommandRouter struct {
+	mu      sync.Mutex
+	calls   []runtime.CommandInvocation
+	reply   runtime.CommandReply
+	handled bool
+}
+
+func (f *fakeCommandRouter) Route(_ context.Context, inv runtime.CommandInvocation) (runtime.CommandReply, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, inv)
+	return f.reply, f.handled
+}
+
+func (f *fakeCommandRouter) Calls() []runtime.CommandInvocation {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]runtime.CommandInvocation, len(f.calls))
+	copy(out, f.calls)
+	return out
+}
+
+func runDispatcherWithCommands(t *testing.T, plat *mock.Mock, router runtime.CommandRouter) (*runtime.Dispatcher, func()) {
+	t.Helper()
+	d := runtime.New(runtime.Config{
+		TenantID:  "test",
+		Platforms: []adapters.Platform{plat},
+		Commands:  router,
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = d.Run(ctx); close(done) }()
+	return d, func() {
+		cancel()
+		require.NoError(t, plat.Disconnect(context.Background()))
+		<-done
+	}
+}
+
+func emitMessage(plat *mock.Mock, content string) {
+	plat.EmitEvent(adapters.Event{
+		ID:         adapters.NewEventID(),
+		Type:       adapters.EventMessageCreated,
+		Platform:   "test-platform",
+		Channel:    "engelswtf",
+		OccurredAt: time.Now(),
+		Message: &adapters.MessageEvent{
+			ID:       "irc-msg",
+			UserID:   "user-7",
+			Username: "bob",
+			Content:  content,
+		},
+	})
+}
+
+func TestDispatcher_CommandReplySent(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("test-platform")
+	require.NoError(t, plat.Connect(context.Background()))
+	router := &fakeCommandRouter{reply: runtime.CommandReply{Text: "@bob you have 5 pity points"}, handled: true}
+	_, stop := runDispatcherWithCommands(t, plat, router)
+	defer stop()
+
+	emitMessage(plat, "!pity")
+
+	require.Eventually(t, func() bool {
+		return len(plat.Actions()) == 1
+	}, time.Second, 5*time.Millisecond)
+
+	act := plat.Actions()[0]
+	assert.Equal(t, adapters.ActionSendMessage, act.Type)
+	assert.Equal(t, "engelswtf", act.Channel)
+	require.NotNil(t, act.SendMessage)
+	assert.Equal(t, "@bob you have 5 pity points", act.SendMessage.Text)
+
+	calls := router.Calls()
+	require.Len(t, calls, 1)
+	assert.Equal(t, "!pity", calls[0].Text)
+	assert.Equal(t, "user-7", calls[0].UserID)
+	assert.Equal(t, "bob", calls[0].Username)
+	assert.Equal(t, "engelswtf", calls[0].Channel)
+}
+
+func TestDispatcher_NonCommandSendsNothing(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("test-platform")
+	require.NoError(t, plat.Connect(context.Background()))
+	router := &fakeCommandRouter{handled: false}
+	_, stop := runDispatcherWithCommands(t, plat, router)
+	defer stop()
+
+	emitMessage(plat, "just a normal chat message")
+
+	require.Eventually(t, func() bool {
+		return len(router.Calls()) == 1
+	}, time.Second, 5*time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
+	assert.Empty(t, plat.Actions(), "non-command must not trigger a send")
+}
+
+func TestDispatcher_HandledEmptyReplySendsNothing(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("test-platform")
+	require.NoError(t, plat.Connect(context.Background()))
+	router := &fakeCommandRouter{reply: runtime.CommandReply{Text: ""}, handled: true}
+	_, stop := runDispatcherWithCommands(t, plat, router)
+	defer stop()
+
+	emitMessage(plat, "!quiet")
+
+	require.Eventually(t, func() bool {
+		return len(router.Calls()) == 1
+	}, time.Second, 5*time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
+	assert.Empty(t, plat.Actions(), "empty reply must not trigger a send")
+}

@@ -28,6 +28,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
@@ -155,6 +156,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, logger)
+
 	dispatcher := runtime.New(runtime.Config{
 		TenantID:         defaultTenantID,
 		Platforms:        platforms,
@@ -162,6 +165,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		PointsPerMessage: pitySystem.Config().PointsPerMessage,
 		Streak:           streakTickAdapter{sys: streakSystem},
 		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
+		Commands:         cmdRouter,
 		Logger:           logger,
 	})
 	go func() {
@@ -361,6 +365,66 @@ func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, vi
 type dispatcherStatsAdapter struct{ d *runtime.Dispatcher }
 
 func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
+
+// buildCommandRouter assembles the chat-command engine with the built-in
+// !pity, !streak and !commands commands wired to the live feature systems,
+// and returns it as a runtime.CommandRouter. Registration failures are
+// fatal-free: they are logged and the command is skipped, so a wiring bug
+// degrades to "command missing" rather than crashing the daemon.
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, logger *slog.Logger) runtime.CommandRouter {
+	engine := commands.New(commands.Config{Logger: logger})
+	register := func(c commands.Command) {
+		if err := engine.Register(c); err != nil {
+			logger.Warn("command registration failed", "command", c.Name, "err", err)
+		}
+	}
+	register(commands.NewPityCommand(tenantID, pityQuerier{sys: pity}))
+	register(commands.NewStreakCommand(tenantID, streakQuerier{sys: streak}))
+	register(commands.NewHelpCommand(engine))
+	return commandRouterAdapter{engine: engine}
+}
+
+// commandRouterAdapter maps the commands.Engine onto runtime.CommandRouter,
+// keeping the runtime package free of any commands import.
+type commandRouterAdapter struct{ engine *commands.Engine }
+
+func (a commandRouterAdapter) Route(ctx context.Context, inv runtime.CommandInvocation) (runtime.CommandReply, bool) {
+	reply, handled := a.engine.Handle(ctx, commands.Message{
+		Platform: inv.Platform,
+		Channel:  inv.Channel,
+		UserID:   inv.UserID,
+		Username: inv.Username,
+		Text:     inv.Text,
+	})
+	return runtime.CommandReply{Text: reply.Text}, handled
+}
+
+// pityQuerier maps pity.System onto commands.PityQuerier (translating the
+// concrete pity.Status into the decoupled commands.PityStatus).
+type pityQuerier struct{ sys *pity.System }
+
+func (q pityQuerier) Status(tenantID, channel, viewerID string) commands.PityStatus {
+	s := q.sys.Status(tenantID, channel, viewerID)
+	return commands.PityStatus{
+		Points:          s.Points,
+		SoftPityHit:     s.SoftPityHit,
+		NearGuaranteed:  s.NearGuaranteed,
+		EffectiveChance: s.EffectiveChance,
+	}
+}
+
+// streakQuerier maps streak.System onto commands.StreakQuerier.
+type streakQuerier struct{ sys *streak.System }
+
+func (q streakQuerier) Status(tenantID, channel, viewerID string) commands.StreakStatus {
+	s := q.sys.Status(tenantID, channel, viewerID)
+	return commands.StreakStatus{
+		DaysCurrent:      s.DaysCurrent,
+		DaysLongest:      s.DaysLongest,
+		FreezesAvailable: s.FreezesAvailable,
+		NextMilestone:    s.NextMilestone,
+	}
+}
 
 // startPlatforms inspects environment variables and starts every platform
 // adapter that is enabled. Returns the connected platforms, the Twitch
