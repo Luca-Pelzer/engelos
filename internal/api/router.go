@@ -19,6 +19,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests"
 )
 
 // Login rate-limit budget: ~1 attempt/sec sustained per client IP with a small
@@ -128,6 +129,11 @@ type Deps struct {
 	// overrides (e.g. the points "economy" toggle) under /api/v1/features/*.
 	// Nil makes those endpoints return 501 (feature off).
 	FeatureStore featureflags.Store
+
+	// SongRequestStore, when non-nil, exposes per-channel song-request config
+	// (provider, playlist, max-duration) under /api/v1/songrequests. Nil makes
+	// those endpoints return 501 (feature off).
+	SongRequestStore songrequests.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -154,6 +160,7 @@ func NewRouter(deps Deps) chi.Router {
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
+	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -263,6 +270,14 @@ func NewRouter(deps Deps) chi.Router {
 			}
 			r.Get("/", featuresH.List)
 			r.Put("/{feature}", featuresH.Set)
+		})
+
+		r.Route("/songrequests", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", songRequestsH.Get)
+			r.Put("/", songRequestsH.Set)
 		})
 	})
 
