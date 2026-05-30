@@ -624,6 +624,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewAddEventCommand(liveopsAdminStore))
 	register(commands.NewDelEventCommand(liveopsAdminStore))
 
+	profileProvider := userProfileProvider{adapter: twitchAdapter}
+	register(commands.NewAccountAgeCommand(profileProvider))
+	register(commands.NewShoutoutCommand(profileProvider, streamProvider))
+
 	register(commands.NewEightBallCommand())
 	register(commands.NewLurkCommand())
 	register(commands.NewUnlurkCommand())
@@ -1014,6 +1018,26 @@ var errNoTwitchAdapter = errors.New("uptime: twitch adapter not configured")
 // commands.UptimeProvider, keeping internal/commands free of any twitch
 // import. A nil adapter (Twitch not configured) yields an error so the
 // command replies "couldn't check uptime" rather than dereferencing nil.
+// userProfileProvider adapts the Twitch adapter's UserProfile lookup to the
+// commands.UserProfileProvider interface, translating the twitch profile type
+// into the decoupled commands type.
+type userProfileProvider struct{ adapter *twitch.Adapter }
+
+func (p userProfileProvider) UserProfile(ctx context.Context, login string) (commands.UserProfile, error) {
+	if p.adapter == nil {
+		return commands.UserProfile{}, errNoTwitchAdapter
+	}
+	prof, err := p.adapter.UserProfile(ctx, login)
+	if err != nil {
+		return commands.UserProfile{}, err
+	}
+	return commands.UserProfile{
+		Login:       prof.Login,
+		DisplayName: prof.DisplayName,
+		CreatedAt:   prof.CreatedAt,
+	}, nil
+}
+
 type uptimeProvider struct{ adapter *twitch.Adapter }
 
 func (p uptimeProvider) Uptime(ctx context.Context, channel string) (time.Time, bool, error) {
