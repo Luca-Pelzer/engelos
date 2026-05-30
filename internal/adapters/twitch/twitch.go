@@ -105,6 +105,9 @@ type helixClient interface {
 	DeleteCustomReward(*helix.DeleteCustomRewardsParams) (*helix.DeleteCustomRewardsResponse, error)
 	UpdateChannelCustomRewardsRedemptionStatus(*helix.UpdateChannelCustomRewardsRedemptionStatusParams) (*helix.ChannelCustomRewardsRedemptionResponse, error)
 	CreateEventSubSubscription(*helix.EventSubSubscription) (*helix.EventSubSubscriptionsResponse, error)
+	GetPredictions(*helix.PredictionsParams) (*helix.PredictionsResponse, error)
+	CreatePrediction(*helix.CreatePredictionParams) (*helix.PredictionsResponse, error)
+	EndPrediction(*helix.EndPredictionParams) (*helix.PredictionsResponse, error)
 	SetUserAccessToken(token string)
 }
 
@@ -817,6 +820,15 @@ func (w *helixWrapper) UpdateChannelCustomRewardsRedemptionStatus(p *helix.Updat
 }
 func (w *helixWrapper) CreateEventSubSubscription(p *helix.EventSubSubscription) (*helix.EventSubSubscriptionsResponse, error) {
 	return w.c.CreateEventSubSubscription(p)
+}
+func (w *helixWrapper) GetPredictions(p *helix.PredictionsParams) (*helix.PredictionsResponse, error) {
+	return w.c.GetPredictions(p)
+}
+func (w *helixWrapper) CreatePrediction(p *helix.CreatePredictionParams) (*helix.PredictionsResponse, error) {
+	return w.c.CreatePrediction(p)
+}
+func (w *helixWrapper) EndPrediction(p *helix.EndPredictionParams) (*helix.PredictionsResponse, error) {
+	return w.c.EndPrediction(p)
 }
 func (w *helixWrapper) SetUserAccessToken(token string) { w.c.SetUserAccessToken(token) }
 

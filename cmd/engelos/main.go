@@ -325,7 +325,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	economy.withResolver(userProfileProvider{adapter: twitchAdapter}.UserProfile)
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -514,6 +514,8 @@ var defaultTwitchScopes = []string{
 	"channel:read:redemptions",       // observe channel-point redemptions
 	"channel:manage:redemptions",     // create rewards + fulfill/refund redemptions
 	"moderator:read:followers",       // read follower dates for !followage
+	"channel:read:predictions",       // read the active prediction (id + outcomes)
+	"channel:manage:predictions",     // create / lock / resolve / cancel predictions
 }
 
 // twitchOAuthScopes returns the scopes to request, allowing an operator to
@@ -1037,7 +1039,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -1085,6 +1087,13 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 
 	if featureToggle != nil {
 		register(commands.NewEconomyToggleCommand(featureToggle))
+	}
+
+	if predictions != nil {
+		register(commands.NewPredictionCommand(predictions))
+		register(commands.NewLockPredictionCommand(predictions))
+		register(commands.NewResolvePredictionCommand(predictions))
+		register(commands.NewCancelPredictionCommand(predictions))
 	}
 
 	register(commands.NewPointsCommand(loyaltyProvider))
@@ -1513,6 +1522,111 @@ var errNoTwitchAdapter = errors.New("uptime: twitch adapter not configured")
 // userProfileProvider adapts the Twitch adapter's UserProfile lookup to the
 // commands.UserProfileProvider interface, translating the twitch profile type
 // into the decoupled commands type.
+// predictionController maps the Twitch adapter's prediction methods onto the
+// decoupled commands.PredictionController, translating affiliate/no-active
+// sentinels and Helix 403s onto the command-facing PredictionOutcome enum so
+// internal/commands never imports the twitch/helix packages. It is nil-safe: a
+// missing adapter yields PredictionUnavailable rather than a nil dereference.
+type predictionController struct {
+	adapter *twitch.Adapter
+	logger  *slog.Logger
+}
+
+// Create gates on affiliate/partner status (predictions are affiliate-only)
+// before opening one, so a non-affiliate gets a clear reply instead of an
+// opaque Helix 403.
+func (p predictionController) Create(ctx context.Context, channel, title string, outcomes []string, windowSeconds int) (commands.PredictionInfo, commands.PredictionOutcome) {
+	if p.adapter == nil {
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+	bt, err := p.adapter.BroadcasterType(ctx, channel)
+	if err != nil {
+		p.logger.WarnContext(ctx, "prediction: broadcaster type lookup failed", "channel", channel, "err", err)
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+	if bt != "affiliate" && bt != "partner" {
+		return commands.PredictionInfo{}, commands.PredictionNotAffiliate
+	}
+	// Reject a second prediction up front: Twitch returns an opaque 400 when one
+	// is already ACTIVE/LOCKED, so probe first to give the mod a clear reply.
+	if _, err := p.adapter.ActivePrediction(ctx, channel); err == nil {
+		return commands.PredictionInfo{}, commands.PredictionActiveExists
+	} else if !errors.Is(err, twitch.ErrNoActivePrediction) {
+		p.logger.WarnContext(ctx, "prediction: active-check failed", "channel", channel, "err", err)
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+	view, err := p.adapter.CreatePrediction(ctx, channel, title, outcomes, windowSeconds)
+	if err != nil {
+		p.logger.WarnContext(ctx, "prediction: create failed", "channel", channel, "err", err)
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+	return toPredictionInfo(view), commands.PredictionOK
+}
+
+func (p predictionController) Lock(ctx context.Context, channel string) (commands.PredictionInfo, commands.PredictionOutcome) {
+	return p.endVerb(ctx, channel, p.adapterLock)
+}
+
+func (p predictionController) Cancel(ctx context.Context, channel string) (commands.PredictionInfo, commands.PredictionOutcome) {
+	return p.endVerb(ctx, channel, p.adapterCancel)
+}
+
+// Resolve maps the not-found-outcome sentinel onto PredictionInvalid so the
+// command can tell the mod to check the spelling.
+func (p predictionController) Resolve(ctx context.Context, channel, winningOutcome string) (commands.PredictionInfo, commands.PredictionOutcome) {
+	if p.adapter == nil {
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+	view, err := p.adapter.ResolvePrediction(ctx, channel, winningOutcome)
+	switch {
+	case err == nil:
+		return toPredictionInfo(view), commands.PredictionOK
+	case errors.Is(err, twitch.ErrNoActivePrediction):
+		return commands.PredictionInfo{}, commands.PredictionNone
+	case errors.Is(err, twitch.ErrOutcomeNotFound):
+		return commands.PredictionInfo{}, commands.PredictionInvalid
+	default:
+		p.logger.WarnContext(ctx, "prediction: resolve failed", "channel", channel, "err", err)
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+}
+
+func (p predictionController) adapterLock(ctx context.Context, channel string) (twitch.PredictionView, error) {
+	return p.adapter.LockPrediction(ctx, channel)
+}
+
+func (p predictionController) adapterCancel(ctx context.Context, channel string) (twitch.PredictionView, error) {
+	return p.adapter.CancelPrediction(ctx, channel)
+}
+
+// endVerb is the shared Lock/Cancel path: both find the active prediction and
+// PATCH it, so they share identical sentinel translation.
+func (p predictionController) endVerb(ctx context.Context, channel string, fn func(context.Context, string) (twitch.PredictionView, error)) (commands.PredictionInfo, commands.PredictionOutcome) {
+	if p.adapter == nil {
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+	view, err := fn(ctx, channel)
+	switch {
+	case err == nil:
+		return toPredictionInfo(view), commands.PredictionOK
+	case errors.Is(err, twitch.ErrNoActivePrediction):
+		return commands.PredictionInfo{}, commands.PredictionNone
+	default:
+		p.logger.WarnContext(ctx, "prediction: end failed", "channel", channel, "err", err)
+		return commands.PredictionInfo{}, commands.PredictionUnavailable
+	}
+}
+
+// toPredictionInfo flattens the adapter's PredictionView (outcome IDs + titles)
+// into the title-only commands.PredictionInfo the chat replies render.
+func toPredictionInfo(v twitch.PredictionView) commands.PredictionInfo {
+	titles := make([]string, 0, len(v.Outcomes))
+	for _, o := range v.Outcomes {
+		titles = append(titles, o.Title)
+	}
+	return commands.PredictionInfo{Title: v.Title, Outcomes: titles, Status: v.Status}
+}
+
 type userProfileProvider struct{ adapter *twitch.Adapter }
 
 func (p userProfileProvider) UserProfile(ctx context.Context, login string) (commands.UserProfile, error) {

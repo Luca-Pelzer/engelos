@@ -153,6 +153,67 @@ type fakeHelix struct {
 	subResp       *helix.EventSubSubscriptionsResponse
 	subErr        error
 	lastSubParams *helix.EventSubSubscription
+
+	getPredictionsResp  *helix.PredictionsResponse
+	getPredictionsErr   error
+	lastGetPredictions  *helix.PredictionsParams
+	createPredictionRsp *helix.PredictionsResponse
+	createPredictionErr error
+	lastCreatePred      *helix.CreatePredictionParams
+	endPredictionResp   *helix.PredictionsResponse
+	endPredictionErr    error
+	lastEndPred         *helix.EndPredictionParams
+}
+
+func (h *fakeHelix) GetPredictions(p *helix.PredictionsParams) (*helix.PredictionsResponse, error) {
+	h.mu.Lock()
+	h.lastGetPredictions = p
+	h.mu.Unlock()
+	if h.getPredictionsErr != nil {
+		return nil, h.getPredictionsErr
+	}
+	if h.getPredictionsResp != nil {
+		return h.getPredictionsResp, nil
+	}
+	return &helix.PredictionsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) CreatePrediction(p *helix.CreatePredictionParams) (*helix.PredictionsResponse, error) {
+	h.mu.Lock()
+	h.lastCreatePred = p
+	h.mu.Unlock()
+	if h.createPredictionErr != nil {
+		return nil, h.createPredictionErr
+	}
+	if h.createPredictionRsp != nil {
+		return h.createPredictionRsp, nil
+	}
+	return &helix.PredictionsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) EndPrediction(p *helix.EndPredictionParams) (*helix.PredictionsResponse, error) {
+	h.mu.Lock()
+	h.lastEndPred = p
+	h.mu.Unlock()
+	if h.endPredictionErr != nil {
+		return nil, h.endPredictionErr
+	}
+	if h.endPredictionResp != nil {
+		return h.endPredictionResp, nil
+	}
+	return &helix.PredictionsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) snapshotCreatePrediction() *helix.CreatePredictionParams {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastCreatePred
+}
+
+func (h *fakeHelix) snapshotEndPrediction() *helix.EndPredictionParams {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastEndPred
 }
 
 func (h *fakeHelix) CreateEventSubSubscription(p *helix.EventSubSubscription) (*helix.EventSubSubscriptionsResponse, error) {
