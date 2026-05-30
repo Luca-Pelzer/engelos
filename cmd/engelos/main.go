@@ -292,16 +292,17 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			Version: Version,
 			Phase:   "1B",
 		},
-		WS:            hub,
-		Web:           webHandler,
-		Overlay:       overlay.Handler(logger),
-		AuthStore:     authStore,
-		TenantID:      defaultTenantID,
-		CookieSecure:  false,
-		Pity:          pitySystem,
-		Streak:        streakSystem,
-		StatsProvider: dispatcherStatsAdapter{d: dispatcher},
-		OAuthTwitch:   oauthTwitch,
+		AllowedOrigins: allowedOrigins,
+		WS:             hub,
+		Web:            webHandler,
+		Overlay:        overlay.Handler(logger),
+		AuthStore:      authStore,
+		TenantID:       defaultTenantID,
+		CookieSecure:   false,
+		Pity:           pitySystem,
+		Streak:         streakSystem,
+		StatsProvider:  dispatcherStatsAdapter{d: dispatcher},
+		OAuthTwitch:    oauthTwitch,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")
@@ -309,9 +310,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		addr = "127.0.0.1:8080"
 	}
 	srv := server.New(server.Config{
-		Addr:     addr,
-		AllowLAN: envBool("ENGELOS_ALLOW_LAN"),
-		Logger:   logger,
+		Addr:           addr,
+		AllowLAN:       allowLAN,
+		AllowedOrigins: allowedOrigins,
+		Logger:         logger,
 	}, router)
 
 	return srv.Run(ctx)

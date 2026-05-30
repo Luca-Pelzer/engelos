@@ -127,6 +127,26 @@ func TestHub_HubShutdownClosesClients(t *testing.T) {
 	}, 2*time.Second, 50*time.Millisecond)
 }
 
+func TestHub_RejectsDisallowedOrigin(t *testing.T) {
+	t.Parallel()
+	hub := ws.NewHub(nil, ws.WithAcceptOptions(&websocket.AcceptOptions{
+		OriginPatterns: []string{"allowed.example"},
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
+	ts := httptest.NewServer(hub)
+	defer ts.Close()
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dialCancel()
+
+	_, _, err := websocket.Dial(dialCtx, wsURL(ts.URL), &websocket.DialOptions{
+		HTTPHeader: map[string][]string{"Origin": {"https://evil.example"}},
+	})
+	assert.Error(t, err, "handshake from a disallowed origin must be rejected")
+}
+
 func TestHub_BroadcastBeforeAnyClients(t *testing.T) {
 	t.Parallel()
 	hub := ws.NewHub(nil)
