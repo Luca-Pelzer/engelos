@@ -296,7 +296,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	economy.withResolver(userProfileProvider{adapter: twitchAdapter}.UserProfile)
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -767,6 +767,30 @@ func (e *economyAdapter) Settle(ctx context.Context, channel, winnerID, loserID 
 	return won.Balance, commands.LoyaltyOK
 }
 
+// Collect implements commands.HeistBank: it spends a player's stake as they
+// join a heist, reporting false (and taking nothing) when they cannot afford it.
+func (e *economyAdapter) Collect(ctx context.Context, channel, viewerID string, amount int64) bool {
+	if e == nil || e.store == nil {
+		return false
+	}
+	if _, err := e.store.Spend(ctx, e.tenantID, channel, viewerID, amount); err != nil {
+		return false
+	}
+	return true
+}
+
+// Payout implements commands.HeistBank: it credits a surviving heist player.
+// The username is left empty because the account already exists (the player was
+// Collected from), so Earn only adjusts the balance.
+func (e *economyAdapter) Payout(ctx context.Context, channel, viewerID string, amount int64) {
+	if e == nil || e.store == nil || amount <= 0 {
+		return
+	}
+	if _, err := e.store.Earn(ctx, e.tenantID, channel, viewerID, viewerID, amount); err != nil {
+		e.logger.Warn("heist payout failed", "channel", channel, "viewer", viewerID, "err", err)
+	}
+}
+
 // moderationAdapter bridges the runtime.Moderator interface (positional, to
 // keep the runtime decoupled) to the moderation.Service. A nil svc yields a
 // no-op that always passes, so AutoMod can be absent without a nil-check at the
@@ -811,7 +835,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -871,6 +895,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 
 	for _, c := range commands.NewGiveawayCommands() {
 		register(c)
+	}
+
+	if hbank, ok := loyaltyProvider.(commands.HeistBank); ok && loyaltyProvider != nil && heistSender != nil {
+		register(commands.NewHeistGame(hbank, heistSender))
 	}
 
 	register(commands.NewEightBallCommand())
