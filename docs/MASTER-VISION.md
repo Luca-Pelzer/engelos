@@ -546,9 +546,48 @@ User-Flow im Dashboard:
 - **Competitor-Status:** Loyalty-Tracking ist überall, aber Casino-Style VIP-Concierge-Behandlung mit personalisierter Memory ist novel.
 - **Lock-in-Hypothese:** VIPs mit 2+ Jahren History wechseln ungern (zu testen Phase 3-4)
 
+### TIER D — Platform-Layer (Trigger-Infrastruktur + Ökosystem)
+
+> Diese Features wurden nach der initialen 12er-Liste ergänzt (Brainstorming 2026-05). Sie bilden zusammen eine **Plattform-Schicht**: Channel-Points ist der *Trigger*, Marketplace/AI-Voice/Sticker sind die *getriggerten Aktionen*. Strategisch sind sie wichtiger als einzelne Gimmick-Features, weil sie eine offene Erweiterbarkeit schaffen, die kein Konkurrent hat.
+
+#### 13. **Twitch Channel-Points-Integration (Trigger-Engine)** (OSS Core) 🔥🔥🔥
+- Twitch hat eine **native Punkte-Währung** (Kanalpunkte/Channel Points) die jeder Viewer beim Zuschauen sammelt — viel besser akzeptiert und interaktiver als bot-eigene "Loyalty-Points", weil direkt im Twitch-UI unter dem Stream sichtbar.
+- engelOS erstellt/verwaltet **Custom Rewards** und reagiert live auf Einlösungen (Redemptions): `Reward eingelöst → Bot-Aktion auslösen` (Command ausführen, Counter erhöhen, Chat-/Discord-Post, Overlay-Animation, später: Marketplace-Skript ausführen).
+- **Refund-Loop:** Bei ungültiger Eingabe automatisch `CANCELED` → Viewer kriegt Punkte zurück. Bei Erfolg `FULFILLED`.
+- **Konfiguration über Dashboard, NICHT über Chat** — Reward↔Aktion-Mapping wird im Web-UI gebunden (Datums-/Dropdown-Auswahl statt Chat-Tipperei).
+- **Competitor-Status:** Firebot (OSS) hat das am besten gelöst (Reward → Effect-List). StreamElements/Nightbot/Streamlabs bieten Channel-Point-Trigger nur rudimentär. Unser Vorteil: Channel-Points als *universelle Trigger-Schicht* für ALLE Bot-Features + den Marketplace.
+- **Effort:** ~3-4 Wochen Solo-Dev (EventSub-WebSocket-Client + Reward-CRUD + Trigger-Mapping-Store + Dashboard-UI).
+- **Tech:** `nicklaw5/helix/v2` (hat bereits alle Reward-CRUD- + Redemption-Methoden) + selbstgebauter EventSub-WebSocket-Client gegen `wss://eventsub.wss.twitch.tv/ws` (via `coder/websocket`, schon im Projekt). Scope `channel:manage:redemptions`, Broadcaster-User-Token.
+- **🔴 Harte Einschränkung:** Custom Rewards erfordern **Twitch Affiliate oder Partner**. Non-Affiliates bekommen 403 → Feature muss hinter einem `broadcaster_type`-Check gegated werden mit klarer Fehlermeldung.
+- **🔴 Plattform-Constraint:** Der Bot kann nur Rewards `FULFILLED`/`CANCELED` setzen, die seine **eigene OAuth-App erstellt** hat (`manageable`-Flag). Fremde Rewards kann er nur *beobachten*, nicht refunden.
+
+#### 14. **Addon-/Skript-Marketplace** (OSS Core + kuratierter Store) 🔥🔥🔥💎
+- Community-Skripte/Addons die auf Trigger (Channel-Points, Events, Commands) reagieren — z.B. **Trolling-Effekte**: Bildschirm kurz schwarz, Spiel minimieren, Maus zittern, Sound abspielen, Filter über Webcam, „Fake-Bluescreen", etc.
+- **Kuratierter Marketplace:** Skripte werden einmal sauber gebaut, von einem **Review-Team / automatisiert analysiert** (kein Schadcode, keine Viren, vernünftige Qualität), **signiert**, und sind dann 1-Klick installierbar.
+- **🔴🔒 SICHERHEIT = oberste Priorität (größte Angriffsfläche im ganzen Produkt):**
+  - **Capability-/Permission-Sandbox:** Jedes Addon deklariert explizit was es darf (z.B. „darf Chat schreiben", „darf OS-Fenster steuern", „darf Datei X lesen"). Der User bestätigt diese Permissions bei Installation (wie Android-App-Permissions).
+  - **Code-Signing + Review-Gate:** Nur signierte, vom Team geprüfte Addons im offiziellen Store. Unsignierte nur mit lautem „auf eigene Gefahr"-Warnhinweis.
+  - **Isolation:** Addons laufen NICHT mit den Bot-Rechten/Tokens. Kein Addon darf an OAuth-Tokens, Secrets oder die DB direkt. Sie kommunizieren über eine schmale, abgesicherte API (gleiche Decoupling-Philosophie wie unsere internen Adapter).
+  - **OS-Steuerung (Bildschirm schwarz, Spiel minimieren):** Diese „krassen" Effekte brauchen OS-Level-Zugriff auf der Streamer-Maschine → höchste Risikoklasse. Müssen über einen separaten, explizit autorisierten **lokalen Agent/Companion** mit eng begrenzten, deklarierten Fähigkeiten laufen — niemals beliebiger Skript-Code mit Vollzugriff.
+- **Monetarisierung-Potenzial:** Kostenlose Community-Addons + optionale Premium-Addons (Revenue-Share mit Autoren) = Plattform-Ökonomie wie bei OBS-Plugins/VST.
+- **Competitor-Status:** Firebot hat „Effects" + Setups-Import, aber keinen kuratierten Security-vetteten Marketplace. Streamer.bot hat mächtige Aktionen aber keine Sandbox/Review. **Ein signierter, sandboxed Addon-Store ist novel** — und der eigentliche Moat (Switch-Cost + Netzwerkeffekt Autoren↔User).
+- **Effort:** Sehr hoch (~10-16 Wochen über mehrere Phasen). Permission-Modell + Sandbox + Signing-Pipeline + Store-Backend + Review-Workflow.
+- **Tech:** Addon-Manifest (deklarierte Permissions), WASM- oder Prozess-Isolation für untrusted Code, Signing (minisign/cosign-Stil), Store-Backend, lokaler Companion-Agent für OS-Effekte.
+
+#### 15. **AI-Voice / TTS-Persönlichkeiten (ElevenLabs-nativ)** (Cloud + BYOK) 🔥🔥
+- Viele Streamer bauen sich eigene KI-Persönlichkeiten (Donation-Vorleser, Chat-Reaktionen). Aktuell hand-gefrickelt mit viel Aufwand. engelOS macht das **nativ + ohne Setup-Hölle**.
+- **Funktionen:** Donations/Bits/Subs vorlesen, auf @bot-Mentions reagieren, Channel-Point-Reward „lass die KI etwas sagen", Discord-Voice-Ansagen.
+- **Stimmen:** Auswahl aus ElevenLabs-Stimmen ODER eigene **Voice-Clone** trainieren (die eigene Stimme oder eine Wunschstimme). BYOK = User hinterlegt eigenen ElevenLabs-Key, Cloud-Tier = managed.
+- **Verhältnis zu #5 (AI Co-Host):** #5 ist der „spricht-wie-du Vollblut-Co-Host mit <300ms Latenz". #15 ist die breitere, einfacher zugängliche TTS-Persönlichkeits-Schicht (Vorlesen + simple Reaktionen) — #15 ist die Einstiegsstufe, #5 die Premium-Ausbaustufe. Teilen sich die Audio-/ElevenLabs-Infrastruktur.
+- **Competitor-Status:** Streamlabs Cloudbot hat TTS, aber generische Stimmen ohne Persönlichkeit/Clone. Kein Bot bietet einfaches natives Voice-Clone + Persönlichkeits-Setup.
+- **Effort:** ~4-5 Wochen Solo-Dev (ElevenLabs-Integration + Voice-Management-UI + Audio-Routing nach OBS).
+- **Tech:** ElevenLabs API/WebSocket, Audio-Output via Virtual-Audio-Cable/WebRTC nach OBS, BYOK-Key-Storage (verschlüsselt).
+
 ### OVERLAY-SYSTEM (eigene Feature-Klasse)
 
 OBS Browser-Sources für Stream-Overlays. Jedes Overlay ist eine eigene URL aus dem lokalen oder Cloud-Web-Server, die der User in OBS reinzieht.
+
+**Architektur-Prinzip:** Der Bot **hostet die Overlay-HTML selbst** — lokal (`http://localhost:8080/overlay/...`) wenn self-hosted, oder über den Cloud-Web-Server. Der User zieht die URL als OBS-Browser-Source rein und stellt alles im Dashboard ein. Keine externe Abhängigkeit, keine fremden Server. (Bereits live: events/alerts/leaderboard.)
 
 **Overlay-Library (Phase 1-2):**
 - 🎵 **Spotify Now-Playing** (Track + Cover + Progress-Bar, customizable Theme)
@@ -558,6 +597,11 @@ OBS Browser-Sources für Stream-Overlays. Jedes Overlay ist eine eigene URL aus 
 - 📊 **Live-Poll-Overlay** (Twitch-Polls schöner dargestellt)
 - 🔥 **Streak-Counter** (Win-Streak, Death-Counter, manual increments)
 - 📅 **Schedule / Next-Stream-Overlay**
+
+**Overlay-Library (erweitert — Brainstorming 2026-05):**
+- 📰 **AI-News-Overlay** — kuratierte/KI-zusammengefasste News-Einblendung im Stream (Idee aus Lucas früherem „KI-News-Ding"). Konfigurierbare Themen/Quellen, Auto-Refresh, schönes Theme. Lokal oder Cloud gehostet.
+- ✨ **Sticker-Unlock-Overlay** — Viewer schalten per Channel-Points (Feature #13) **Sticker frei**, die mit einer **coolen Animation** über den Stream laufen (Gambling-Site-/Lootbox-Ästhetik: Rarity-Tiers Common→Legendary, Sound, Partikel). Hoher Hype-/Interaktions-Faktor, perfekter Channel-Points-Showcase.
+- 🎰 **Reward-Reveal-Animationen** — generische „Channel-Point eingelöst"-Effekte (Slot-Machine-Reveal, Konfetti) als wiederverwendbare Overlay-Bausteine für Marketplace-Addons.
 - 💝 **Top-Supporter-Leaderboard**
 - 🎬 **Recent-Clip-Auto-Replay** ("Replay of the day")
 - 🎮 **Game-Stats-Overlay** (Phase 2+, per Integration: Apex K/D, LoL Rank, etc.)
@@ -1038,10 +1082,13 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 - [ ] **Apple Silicon + Intel Universal Binary** für macOS
 
 #### Feature-Erweiterung
+- [ ] **Channel-Points-Trigger-Engine (#13)** (EventSub-WS + Reward-CRUD + Trigger-Mapping + Dashboard) — ~3-4 Wochen — **Foundation für Marketplace, Sticker, AI-Voice-Trigger; nach hinten priorisierbar aber strategisch früh wertvoll**
+- [ ] **AI-Voice/TTS-Persönlichkeiten (#15)** (ElevenLabs nativ, BYOK + Voice-Clone) — ~4-5 Wochen
 - [ ] **Kick-Adapter** (custom WebSocket) — ~3 Wochen
 - [ ] **YouTube-Live-Adapter** (google-api-go-client) — ~3 Wochen
 - [ ] **Spotify-Integration** (erste Plugin im Integration-Framework) — ~2 Wochen
 - [ ] **Overlay-System v1** (5 Overlays: Spotify, Alerts, Goal-Bar, Recent-Chat, Streak) — ~5 Wochen
+- [ ] **Overlay-System v2** (AI-News-Overlay + Sticker-Unlock-Animationen via Channel-Points) — ~4 Wochen
 - [ ] **VIP-Host-System** — ~4 Wochen
 - [ ] **Unified Chat** (Twitch + Discord + YouTube + Kick aggregiert) — ~6 Wochen
 
@@ -1079,7 +1126,11 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 - [ ] **Cross-Streamer Ban List** (erstes Network-Feature)
 - [ ] **Workflow-Engine** ("Zapier for Streaming")
 - [ ] **TikTok-Live-Integration** (early-mover wenn API stable)
-- [ ] **Plugin-Marketplace v1** (Community kann Integrations einreichen)
+- [ ] **Addon-/Skript-Marketplace (#14)** — kuratierter, signierter, sandboxed Store für Community-Addons (inkl. Trolling-Effekte: Bildschirm schwarz, Spiel minimieren, etc.). **Security-First: Permission-Sandbox + Code-Signing + Review-Team + lokaler Companion-Agent für OS-Effekte.** Über mehrere Phasen (~10-16 Wochen). DER eigentliche Moat (Autoren↔User-Netzwerkeffekt).
+  - Sub-Schritt 1 (Phase 3): Addon-Manifest + Permission-Modell + Sandbox-Runtime (WASM/Prozess-Isolation) + Signing-Pipeline
+  - Sub-Schritt 2 (Phase 3-4): Store-Backend + Review-Workflow + 1-Klick-Install
+  - Sub-Schritt 3 (Phase 4): Lokaler Companion-Agent für OS-Level-Effekte (höchste Risikoklasse, eng begrenzte Capabilities) + Premium-Addon-Revenue-Share
+- [ ] **Plugin-Marketplace v1** (Community kann Integrations einreichen) — geht im Addon-Marketplace #14 auf
 - [ ] **Analytics-Dashboard** (Daten-Lock-in)
 
 #### Growth-Acceleration
