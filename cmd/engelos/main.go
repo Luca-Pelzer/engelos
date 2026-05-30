@@ -46,6 +46,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/overlay"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
+	"github.com/Luca-Pelzer/engelos/internal/rewards"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
@@ -238,6 +239,19 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	logger.Info("loyalty store opened", "dsn", loyaltyDSN)
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown)
 
+	rewardsDSN := filepath.Join(dataDir, "rewards.db")
+	rewardsStore, err := rewards.OpenSQLiteStore(ctx, rewardsDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open rewards store %s: %w", rewardsDSN, err)
+	}
+	defer func() {
+		if cerr := rewardsStore.Close(); cerr != nil {
+			logger.Warn("rewards store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("rewards store opened", "dsn", rewardsDSN)
+	rewardCatalog := rewardCatalogAdapter{store: rewardsStore, tenantID: defaultTenantID, logger: logger}
+
 	automodEngine, err := automod.NewEngine(automod.DefaultConfig())
 	if err != nil {
 		return fmt.Errorf("init automod engine: %w", err)
@@ -296,7 +310,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	economy.withResolver(userProfileProvider{adapter: twitchAdapter}.UserProfile)
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -791,6 +805,106 @@ func (e *economyAdapter) Payout(ctx context.Context, channel, viewerID string, a
 	}
 }
 
+// Spend implements commands.RedeemBank: it deducts a reward's cost from the
+// viewer, mapping the loyalty store sentinels onto the command-facing enum.
+func (e *economyAdapter) Spend(ctx context.Context, channel, viewerID string, amount int64) commands.LoyaltyError {
+	if e == nil || e.store == nil {
+		return commands.LoyaltyUnavailable
+	}
+	_, err := e.store.Spend(ctx, e.tenantID, channel, viewerID, amount)
+	switch {
+	case err == nil:
+		return commands.LoyaltyOK
+	case errors.Is(err, loyalty.ErrInsufficient):
+		return commands.LoyaltyInsufficient
+	case errors.Is(err, loyalty.ErrNotFound):
+		return commands.LoyaltyNotFound
+	case errors.Is(err, loyalty.ErrInvalid):
+		return commands.LoyaltyInvalid
+	default:
+		return commands.LoyaltyUnavailable
+	}
+}
+
+// rewardCatalogAdapter maps the rewards SQLite store onto the decoupled
+// commands.RewardCatalog interface, translating the store's sentinel errors
+// into the command-facing RewardOutcome enum so the commands package never
+// imports internal/rewards.
+type rewardCatalogAdapter struct {
+	store    rewards.Store
+	tenantID string
+	logger   *slog.Logger
+}
+
+func (a rewardCatalogAdapter) Add(ctx context.Context, channel, name string, cost int64, description, createdBy string) commands.RewardOutcome {
+	if a.store == nil {
+		return commands.RewardUnavailable
+	}
+	_, err := a.store.Create(ctx, rewards.Reward{
+		TenantID: a.tenantID, Channel: channel, Name: name,
+		Cost: cost, Description: description, CreatedBy: createdBy,
+	})
+	return rewardOutcome(err)
+}
+
+func (a rewardCatalogAdapter) Remove(ctx context.Context, channel, name string) commands.RewardOutcome {
+	if a.store == nil {
+		return commands.RewardUnavailable
+	}
+	return rewardOutcome(a.store.Delete(ctx, a.tenantID, channel, name))
+}
+
+func (a rewardCatalogAdapter) Get(ctx context.Context, channel, name string) (commands.RewardItem, commands.RewardOutcome) {
+	if a.store == nil {
+		return commands.RewardItem{}, commands.RewardUnavailable
+	}
+	r, err := a.store.Get(ctx, a.tenantID, channel, name)
+	if out := rewardOutcome(err); out != commands.RewardOK {
+		return commands.RewardItem{}, out
+	}
+	return commands.RewardItem{Name: r.Name, Description: r.Description, Cost: r.Cost}, commands.RewardOK
+}
+
+func (a rewardCatalogAdapter) List(ctx context.Context, channel string) []commands.RewardItem {
+	if a.store == nil {
+		return nil
+	}
+	rs, err := a.store.List(ctx, a.tenantID, channel)
+	if err != nil {
+		return nil
+	}
+	out := make([]commands.RewardItem, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, commands.RewardItem{Name: r.Name, Description: r.Description, Cost: r.Cost})
+	}
+	return out
+}
+
+// rewardOutcome maps a rewards-store error onto the command-facing enum.
+func rewardOutcome(err error) commands.RewardOutcome {
+	switch {
+	case err == nil:
+		return commands.RewardOK
+	case errors.Is(err, rewards.ErrNotFound):
+		return commands.RewardNotFound
+	case errors.Is(err, rewards.ErrAlreadyExists):
+		return commands.RewardExists
+	case errors.Is(err, rewards.ErrInvalid):
+		return commands.RewardInvalid
+	default:
+		return commands.RewardUnavailable
+	}
+}
+
+// redeemSenderAdapter lets the shared platform sender (typed as a HeistSender at
+// the call site) also satisfy commands.RedeemSender; the two interfaces are
+// structurally identical, this just bridges the nominal type.
+type redeemSenderAdapter struct{ sender commands.HeistSender }
+
+func (a redeemSenderAdapter) Send(ctx context.Context, channel, message string) error {
+	return a.sender.Send(ctx, channel, message)
+}
+
 // moderationAdapter bridges the runtime.Moderator interface (positional, to
 // keep the runtime decoupled) to the moderation.Service. A nil svc yields a
 // no-op that always passes, so AutoMod can be absent without a nil-check at the
@@ -835,7 +949,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -899,6 +1013,18 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 
 	if hbank, ok := loyaltyProvider.(commands.HeistBank); ok && loyaltyProvider != nil && heistSender != nil {
 		register(commands.NewHeistGame(hbank, heistSender))
+	}
+
+	if rewardCatalog != nil {
+		register(commands.NewRewardCommand(rewardCatalog))
+		register(commands.NewRewardsCommand(rewardCatalog))
+		if redeemBank, ok := loyaltyProvider.(commands.RedeemBank); ok && loyaltyProvider != nil {
+			var redeemSender commands.RedeemSender
+			if heistSender != nil {
+				redeemSender = redeemSenderAdapter{sender: heistSender}
+			}
+			register(commands.NewRedeemCommand(rewardCatalog, redeemBank, redeemSender))
+		}
 	}
 
 	register(commands.NewEightBallCommand())
