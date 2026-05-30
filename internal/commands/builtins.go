@@ -657,6 +657,182 @@ func NewDeleteQuoteCommand(store QuoteStore) Command {
 	}
 }
 
+// defaultCounterCooldown throttles the channel-wide read-only !counter
+// command. 3s keeps chat tidy when several viewers ask back-to-back.
+const defaultCounterCooldown = 3 * time.Second
+
+// CounterStore is the narrow surface the counter built-ins need. An adapter
+// over [github.com/Luca-Pelzer/engelos/internal/counters.Store] is wired in
+// main; this interface lives HERE so internal/commands does NOT import
+// internal/counters (mirrors [QuoteStore] and [TimerStore]). main's adapter
+// chooses the tenant_id.
+type CounterStore interface {
+	// Value returns the current value and ok=false if the named counter
+	// does not exist.
+	Value(ctx context.Context, channel, name string) (value int64, ok bool)
+	// Add increments by delta (creating at 0 if absent) and returns the new value.
+	Add(ctx context.Context, channel, name string, delta int64) (int64, error)
+	// Set assigns an absolute value (creating if absent) and returns it.
+	Set(ctx context.Context, channel, name string, value int64) (int64, error)
+}
+
+// parseCounterAmount parses an optional integer amount token, defaulting to
+// def when absent. ok=false signals an unparseable token (usage reply).
+func parseCounterAmount(args []string, def int64) (amount int64, ok bool) {
+	if len(args) < 2 {
+		return def, true
+	}
+	v, err := strconv.ParseInt(args[1], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+// NewCounterCommand returns the "!counter" command. Open to everyone, with a
+// small global Cooldown.
+//
+// Usage: "!counter <name>" → "<name>: 42". A missing name yields a usage
+// reply; an unknown counter yields a friendly "no counter '<name>' yet"
+// (not an error). A nil store yields "counters unavailable".
+func NewCounterCommand(store CounterStore) Command {
+	return Command{
+		Name:     "counter",
+		Help:     "Show a counter's value — !counter <name>.",
+		Cooldown: defaultCounterCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scounters unavailable", mentionPrefix(msg))}
+			}
+			name := parseAdminTarget(args)
+			if name == "" {
+				return Reply{Text: fmt.Sprintf("%susage: !counter <name>", mentionPrefix(msg))}
+			}
+			value, ok := store.Value(ctx, msg.Channel, name)
+			if !ok {
+				return Reply{Text: fmt.Sprintf("%sno counter '%s' yet", mentionPrefix(msg), name)}
+			}
+			return Reply{Text: fmt.Sprintf("%s: %d", name, value)}
+		},
+	}
+}
+
+// NewCounterAddCommand returns the "!counter+" command. Mods-only.
+//
+// Usage: "!counter+ <name> [amount]" (amount defaults to 1) → "<name>: 43".
+// Creates the counter if absent. A negative amount is allowed. A bad amount
+// yields a usage reply; a nil store yields "counters unavailable".
+func NewCounterAddCommand(store CounterStore) Command {
+	return Command{
+		Name:         "counter+",
+		Help:         "Increment a counter — !counter+ <name> [amount].",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scounters unavailable", mentionPrefix(msg))}
+			}
+			name := parseAdminTarget(args)
+			amount, ok := parseCounterAmount(args, 1)
+			if name == "" || !ok {
+				return Reply{Text: fmt.Sprintf("%susage: !counter+ <name> [amount]", mentionPrefix(msg))}
+			}
+			value, err := store.Add(ctx, msg.Channel, name, amount)
+			if err != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't update counter '%s'", mentionPrefix(msg), name)}
+			}
+			return Reply{Text: fmt.Sprintf("%s: %d", name, value)}
+		},
+	}
+}
+
+// NewCounterSubCommand returns the "!counter-" command. Mods-only.
+//
+// Usage: "!counter- <name> [amount]" (amount defaults to 1) → "<name>: 41".
+// The decrement applies Add with the negated amount. A bad amount yields a
+// usage reply; a nil store yields "counters unavailable".
+func NewCounterSubCommand(store CounterStore) Command {
+	return Command{
+		Name:         "counter-",
+		Help:         "Decrement a counter — !counter- <name> [amount].",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scounters unavailable", mentionPrefix(msg))}
+			}
+			name := parseAdminTarget(args)
+			amount, ok := parseCounterAmount(args, 1)
+			if name == "" || !ok {
+				return Reply{Text: fmt.Sprintf("%susage: !counter- <name> [amount]", mentionPrefix(msg))}
+			}
+			value, err := store.Add(ctx, msg.Channel, name, -amount)
+			if err != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't update counter '%s'", mentionPrefix(msg), name)}
+			}
+			return Reply{Text: fmt.Sprintf("%s: %d", name, value)}
+		},
+	}
+}
+
+// NewSetCounterCommand returns the "!setcounter" command. Mods-only.
+//
+// Usage: "!setcounter <name> <value>" → "<name> set to <value>". A missing
+// name or bad value yields a usage reply; a nil store yields "counters
+// unavailable".
+func NewSetCounterCommand(store CounterStore) Command {
+	return Command{
+		Name:         "setcounter",
+		Help:         "Set a counter's value — !setcounter <name> <value>.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scounters unavailable", mentionPrefix(msg))}
+			}
+			name := parseAdminTarget(args)
+			if name == "" || len(args) < 2 {
+				return Reply{Text: fmt.Sprintf("%susage: !setcounter <name> <value>", mentionPrefix(msg))}
+			}
+			value, err := strconv.ParseInt(args[1], 10, 64)
+			if err != nil {
+				return Reply{Text: fmt.Sprintf("%susage: !setcounter <name> <value>", mentionPrefix(msg))}
+			}
+			set, serr := store.Set(ctx, msg.Channel, name, value)
+			if serr != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't set counter '%s'", mentionPrefix(msg), name)}
+			}
+			return Reply{Text: fmt.Sprintf("%s%s set to %d", mentionPrefix(msg), name, set)}
+		},
+	}
+}
+
+// NewResetCounterCommand returns the "!resetcounter" command. Mods-only.
+//
+// Usage: "!resetcounter <name>" → "<name> reset to 0". A missing name yields
+// a usage reply; a nil store yields "counters unavailable".
+func NewResetCounterCommand(store CounterStore) Command {
+	return Command{
+		Name:         "resetcounter",
+		Help:         "Reset a counter to 0 — !resetcounter <name>.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%scounters unavailable", mentionPrefix(msg))}
+			}
+			name := parseAdminTarget(args)
+			if name == "" {
+				return Reply{Text: fmt.Sprintf("%susage: !resetcounter <name>", mentionPrefix(msg))}
+			}
+			if _, err := store.Set(ctx, msg.Channel, name, 0); err != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't reset counter '%s'", mentionPrefix(msg), name)}
+			}
+			return Reply{Text: fmt.Sprintf("%s%s reset to 0", mentionPrefix(msg), name)}
+		},
+	}
+}
+
 // mentionOf returns "@username" when Username is set, falling back to
 // "@viewer" so replies never read as "you have X points".
 func mentionOf(msg Message) string {

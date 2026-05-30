@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
@@ -43,6 +44,10 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = quoteStore.Close() })
 
+	counterStore, err := counters.OpenSQLiteStore(ctx, "file:ct?mode=memory&cache=shared", logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = counterStore.Close() })
+
 	pitySys, err := pity.New(pity.DefaultConfig(), store, logger)
 	require.NoError(t, err)
 	streakSys, err := streak.New(streak.DefaultConfig(), store, logger)
@@ -60,7 +65,7 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	_, err = streakSys.Tick(ctx, tenant, channel, viewer, user)
 	require.NoError(t, err)
 
-	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, logger)
+	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, counterStore, logger)
 
 	pityReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!pity",
@@ -123,4 +128,18 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	})
 	require.True(t, handled)
 	require.Contains(t, quoteReply.Text, "engelOS is live")
+
+	addCounterReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
+		Text: "!counter+ deaths", IsModerator: true,
+	})
+	require.True(t, handled)
+	require.Contains(t, addCounterReply.Text, "1")
+
+	counterReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!counter deaths",
+	})
+	require.True(t, handled)
+	require.Contains(t, counterReply.Text, "deaths")
+	require.Contains(t, counterReply.Text, "1")
 }

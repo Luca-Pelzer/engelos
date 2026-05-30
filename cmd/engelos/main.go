@@ -29,6 +29,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
+	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
@@ -167,6 +168,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("quote store opened", "dsn", quotesDSN)
 
+	countersDSN := filepath.Join(dataDir, "counters.db")
+	counterStore, err := counters.OpenSQLiteStore(ctx, countersDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open counter store %s: %w", countersDSN, err)
+	}
+	defer func() {
+		if cerr := counterStore.Close(); cerr != nil {
+			logger.Warn("counter store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("counter store opened", "dsn", countersDSN)
+
 	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
 	if err != nil {
 		return fmt.Errorf("init pity system: %w", err)
@@ -211,7 +224,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, logger)
 
 	timerScheduler, err := timers.New(timers.Config{
 		Store:    timerStore,
@@ -449,7 +462,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -474,6 +487,12 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewAddQuoteCommand(quoteAdminStore))
 	register(commands.NewQuoteCommand(quoteAdminStore))
 	register(commands.NewDeleteQuoteCommand(quoteAdminStore))
+	counterAdminStore := counterAdmin{tenantID: tenantID, store: counterStore}
+	register(commands.NewCounterCommand(counterAdminStore))
+	register(commands.NewCounterAddCommand(counterAdminStore))
+	register(commands.NewCounterSubCommand(counterAdminStore))
+	register(commands.NewSetCounterCommand(counterAdminStore))
+	register(commands.NewResetCounterCommand(counterAdminStore))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
@@ -649,6 +668,39 @@ func (a quoteAdmin) Random(ctx context.Context, channel string) (commands.QuoteV
 
 func (a quoteAdmin) Delete(ctx context.Context, channel string, number int) error {
 	return a.store.Delete(ctx, a.tenantID, channel, number)
+}
+
+// counterAdmin maps counters.Store onto the narrow commands.CounterStore the
+// !counter/!counter+/!counter-/!setcounter/!resetcounter built-ins need,
+// binding the served tenant id and translating a not-found into the (value,
+// ok) shape so internal/commands stays free of any counters import.
+type counterAdmin struct {
+	tenantID string
+	store    counters.Store
+}
+
+func (a counterAdmin) Value(ctx context.Context, channel, name string) (int64, bool) {
+	c, err := a.store.Get(ctx, a.tenantID, channel, name)
+	if err != nil {
+		return 0, false
+	}
+	return c.Value, true
+}
+
+func (a counterAdmin) Add(ctx context.Context, channel, name string, delta int64) (int64, error) {
+	c, err := a.store.Add(ctx, a.tenantID, channel, name, delta)
+	if err != nil {
+		return 0, err
+	}
+	return c.Value, nil
+}
+
+func (a counterAdmin) Set(ctx context.Context, channel, name string, value int64) (int64, error) {
+	c, err := a.store.Set(ctx, a.tenantID, channel, name, value)
+	if err != nil {
+		return 0, err
+	}
+	return c.Value, nil
 }
 
 // commandRouterAdapter maps the commands.Engine onto runtime.CommandRouter,
