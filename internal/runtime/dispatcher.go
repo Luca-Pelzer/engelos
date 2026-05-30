@@ -84,6 +84,20 @@ type WrappedRecorder interface {
 	RecordRaid(ctx context.Context, channel, fromUsername string)
 }
 
+// MessageTranslator is the narrow contract the dispatcher uses to optionally
+// translate incoming chat messages for a channel. A thin adapter over the
+// internal/translate orchestrator satisfies it (wired in main), so the runtime
+// stays free of any translate import.
+//
+// Maybe reports whether the channel has translation enabled and, if so, returns
+// the translated text to post back. It is best-effort: an empty reply (already
+// in target language, skipped, rate-limited, or an internal error) means "post
+// nothing", and it must never block message processing. Implementations run
+// their own skip heuristics, language detection, caching and rate limiting.
+type MessageTranslator interface {
+	Maybe(ctx context.Context, channel, userID, text string) (reply string, ok bool)
+}
+
 // Economy is the narrow contract the dispatcher uses to award loyalty points
 // for chat activity. The adapter wired in main applies a per-viewer earn
 // cooldown (anti-farming) so idle or bot accounts cannot accumulate points by
@@ -223,6 +237,11 @@ type Config struct {
 	// for every message/sub/raid the dispatcher sees. Best-effort: recording
 	// is fire-and-forget and never blocks message processing.
 	Wrapped WrappedRecorder
+
+	// Translator, when non-nil, optionally translates each chat message and
+	// posts the translation back to chat. Best-effort: it runs after command
+	// routing and a failure never blocks message processing.
+	Translator MessageTranslator
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -421,6 +440,8 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 
 	d.routeCommand(ctx, p, ev)
 
+	d.translate(ctx, p, ev)
+
 	if d.cfg.Pity != nil && d.cfg.PointsPerMessage > 0 {
 		if _, err := d.cfg.Pity.GrantPoints(ctx, d.cfg.TenantID,
 			ev.Channel, ev.Message.UserID, ev.Message.Username,
@@ -583,6 +604,24 @@ func (d *Dispatcher) routeCommand(ctx context.Context, p adapters.Platform, ev a
 		SendMessage: &adapters.SendMessageAction{Text: reply.Text},
 	}); err != nil {
 		d.logger.Warn("command reply send failed",
+			"platform", ev.Platform, "channel", ev.Channel, "err", err)
+	}
+}
+
+func (d *Dispatcher) translate(ctx context.Context, p adapters.Platform, ev adapters.Event) {
+	if d.cfg.Translator == nil || p == nil {
+		return
+	}
+	reply, ok := d.cfg.Translator.Maybe(ctx, ev.Channel, ev.Message.UserID, ev.Message.Content)
+	if !ok || reply == "" {
+		return
+	}
+	if err := p.Do(ctx, adapters.Action{
+		Type:        adapters.ActionSendMessage,
+		Channel:     ev.Channel,
+		SendMessage: &adapters.SendMessageAction{Text: reply},
+	}); err != nil {
+		d.logger.Warn("translation send failed",
 			"platform", ev.Platform, "channel", ev.Channel, "err", err)
 	}
 }

@@ -70,7 +70,7 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	_, err = streakSys.Tick(ctx, tenant, channel, viewer, user)
 	require.NoError(t, err)
 
-	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, counterStore, liveopsStore, nil, nil, nil, nil, nil, nil, nil, nil, logger)
+	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, counterStore, liveopsStore, nil, nil, nil, nil, nil, nil, nil, nil, nil, logger)
 
 	pityReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!pity",

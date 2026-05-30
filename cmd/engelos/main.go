@@ -57,6 +57,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/spotify"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/youtube"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
+	"github.com/Luca-Pelzer/engelos/internal/translate"
 	"github.com/Luca-Pelzer/engelos/internal/web"
 	"github.com/Luca-Pelzer/engelos/internal/wrapped"
 	"github.com/coder/websocket"
@@ -306,6 +307,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("moments store opened", "dsn", momentsDSN)
 
+	translateDSN := filepath.Join(dataDir, "translate.db")
+	translateStore, err := translate.OpenSQLiteStore(ctx, translateDSN)
+	if err != nil {
+		return fmt.Errorf("open translate store %s: %w", translateDSN, err)
+	}
+	defer func() {
+		if cerr := translateStore.Close(); cerr != nil {
+			logger.Warn("translate store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("translate store opened", "dsn", translateDSN)
+
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
 		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
@@ -418,7 +431,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	momentCtrl := newMomentController(momentsStore, runtime.NewWSBroadcaster(hub, logger), defaultTenantID, logger)
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, logger)
+	translateCfg := translateConfigAdapter{store: translateStore, tenantID: defaultTenantID, logger: logger}
+	msgTranslator := newMessageTranslator(translateStore, defaultTenantID, logger)
+
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, translateCfg, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -458,6 +474,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Economy:          economy,
 		Activity:         timerScheduler,
 		Wrapped:          newWrappedRecorder(wrappedStore, defaultTenantID, logger),
+		Translator:       msgTranslator,
 		Logger:           logger,
 	})
 	go func() {
@@ -1240,7 +1257,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, songRequester commands.SongRequester, momentCtrl commands.MomentController, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, songRequester commands.SongRequester, momentCtrl commands.MomentController, translateConfig commands.TranslateConfigStore, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -1288,6 +1305,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 
 	if featureToggle != nil {
 		register(commands.NewEconomyToggleCommand(featureToggle))
+	}
+
+	if translateConfig != nil {
+		register(commands.NewTranslateToggleCommand(translateConfig))
 	}
 
 	if predictions != nil {

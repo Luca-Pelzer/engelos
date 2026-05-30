@@ -3,6 +3,7 @@ module github.com/Luca-Pelzer/engelos
 go 1.25.0
 
 require (
+	github.com/abadojack/whatlanggo v1.0.1
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -10,6 +11,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/gempir/go-twitch-irc/v4 v4.4.1
 	github.com/go-chi/chi/v5 v5.3.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/nicklaw5/helix/v2 v2.34.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/stretchr/testify v1.11.1
@@ -34,7 +36,6 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
