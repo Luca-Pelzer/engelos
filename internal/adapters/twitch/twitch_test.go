@@ -129,6 +129,121 @@ type fakeHelix struct {
 	getStreamsCalls []*helix.StreamsParams
 	getStreamsResp  *helix.StreamsResponse
 	getStreamsErr   error
+
+	createRewardResp *helix.ChannelCustomRewardResponse
+	createRewardErr  error
+	lastCreateParams *helix.ChannelCustomRewardsParams
+
+	listRewardsResp *helix.ChannelCustomRewardResponse
+	listRewardsErr  error
+	lastListParams  *helix.GetCustomRewardsParams
+
+	deleteRewardResp *helix.DeleteCustomRewardsResponse
+	deleteRewardErr  error
+	lastDeleteReward *helix.DeleteCustomRewardsParams
+
+	updateResp       *helix.ChannelCustomRewardsRedemptionResponse
+	updateErr        error
+	lastUpdateParams *helix.UpdateChannelCustomRewardsRedemptionStatusParams
+
+	subResp       *helix.EventSubSubscriptionsResponse
+	subErr        error
+	lastSubParams *helix.EventSubSubscription
+}
+
+func (h *fakeHelix) CreateEventSubSubscription(p *helix.EventSubSubscription) (*helix.EventSubSubscriptionsResponse, error) {
+	h.mu.Lock()
+	h.lastSubParams = p
+	h.mu.Unlock()
+	if h.subErr != nil {
+		return nil, h.subErr
+	}
+	if h.subResp != nil {
+		return h.subResp, nil
+	}
+	return &helix.EventSubSubscriptionsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 202}}, nil
+}
+
+func (h *fakeHelix) snapshotSub() *helix.EventSubSubscription {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastSubParams
+}
+
+func (h *fakeHelix) CreateCustomReward(p *helix.ChannelCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error) {
+	h.mu.Lock()
+	h.lastCreateParams = p
+	h.mu.Unlock()
+	if h.createRewardErr != nil {
+		return nil, h.createRewardErr
+	}
+	if h.createRewardResp != nil {
+		return h.createRewardResp, nil
+	}
+	return &helix.ChannelCustomRewardResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) GetCustomRewards(p *helix.GetCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error) {
+	h.mu.Lock()
+	h.lastListParams = p
+	h.mu.Unlock()
+	if h.listRewardsErr != nil {
+		return nil, h.listRewardsErr
+	}
+	if h.listRewardsResp != nil {
+		return h.listRewardsResp, nil
+	}
+	return &helix.ChannelCustomRewardResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) DeleteCustomReward(p *helix.DeleteCustomRewardsParams) (*helix.DeleteCustomRewardsResponse, error) {
+	h.mu.Lock()
+	h.lastDeleteReward = p
+	h.mu.Unlock()
+	if h.deleteRewardErr != nil {
+		return nil, h.deleteRewardErr
+	}
+	if h.deleteRewardResp != nil {
+		return h.deleteRewardResp, nil
+	}
+	return &helix.DeleteCustomRewardsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 204}}, nil
+}
+
+func (h *fakeHelix) UpdateChannelCustomRewardsRedemptionStatus(p *helix.UpdateChannelCustomRewardsRedemptionStatusParams) (*helix.ChannelCustomRewardsRedemptionResponse, error) {
+	h.mu.Lock()
+	h.lastUpdateParams = p
+	h.mu.Unlock()
+	if h.updateErr != nil {
+		return nil, h.updateErr
+	}
+	if h.updateResp != nil {
+		return h.updateResp, nil
+	}
+	return &helix.ChannelCustomRewardsRedemptionResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) snapshotCreate() *helix.ChannelCustomRewardsParams {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastCreateParams
+}
+
+func (h *fakeHelix) snapshotList() *helix.GetCustomRewardsParams {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastListParams
+}
+
+func (h *fakeHelix) snapshotDeleteReward() *helix.DeleteCustomRewardsParams {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastDeleteReward
+}
+
+func (h *fakeHelix) snapshotUpdate() *helix.UpdateChannelCustomRewardsRedemptionStatusParams {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastUpdateParams
 }
 
 func (h *fakeHelix) SetUserAccessToken(token string) {
@@ -911,4 +1026,304 @@ func TestStreamInfo_HelixErrorNotCached(t *testing.T) {
 	_, err = a.StreamInfo(context.Background(), "broadcaster")
 	require.Error(t, err)
 	assert.Equal(t, 2, hx.getStreamsCallCount(), "errors must not be cached; both calls hit Helix")
+}
+
+func usersResp(u ...helix.User) *helix.UsersResponse {
+	resp := &helix.UsersResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}
+	resp.Data.Users = append(resp.Data.Users, u...)
+	return resp
+}
+
+func customRewardsResp(r ...helix.ChannelCustomReward) *helix.ChannelCustomRewardResponse {
+	resp := &helix.ChannelCustomRewardResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}
+	resp.Data.ChannelCustomRewards = append(resp.Data.ChannelCustomRewards, r...)
+	return resp
+}
+
+func TestBroadcasterType(t *testing.T) {
+	cases := []struct {
+		name string
+		typ  string
+	}{
+		{"affiliate", "affiliate"},
+		{"partner", "partner"},
+		{"none", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, hx := newTestAdapter(t, false)
+			hx.getUsersResp = usersResp(helix.User{ID: "987", Login: "broadcaster", BroadcasterType: tc.typ})
+			require.NoError(t, a.Connect(context.Background()))
+			t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+			got, err := a.BroadcasterType(context.Background(), "#Broadcaster")
+			require.NoError(t, err)
+			assert.Equal(t, tc.typ, got)
+		})
+	}
+}
+
+func TestBroadcasterType_AnonymousUnavailable(t *testing.T) {
+	a, _, _ := newTestAdapter(t, true)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.BroadcasterType(context.Background(), "broadcaster")
+	assert.ErrorIs(t, err, ErrHelixUnavailable)
+}
+
+func TestBroadcasterType_GetUsersErrorPropagated(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.getUsersErr = errors.New("boom")
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.BroadcasterType(context.Background(), "broadcaster")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "boom")
+}
+
+func TestBroadcasterType_EmptyUserList(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.getUsersResp = usersResp()
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.BroadcasterType(context.Background(), "broadcaster")
+	require.Error(t, err)
+}
+
+func TestCreateReward_MapsSpecAndResponse(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	hx.createRewardResp = customRewardsResp(helix.ChannelCustomReward{
+		ID:        "rew-1",
+		Title:     "Hydrate",
+		Cost:      500,
+		Prompt:    "make me drink water",
+		IsEnabled: true,
+	})
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	reward, err := a.CreateReward(context.Background(), "#Broadcaster", RewardSpec{
+		Title:           "Hydrate",
+		Cost:            500,
+		Prompt:          "make me drink water",
+		Enabled:         true,
+		UserInputNeeded: true,
+		BackgroundColor: "#00E5CB",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, Reward{ID: "rew-1", Title: "Hydrate", Cost: 500, Prompt: "make me drink water", Enabled: true}, reward)
+
+	p := hx.snapshotCreate()
+	require.NotNil(t, p)
+	assert.Equal(t, "987", p.BroadcasterID)
+	assert.Equal(t, "Hydrate", p.Title)
+	assert.Equal(t, 500, p.Cost)
+	assert.Equal(t, "make me drink water", p.Prompt)
+	assert.True(t, p.IsEnabled)
+	assert.True(t, p.IsUserInputRequired)
+	assert.Equal(t, "#00E5CB", p.BackgroundColor)
+}
+
+func TestCreateReward_AnonymousUnavailable(t *testing.T) {
+	a, _, _ := newTestAdapter(t, true)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.CreateReward(context.Background(), "broadcaster", RewardSpec{Title: "x", Cost: 1})
+	assert.ErrorIs(t, err, ErrHelixUnavailable)
+}
+
+func TestCreateReward_HelixErrorPropagated(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	hx.createRewardErr = errors.New("kaboom")
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.CreateReward(context.Background(), "broadcaster", RewardSpec{Title: "x", Cost: 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "kaboom")
+}
+
+func TestListManageableRewards_SetsFlagAndMaps(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	hx.listRewardsResp = customRewardsResp(
+		helix.ChannelCustomReward{ID: "a", Title: "First", Cost: 100, Prompt: "p1", IsEnabled: true},
+		helix.ChannelCustomReward{ID: "b", Title: "Second", Cost: 200, Prompt: "p2", IsEnabled: false},
+	)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	rewards, err := a.ListManageableRewards(context.Background(), "broadcaster")
+	require.NoError(t, err)
+	require.Len(t, rewards, 2)
+	assert.Equal(t, Reward{ID: "a", Title: "First", Cost: 100, Prompt: "p1", Enabled: true}, rewards[0])
+	assert.Equal(t, Reward{ID: "b", Title: "Second", Cost: 200, Prompt: "p2", Enabled: false}, rewards[1])
+
+	p := hx.snapshotList()
+	require.NotNil(t, p)
+	assert.Equal(t, "987", p.BroadcasterID)
+	assert.True(t, p.OnlyManageableRewards)
+}
+
+func TestListManageableRewards_AnonymousUnavailable(t *testing.T) {
+	a, _, _ := newTestAdapter(t, true)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.ListManageableRewards(context.Background(), "broadcaster")
+	assert.ErrorIs(t, err, ErrHelixUnavailable)
+}
+
+func TestDeleteReward_PassesIDsAndPropagatesError(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	require.NoError(t, a.DeleteReward(context.Background(), "broadcaster", "rew-9"))
+	p := hx.snapshotDeleteReward()
+	require.NotNil(t, p)
+	assert.Equal(t, "987", p.BroadcasterID)
+	assert.Equal(t, "rew-9", p.ID)
+
+	hx.deleteRewardErr = errors.New("nope")
+	err := a.DeleteReward(context.Background(), "broadcaster", "rew-9")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nope")
+}
+
+func TestFulfillAndCancelRedemption_StatusMapping(t *testing.T) {
+	cases := []struct {
+		name   string
+		call   func(a *Adapter) error
+		status string
+	}{
+		{"fulfill", func(a *Adapter) error {
+			return a.FulfillRedemption(context.Background(), "broadcaster", "rew-1", "red-7")
+		}, "FULFILLED"},
+		{"cancel", func(a *Adapter) error {
+			return a.CancelRedemption(context.Background(), "broadcaster", "rew-1", "red-7")
+		}, "CANCELED"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, hx := newTestAdapter(t, false)
+			hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+			require.NoError(t, a.Connect(context.Background()))
+			t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+			require.NoError(t, tc.call(a))
+			p := hx.snapshotUpdate()
+			require.NotNil(t, p)
+			assert.Equal(t, tc.status, p.Status)
+			assert.Equal(t, "987", p.BroadcasterID)
+			assert.Equal(t, "rew-1", p.RewardID)
+			assert.Equal(t, "red-7", p.ID)
+		})
+	}
+}
+
+func TestRedemption_AnonymousUnavailable(t *testing.T) {
+	a, _, _ := newTestAdapter(t, true)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	assert.ErrorIs(t, a.FulfillRedemption(context.Background(), "b", "r", "x"), ErrHelixUnavailable)
+	assert.ErrorIs(t, a.CancelRedemption(context.Background(), "b", "r", "x"), ErrHelixUnavailable)
+}
+
+func TestRewardBroadcasterID_CachedAcrossCalls(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	require.NoError(t, a.DeleteReward(context.Background(), "broadcaster", "rew-1"))
+	require.NoError(t, a.FulfillRedemption(context.Background(), "broadcaster", "rew-1", "red-1"))
+
+	hx.mu.Lock()
+	resolverCalls := 0
+	for _, p := range hx.getUsersCalls {
+		for _, login := range p.Logins {
+			if login == "broadcaster" {
+				resolverCalls++
+			}
+		}
+	}
+	hx.mu.Unlock()
+	assert.Equal(t, 1, resolverCalls, "broadcaster id must be resolved via GetUsers only once then cached")
+}
+
+func TestSubscribeRedemptions_HappyPath(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	require.NoError(t, a.SubscribeRedemptions(context.Background(), "#Broadcaster", "sess-42"))
+
+	p := hx.snapshotSub()
+	require.NotNil(t, p)
+	assert.Equal(t, "channel.channel_points_custom_reward_redemption.add", p.Type)
+	assert.Equal(t, "1", p.Version)
+	assert.Equal(t, "987", p.Condition.BroadcasterUserID)
+	assert.Equal(t, "websocket", p.Transport.Method)
+	assert.Equal(t, "sess-42", p.Transport.SessionID)
+}
+
+func TestSubscribeRedemptions_AnonymousUnavailable(t *testing.T) {
+	a, _, _ := newTestAdapter(t, true)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	err := a.SubscribeRedemptions(context.Background(), "broadcaster", "sess-1")
+	assert.ErrorIs(t, err, ErrHelixUnavailable)
+}
+
+func TestSubscribeRedemptions_HelixErrorPropagated(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	hx.subErr = errors.New("kaboom")
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	err := a.SubscribeRedemptions(context.Background(), "broadcaster", "sess-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "kaboom")
+}
+
+func TestSubscribeRedemptions_Non2xxSurfacesError(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	hx.subResp = &helix.EventSubSubscriptionsResponse{
+		ResponseCommon: helix.ResponseCommon{StatusCode: 403, ErrorMessage: "forbidden"},
+	}
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	err := a.SubscribeRedemptions(context.Background(), "broadcaster", "sess-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+	assert.Contains(t, err.Error(), "forbidden")
+}
+
+func TestCreateReward_Non2xxSurfacesError(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.defaultUsersFor = map[string]string{"broadcaster": "987"}
+	hx.createRewardResp = &helix.ChannelCustomRewardResponse{
+		ResponseCommon: helix.ResponseCommon{StatusCode: 403, ErrorMessage: "channel points are not available for the broadcaster"},
+	}
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.CreateReward(context.Background(), "broadcaster", RewardSpec{Title: "x", Cost: 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+	assert.Contains(t, err.Error(), "channel points are not available")
 }

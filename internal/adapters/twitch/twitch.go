@@ -99,6 +99,11 @@ type helixClient interface {
 	DeleteChatMessage(*helix.DeleteChatMessageParams) (*helix.DeleteChatMessageResponse, error)
 	GetUsers(*helix.UsersParams) (*helix.UsersResponse, error)
 	GetStreams(*helix.StreamsParams) (*helix.StreamsResponse, error)
+	CreateCustomReward(*helix.ChannelCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error)
+	GetCustomRewards(*helix.GetCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error)
+	DeleteCustomReward(*helix.DeleteCustomRewardsParams) (*helix.DeleteCustomRewardsResponse, error)
+	UpdateChannelCustomRewardsRedemptionStatus(*helix.UpdateChannelCustomRewardsRedemptionStatusParams) (*helix.ChannelCustomRewardsRedemptionResponse, error)
+	CreateEventSubSubscription(*helix.EventSubSubscription) (*helix.EventSubSubscriptionsResponse, error)
 	SetUserAccessToken(token string)
 }
 
@@ -125,6 +130,14 @@ type Adapter struct {
 	// paths that take a.mu.
 	streamMu    sync.Mutex
 	streamCache map[string]streamCacheEntry
+
+	// rewardMu guards idCache, the login→broadcaster-id map used by the
+	// Channel-Points reward methods. It is dedicated (not a.mu / streamMu)
+	// so a slow Helix GetUsers lookup never blocks the IRC / SetToken /
+	// StreamInfo paths. A login's broadcaster id is effectively immutable,
+	// so entries are cached forever (never expired).
+	rewardMu sync.Mutex
+	idCache  map[string]string
 
 	// nowFn is the clock seam for cache-expiry checks; defaults to
 	// time.Now and is overridden by tests to drive TTL expiry.
@@ -166,6 +179,7 @@ func New(cfg Config) *Adapter {
 		healthErr:   ErrNotConnected,
 		channelToID: make(map[string]string),
 		streamCache: make(map[string]streamCacheEntry),
+		idCache:     make(map[string]string),
 		nowFn:       time.Now,
 	}
 	return a
@@ -784,6 +798,21 @@ func (w *helixWrapper) GetUsers(p *helix.UsersParams) (*helix.UsersResponse, err
 }
 func (w *helixWrapper) GetStreams(p *helix.StreamsParams) (*helix.StreamsResponse, error) {
 	return w.c.GetStreams(p)
+}
+func (w *helixWrapper) CreateCustomReward(p *helix.ChannelCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error) {
+	return w.c.CreateCustomReward(p)
+}
+func (w *helixWrapper) GetCustomRewards(p *helix.GetCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error) {
+	return w.c.GetCustomRewards(p)
+}
+func (w *helixWrapper) DeleteCustomReward(p *helix.DeleteCustomRewardsParams) (*helix.DeleteCustomRewardsResponse, error) {
+	return w.c.DeleteCustomRewards(p)
+}
+func (w *helixWrapper) UpdateChannelCustomRewardsRedemptionStatus(p *helix.UpdateChannelCustomRewardsRedemptionStatusParams) (*helix.ChannelCustomRewardsRedemptionResponse, error) {
+	return w.c.UpdateChannelCustomRewardsRedemptionStatus(p)
+}
+func (w *helixWrapper) CreateEventSubSubscription(p *helix.EventSubSubscription) (*helix.EventSubSubscriptionsResponse, error) {
+	return w.c.CreateEventSubSubscription(p)
 }
 func (w *helixWrapper) SetUserAccessToken(token string) { w.c.SetUserAccessToken(token) }
 

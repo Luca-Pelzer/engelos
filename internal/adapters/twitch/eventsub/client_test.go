@@ -71,7 +71,7 @@ func reconnectMsg(reconnectURL string) string {
 }
 
 func redemptionMsg() string {
-	return `{"metadata":{"message_id":"n-1","message_type":"notification","message_timestamp":"2026-05-30T12:00:03Z","subscription_type":"channel.channel_points_custom_reward_redemption.add"},"payload":{"event":{"id":"redemption-uuid-1","broadcaster_user_id":"broadcaster-1","user_id":"user-1","user_login":"viewer1","user_name":"Viewer1","user_input":"please play","status":"unfulfilled","reward":{"id":"reward-1","title":"Hydrate","cost":500},"redeemed_at":"2026-05-30T12:00:00Z"}}}`
+	return `{"metadata":{"message_id":"n-1","message_type":"notification","message_timestamp":"2026-05-30T12:00:03Z","subscription_type":"channel.channel_points_custom_reward_redemption.add"},"payload":{"event":{"id":"redemption-uuid-1","broadcaster_user_id":"broadcaster-1","broadcaster_user_login":"somechannel","user_id":"user-1","user_login":"viewer1","user_name":"Viewer1","user_input":"please play","status":"unfulfilled","reward":{"id":"reward-1","title":"Hydrate","cost":500},"redeemed_at":"2026-05-30T12:00:00Z"}}}`
 }
 
 func nonRedemptionMsg() string {
@@ -135,6 +135,7 @@ func TestHappyPath(t *testing.T) {
 	evt := recvEvent(t, events)
 	assert.Equal(t, "redemption-uuid-1", evt.ID)
 	assert.Equal(t, "broadcaster-1", evt.BroadcasterUserID)
+	assert.Equal(t, "somechannel", evt.BroadcasterUserLogin)
 	assert.Equal(t, "user-1", evt.UserID)
 	assert.Equal(t, "viewer1", evt.UserLogin)
 	assert.Equal(t, "Viewer1", evt.UserName)

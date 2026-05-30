@@ -28,17 +28,18 @@ const (
 // RedemptionEvent is the neutral, helix-free view of a
 // channel.channel_points_custom_reward_redemption.add notification.
 type RedemptionEvent struct {
-	ID                string
-	BroadcasterUserID string
-	UserID            string
-	UserLogin         string
-	UserName          string
-	UserInput         string
-	Status            string
-	RewardID          string
-	RewardTitle       string
-	RewardCost        int
-	RedeemedAt        time.Time
+	ID                   string
+	BroadcasterUserID    string
+	BroadcasterUserLogin string
+	UserID               string
+	UserLogin            string
+	UserName             string
+	UserInput            string
+	Status               string
+	RewardID             string
+	RewardTitle          string
+	RewardCost           int
+	RedeemedAt           time.Time
 }
 
 // Config configures a [Client]. The zero Config is usable but useless without
@@ -103,14 +104,15 @@ type envelope struct {
 }
 
 type wireRedemption struct {
-	ID                string `json:"id"`
-	BroadcasterUserID string `json:"broadcaster_user_id"`
-	UserID            string `json:"user_id"`
-	UserLogin         string `json:"user_login"`
-	UserName          string `json:"user_name"`
-	UserInput         string `json:"user_input"`
-	Status            string `json:"status"`
-	Reward            struct {
+	ID                   string `json:"id"`
+	BroadcasterUserID    string `json:"broadcaster_user_id"`
+	BroadcasterUserLogin string `json:"broadcaster_user_login"`
+	UserID               string `json:"user_id"`
+	UserLogin            string `json:"user_login"`
+	UserName             string `json:"user_name"`
+	UserInput            string `json:"user_input"`
+	Status               string `json:"status"`
+	Reward               struct {
 		ID    string `json:"id"`
 		Title string `json:"title"`
 		Cost  int    `json:"cost"`
@@ -321,17 +323,18 @@ func (c *Client) dispatchNotification(ctx context.Context, env envelope) {
 		return
 	}
 	c.handler(ctx, RedemptionEvent{
-		ID:                wire.ID,
-		BroadcasterUserID: wire.BroadcasterUserID,
-		UserID:            wire.UserID,
-		UserLogin:         wire.UserLogin,
-		UserName:          wire.UserName,
-		UserInput:         wire.UserInput,
-		Status:            wire.Status,
-		RewardID:          wire.Reward.ID,
-		RewardTitle:       wire.Reward.Title,
-		RewardCost:        wire.Reward.Cost,
-		RedeemedAt:        wire.RedeemedAt,
+		ID:                   wire.ID,
+		BroadcasterUserID:    wire.BroadcasterUserID,
+		BroadcasterUserLogin: wire.BroadcasterUserLogin,
+		UserID:               wire.UserID,
+		UserLogin:            wire.UserLogin,
+		UserName:             wire.UserName,
+		UserInput:            wire.UserInput,
+		Status:               wire.Status,
+		RewardID:             wire.Reward.ID,
+		RewardTitle:          wire.Reward.Title,
+		RewardCost:           wire.Reward.Cost,
+		RedeemedAt:           wire.RedeemedAt,
 	})
 }
 
