@@ -13,6 +13,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 )
@@ -38,6 +39,10 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = timerStore.Close() })
 
+	quoteStore, err := quotes.OpenSQLiteStore(ctx, "file:qt?mode=memory&cache=shared", logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = quoteStore.Close() })
+
 	pitySys, err := pity.New(pity.DefaultConfig(), store, logger)
 	require.NoError(t, err)
 	streakSys, err := streak.New(streak.DefaultConfig(), store, logger)
@@ -55,7 +60,7 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	_, err = streakSys.Tick(ctx, tenant, channel, viewer, user)
 	require.NoError(t, err)
 
-	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, logger)
+	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, logger)
 
 	pityReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!pity",
@@ -105,4 +110,17 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.True(t, handled)
 	require.Contains(t, listReply.Text, "rules")
 	require.Contains(t, listReply.Text, "600")
+
+	addQuoteReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
+		Text: "!addquote engelOS is live", IsModerator: true,
+	})
+	require.True(t, handled)
+	require.Contains(t, addQuoteReply.Text, "#1")
+
+	quoteReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!quote 1",
+	})
+	require.True(t, handled)
+	require.Contains(t, quoteReply.Text, "engelOS is live")
 }

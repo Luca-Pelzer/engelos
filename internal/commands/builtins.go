@@ -526,6 +526,137 @@ func NewListTimersCommand(store TimerStore) Command {
 	}
 }
 
+// defaultQuoteCooldown throttles the channel-wide read-only !quote
+// command. 5s keeps chat tidy when several viewers ask back-to-back
+// without making quotes feel stale.
+const defaultQuoteCooldown = 5 * time.Second
+
+// QuoteView is the read shape rendered to chat by the !quote built-in.
+type QuoteView struct {
+	Number int
+	Text   string
+}
+
+// QuoteStore is the narrow surface the quote built-ins need. An adapter
+// over [github.com/Luca-Pelzer/engelos/internal/quotes.Store] is wired in
+// main; this interface lives HERE so internal/commands does NOT import
+// internal/quotes (mirrors [TimerStore] and [CustomCommandStore]).
+//
+// Get and Random return ok=false for not-found/empty so the built-ins
+// render a friendly "no quote" line without depending on the quotes
+// package's sentinel errors. Delete returns an opaque error; the built-in
+// renders a generic friendly reply on any non-nil error. main's adapter
+// chooses the tenant_id.
+type QuoteStore interface {
+	Add(ctx context.Context, channel, text, createdBy string) (number int, err error)
+	Get(ctx context.Context, channel string, number int) (QuoteView, bool)
+	Random(ctx context.Context, channel string) (QuoteView, bool)
+	Delete(ctx context.Context, channel string, number int) error
+}
+
+// NewAddQuoteCommand returns "!addquote". Mods-only.
+//
+// Usage: "!addquote <text>". On success replies "@mod added quote #4".
+// Empty text yields a usage reply; a store error yields a friendly error
+// reply. A nil store yields a one-line "quotes are unavailable" reply.
+func NewAddQuoteCommand(store QuoteStore) Command {
+	return Command{
+		Name:         "addquote",
+		Help:         "Save a memorable line — !addquote <text>.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%squotes are unavailable",
+					mentionPrefix(msg))}
+			}
+			text := strings.TrimSpace(strings.Join(args, " "))
+			if text == "" {
+				return Reply{Text: fmt.Sprintf("%susage: !addquote <text>",
+					mentionPrefix(msg))}
+			}
+			number, err := store.Add(ctx, msg.Channel, text, msg.UserID)
+			if err != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't add quote (text empty or too long)",
+					mentionPrefix(msg))}
+			}
+			return Reply{Text: fmt.Sprintf("%sadded quote #%d", mentionPrefix(msg), number)}
+		},
+	}
+}
+
+// NewQuoteCommand returns "!quote". Open to everyone, with a global
+// Cooldown to curb spam.
+//
+// Usage: "!quote" shows a random quote; "!quote <n>" shows quote #n.
+// Renders "#4: <text>". An empty channel replies "no quotes yet"; a
+// missing number replies "no quote #<n>"; a non-numeric arg replies
+// "usage: !quote [number]". A nil store yields "quotes are unavailable".
+func NewQuoteCommand(store QuoteStore) Command {
+	return Command{
+		Name:     "quote",
+		Help:     "Show a saved quote — !quote [number] (random if omitted).",
+		Cooldown: defaultQuoteCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%squotes are unavailable",
+					mentionPrefix(msg))}
+			}
+			if len(args) == 0 {
+				view, ok := store.Random(ctx, msg.Channel)
+				if !ok {
+					return Reply{Text: fmt.Sprintf("%sno quotes yet", mentionPrefix(msg))}
+				}
+				return Reply{Text: fmt.Sprintf("#%d: %s", view.Number, view.Text)}
+			}
+			number, err := strconv.Atoi(args[0])
+			if err != nil || number <= 0 {
+				return Reply{Text: fmt.Sprintf("%susage: !quote [number]",
+					mentionPrefix(msg))}
+			}
+			view, ok := store.Get(ctx, msg.Channel, number)
+			if !ok {
+				return Reply{Text: fmt.Sprintf("%sno quote #%d", mentionPrefix(msg), number)}
+			}
+			return Reply{Text: fmt.Sprintf("#%d: %s", view.Number, view.Text)}
+		},
+	}
+}
+
+// NewDeleteQuoteCommand returns "!delquote". Mods-only.
+//
+// Usage: "!delquote <n>". On success replies "@mod deleted quote #4". A
+// missing or bad number yields a usage reply; a store error yields a
+// friendly reply. A nil store yields "quotes are unavailable".
+func NewDeleteQuoteCommand(store QuoteStore) Command {
+	return Command{
+		Name:         "delquote",
+		Help:         "Delete a saved quote — !delquote <number>.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%squotes are unavailable",
+					mentionPrefix(msg))}
+			}
+			if len(args) == 0 {
+				return Reply{Text: fmt.Sprintf("%susage: !delquote <number>",
+					mentionPrefix(msg))}
+			}
+			number, err := strconv.Atoi(args[0])
+			if err != nil || number <= 0 {
+				return Reply{Text: fmt.Sprintf("%susage: !delquote <number>",
+					mentionPrefix(msg))}
+			}
+			if derr := store.Delete(ctx, msg.Channel, number); derr != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't delete quote #%d (missing or invalid)",
+					mentionPrefix(msg), number)}
+			}
+			return Reply{Text: fmt.Sprintf("%sdeleted quote #%d", mentionPrefix(msg), number)}
+		},
+	}
+}
+
 // mentionOf returns "@username" when Username is set, falling back to
 // "@viewer" so replies never read as "you have X points".
 func mentionOf(msg Message) string {

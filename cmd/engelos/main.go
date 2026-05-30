@@ -35,6 +35,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
 	"github.com/Luca-Pelzer/engelos/internal/overlay"
+	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
@@ -154,6 +155,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("timer store opened", "dsn", timersDSN)
 
+	quotesDSN := filepath.Join(dataDir, "quotes.db")
+	quoteStore, err := quotes.OpenSQLiteStore(ctx, quotesDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open quote store %s: %w", quotesDSN, err)
+	}
+	defer func() {
+		if cerr := quoteStore.Close(); cerr != nil {
+			logger.Warn("quote store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("quote store opened", "dsn", quotesDSN)
+
 	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
 	if err != nil {
 		return fmt.Errorf("init pity system: %w", err)
@@ -198,7 +211,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, logger)
 
 	timerScheduler, err := timers.New(timers.Config{
 		Store:    timerStore,
@@ -436,7 +449,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -457,6 +470,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewAddTimerCommand(timerAdminStore))
 	register(commands.NewDeleteTimerCommand(timerAdminStore))
 	register(commands.NewListTimersCommand(timerAdminStore))
+	quoteAdminStore := quoteAdmin{tenantID: tenantID, store: quoteStore}
+	register(commands.NewAddQuoteCommand(quoteAdminStore))
+	register(commands.NewQuoteCommand(quoteAdminStore))
+	register(commands.NewDeleteQuoteCommand(quoteAdminStore))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
@@ -595,6 +612,43 @@ func (a timerAdmin) ListTimers(ctx context.Context, channel string) ([]commands.
 		}
 	}
 	return out, nil
+}
+
+// quoteAdmin maps quotes.Store onto the narrow commands.QuoteStore the
+// !addquote/!quote/!delquote built-ins need, binding the served tenant id
+// and translating the store's sentinel errors into the (view, ok) shape the
+// engine consumes so internal/commands stays free of any quotes import.
+type quoteAdmin struct {
+	tenantID string
+	store    quotes.Store
+}
+
+func (a quoteAdmin) Add(ctx context.Context, channel, text, createdBy string) (int, error) {
+	q, err := a.store.Add(ctx, a.tenantID, channel, text, createdBy)
+	if err != nil {
+		return 0, err
+	}
+	return q.Number, nil
+}
+
+func (a quoteAdmin) Get(ctx context.Context, channel string, number int) (commands.QuoteView, bool) {
+	q, err := a.store.Get(ctx, a.tenantID, channel, number)
+	if err != nil {
+		return commands.QuoteView{}, false
+	}
+	return commands.QuoteView{Number: q.Number, Text: q.Text}, true
+}
+
+func (a quoteAdmin) Random(ctx context.Context, channel string) (commands.QuoteView, bool) {
+	q, err := a.store.GetRandom(ctx, a.tenantID, channel)
+	if err != nil {
+		return commands.QuoteView{}, false
+	}
+	return commands.QuoteView{Number: q.Number, Text: q.Text}, true
+}
+
+func (a quoteAdmin) Delete(ctx context.Context, channel string, number int) error {
+	return a.store.Delete(ctx, a.tenantID, channel, number)
 }
 
 // commandRouterAdapter maps the commands.Engine onto runtime.CommandRouter,
