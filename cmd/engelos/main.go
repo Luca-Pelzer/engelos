@@ -398,6 +398,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		RedemptionStore: redemptionStore,
 		CommandStore:    customStore,
 		CounterStore:    counterStore,
+		Moderation:      moderationSvc,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")

@@ -19,6 +19,7 @@
     if (path.startsWith('/commands'))     return 'Commands';
     if (path.startsWith('/redemptions'))  return 'Channel Points';
     if (path.startsWith('/counters'))     return 'Counters';
+    if (path.startsWith('/automod'))      return 'AutoMod';
     if (path.startsWith('/integrations')) return 'Integrations';
     if (path.startsWith('/settings'))     return 'Settings';
     if (path.startsWith('/upgrade'))      return 'Upgrade to Cloud';

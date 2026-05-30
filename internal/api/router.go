@@ -16,6 +16,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 )
 
@@ -112,6 +113,10 @@ type Deps struct {
 	// CounterStore, when non-nil, exposes the named-counter CRUD under
 	// /api/v1/counters/*. Nil makes those endpoints return 501 (feature off).
 	CounterStore counters.Store
+
+	// Moderation, when non-nil, exposes the AutoMod config + audit endpoints
+	// under /api/v1/automod/*. Nil makes those endpoints return 501.
+	Moderation *moderation.Service
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -136,6 +141,7 @@ func NewRouter(deps Deps) chi.Router {
 	redemptionsH := handlers.NewRedemptions(deps.RedemptionStore, deps.TenantID, logger)
 	commandsH := handlers.NewCommands(deps.CommandStore, deps.TenantID, logger)
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
+	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 
 	r := chi.NewRouter()
 
@@ -224,6 +230,15 @@ func NewRouter(deps Deps) chi.Router {
 			r.Put("/{name}", countersH.Set)
 			r.Post("/{name}/add", countersH.Add)
 			r.Delete("/{name}", countersH.Delete)
+		})
+
+		r.Route("/automod", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/config", automodH.GetConfig)
+			r.Put("/config", automodH.PutConfig)
+			r.Get("/audit", automodH.Audit)
 		})
 	})
 
