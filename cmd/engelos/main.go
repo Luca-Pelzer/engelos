@@ -412,14 +412,36 @@ func buildTwitchOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Confi
 			"has_secret", clientSecret != "", "has_redirect", redirectURL != "")
 		return nil
 	}
-	logger.Info("twitch oauth enabled", "redirect_url", redirectURL)
+	scopes := twitchOAuthScopes()
+	logger.Info("twitch oauth enabled", "redirect_url", redirectURL, "scopes", scopes)
 	return &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		RedirectURL:  redirectURL,
-		Scopes:       []string{"user:read:email"},
+		Scopes:       scopes,
 		Endpoint:     twitchoauth.Endpoint,
 	}
+}
+
+// defaultTwitchScopes lists each requested OAuth scope with the capability
+// it unlocks, so the grant stays minimal and auditable:
+var defaultTwitchScopes = []string{
+	"user:read:email",                // identify the account
+	"chat:read",                      // receive chat messages
+	"chat:edit",                      // send chat messages
+	"moderator:manage:banned_users",  // ban / timeout actions
+	"moderator:manage:chat_messages", // delete-message action
+	"channel:read:redemptions",       // observe channel-point redemptions
+	"channel:manage:redemptions",     // create rewards + fulfill/refund redemptions
+}
+
+// twitchOAuthScopes returns the scopes to request, allowing an operator to
+// override the default set via ENGELOS_TWITCH_SCOPES (comma-separated).
+func twitchOAuthScopes() []string {
+	if custom := splitCSV(os.Getenv("ENGELOS_TWITCH_SCOPES")); len(custom) > 0 {
+		return custom
+	}
+	return defaultTwitchScopes
 }
 
 // refreshStoreAdapter maps auth.Store onto the narrow oauthrefresh.Store
