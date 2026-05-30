@@ -623,6 +623,17 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewScheduleCommand(liveopsAdminStore))
 	register(commands.NewAddEventCommand(liveopsAdminStore))
 	register(commands.NewDelEventCommand(liveopsAdminStore))
+
+	register(commands.NewEightBallCommand())
+	register(commands.NewLurkCommand())
+	register(commands.NewUnlurkCommand())
+	register(commands.NewDiceCommand())
+	register(commands.NewRollCommand())
+	register(commands.NewLoveCommand())
+	register(commands.NewShipCommand())
+	register(commands.NewHugCommand())
+	register(commands.NewSlapCommand())
+
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
