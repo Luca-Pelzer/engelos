@@ -31,6 +31,7 @@ var (
 const (
 	ProviderTwitch  = "twitch"
 	ProviderDiscord = "discord"
+	ProviderSpotify = "spotify"
 )
 
 // Supported OAuth identity purposes.
@@ -85,7 +86,7 @@ func (o *OAuthIdentity) Validate() error {
 		return fmt.Errorf("%w: empty user id", ErrInvalidOAuthIdentity)
 	}
 	switch o.Provider {
-	case ProviderTwitch, ProviderDiscord:
+	case ProviderTwitch, ProviderDiscord, ProviderSpotify:
 	default:
 		return fmt.Errorf("%w: unsupported provider %q", ErrInvalidOAuthIdentity, o.Provider)
 	}

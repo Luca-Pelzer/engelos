@@ -51,10 +51,13 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests/spotify"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/web"
 	"github.com/coder/websocket"
 	"golang.org/x/oauth2"
+	spotifyoauth "golang.org/x/oauth2/spotify"
 	twitchoauth "golang.org/x/oauth2/twitch"
 )
 
@@ -251,6 +254,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("feature flags store opened", "dsn", featureFlagsDSN)
 
+	songRequestDSN := filepath.Join(dataDir, "songrequests.db")
+	songRequestStore, err := songrequests.OpenSQLiteStore(ctx, songRequestDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open song request store %s: %w", songRequestDSN, err)
+	}
+	defer func() {
+		if cerr := songRequestStore.Close(); cerr != nil {
+			logger.Warn("song request store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("song request store opened", "dsn", songRequestDSN)
+
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
 		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
@@ -325,7 +340,15 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	economy.withResolver(userProfileProvider{adapter: twitchAdapter}.UserProfile)
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, logger)
+	songRequester := spotifyRequester{
+		cfg:      songRequestStore,
+		client:   spotify.New(spotify.WithLogger(logger)),
+		auth:     authStore,
+		tenantID: defaultTenantID,
+		logger:   logger,
+	}
+
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -389,7 +412,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		// calls 401. Live re-application to the connected adapter is
 		// Phase 5b — here only persistence + the OnRefresh hook run.
 		refresher, rerr := oauthrefresh.New(oauthrefresh.Config{
-			Store:  refreshStoreAdapter{store: authStore},
+			Store:  providerScopedStore{inner: refreshStoreAdapter{store: authStore}, provider: auth.ProviderTwitch},
 			Tokens: twitchTokenSource{cfg: twitchOAuthCfg},
 			Logger: logger,
 			OnRefresh: func(ev oauthrefresh.RefreshEvent) {
@@ -422,6 +445,28 @@ func run(ctx context.Context, logger *slog.Logger) error {
 				}
 			}()
 			logger.Info("oauth token refresher started")
+		}
+	}
+
+	// Spotify song-request token refresher: keeps the bot's stored Spotify
+	// access token fresh so song requests never 401 mid-stream. Scoped to
+	// Spotify identities only, so it never touches Twitch tokens.
+	spotifyOAuthCfg := buildSpotifyOAuthConfig(cryptoBox, logger)
+	if spotifyOAuthCfg != nil {
+		spotifyRefresher, rerr := oauthrefresh.New(oauthrefresh.Config{
+			Store:  providerScopedStore{inner: refreshStoreAdapter{store: authStore}, provider: auth.ProviderSpotify},
+			Tokens: spotifyTokenSource{cfg: spotifyOAuthCfg},
+			Logger: logger,
+		})
+		if rerr != nil {
+			logger.Warn("spotify oauth refresher disabled", "err", rerr)
+		} else {
+			go func() {
+				if err := spotifyRefresher.Run(ctx); err != nil {
+					logger.Error("spotify oauth refresher exited", "err", err)
+				}
+			}()
+			logger.Info("spotify oauth token refresher started")
 		}
 	}
 
@@ -525,6 +570,83 @@ func twitchOAuthScopes() []string {
 		return custom
 	}
 	return defaultTwitchScopes
+}
+
+// defaultSpotifyScopes are the OAuth scopes the Spotify song-request feature
+// needs: queue/skip playback control and reading the current track. Playlist
+// scopes cover the "playlist as queue" approach (add/remove tracks).
+var defaultSpotifyScopes = []string{
+	"user-modify-playback-state",  // skip / queue control
+	"user-read-playback-state",    // read active device + playback
+	"user-read-currently-playing", // read the current track
+	"playlist-modify-public",      // add/remove tracks on a public SR playlist
+	"playlist-modify-private",     // add/remove tracks on a private SR playlist
+}
+
+// buildSpotifyOAuthConfig assembles the Spotify *oauth2.Config shared by the
+// "Connect Spotify" handler and the Spotify token refresher, or returns nil
+// (feature off) when its prerequisites are missing. Like the Twitch builder it
+// requires an encryption box plus the three
+// ENGELOS_SPOTIFY_CLIENT_ID/SECRET/REDIRECT_URL env vars; absence of any is a
+// normal, non-fatal "feature off" state.
+func buildSpotifyOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Config {
+	clientID := os.Getenv("ENGELOS_SPOTIFY_CLIENT_ID")
+	clientSecret := os.Getenv("ENGELOS_SPOTIFY_CLIENT_SECRET")
+	redirectURL := os.Getenv("ENGELOS_SPOTIFY_REDIRECT_URL")
+	if box == nil || clientID == "" || clientSecret == "" || redirectURL == "" {
+		logger.Info("spotify oauth disabled",
+			"has_key", box != nil, "has_client_id", clientID != "",
+			"has_secret", clientSecret != "", "has_redirect", redirectURL != "")
+		return nil
+	}
+	logger.Info("spotify oauth enabled", "redirect_url", redirectURL)
+	return &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Scopes:       defaultSpotifyScopes,
+		Endpoint:     spotifyoauth.Endpoint,
+	}
+}
+
+// spotifyTokenSource adapts the Spotify *oauth2.Config onto
+// oauthrefresh.TokenSource, identical in shape to twitchTokenSource.
+type spotifyTokenSource struct{ cfg *oauth2.Config }
+
+func (t spotifyTokenSource) Refresh(ctx context.Context, refreshToken string) (string, string, time.Time, error) {
+	src := t.cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken})
+	tok, err := src.Token()
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return tok.AccessToken, tok.RefreshToken, tok.Expiry, nil
+}
+
+// providerScopedStore wraps a refresh store so a refresher only ever sees
+// identities for ONE provider. This is essential once more than one provider
+// exists: each provider's refresher must refresh ONLY its own tokens (a Twitch
+// refresher must never attempt a Spotify token against the Twitch endpoint).
+type providerScopedStore struct {
+	inner    oauthrefresh.Store
+	provider string
+}
+
+func (s providerScopedStore) ListExpiring(ctx context.Context, cutoff time.Time) ([]oauthrefresh.Identity, error) {
+	all, err := s.inner.ListExpiring(ctx, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	out := all[:0]
+	for _, id := range all {
+		if id.Provider == s.provider {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+func (s providerScopedStore) UpdateTokens(ctx context.Context, id, accessToken, refreshToken string, expiresAt time.Time) error {
+	return s.inner.UpdateTokens(ctx, id, accessToken, refreshToken, expiresAt)
 }
 
 // refreshStoreAdapter maps auth.Store onto the narrow oauthrefresh.Store
@@ -1039,7 +1161,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, songRequester commands.SongRequester, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -1094,6 +1216,12 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 		register(commands.NewLockPredictionCommand(predictions))
 		register(commands.NewResolvePredictionCommand(predictions))
 		register(commands.NewCancelPredictionCommand(predictions))
+	}
+
+	if songRequester != nil {
+		register(commands.NewSongRequestCommand(songRequester))
+		register(commands.NewNowPlayingCommand(songRequester))
+		register(commands.NewSkipSongCommand(songRequester))
 	}
 
 	register(commands.NewPointsCommand(loyaltyProvider))
