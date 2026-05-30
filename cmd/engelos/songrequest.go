@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
@@ -124,6 +126,97 @@ func (r spotifyRequester) Skip(ctx context.Context, channel string) commands.Son
 		return mapSpotifyErr(err)
 	}
 	return commands.SongOK
+}
+
+// nowPlayingBroadcaster is the raw byte sink the poller publishes to; ws.Hub
+// satisfies it. Declared here so the poller never imports internal/api/ws.
+type nowPlayingBroadcaster interface {
+	Broadcast(payload []byte)
+}
+
+// nowPlayingPoller periodically reads each channel's currently playing track
+// and broadcasts a "song.now_playing" WebSocket envelope when it changes, so
+// the /overlay/now-playing OBS overlay can render it live. Polling (rather
+// than push) is necessary because Spotify has no now-playing webhook; the
+// poller dedupes so an unchanged track is broadcast at most once.
+type nowPlayingPoller struct {
+	req      spotifyRequester
+	sink     nowPlayingBroadcaster
+	channels []string
+	interval time.Duration
+	logger   *slog.Logger
+	last     map[string]string
+}
+
+// nowPlayingEnvelope mirrors the {type,data} shape produced by
+// runtime.WSBroadcaster so overlay assets handle every event uniformly.
+type nowPlayingEnvelope struct {
+	Type string            `json:"type"`
+	Data nowPlayingPayload `json:"data"`
+}
+
+// nowPlayingPayload is the data the now-playing overlay renders.
+type nowPlayingPayload struct {
+	Title     string `json:"title"`
+	Artist    string `json:"artist"`
+	IsPlaying bool   `json:"is_playing"`
+	Provider  string `json:"provider"`
+}
+
+// run drives the poll loop until ctx is cancelled. It is started in a
+// goroutine by main and returns on ctx.Done.
+func (p *nowPlayingPoller) run(ctx context.Context) {
+	if p.interval <= 0 {
+		p.interval = 8 * time.Second
+	}
+	if p.last == nil {
+		p.last = make(map[string]string)
+	}
+	t := time.NewTicker(p.interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			for _, ch := range p.channels {
+				p.poll(ctx, ch)
+			}
+		}
+	}
+}
+
+// poll reads one channel's now-playing track and broadcasts it when the
+// (title|artist|playing) tuple differs from the last broadcast for that
+// channel. Errors degrade silently to a "stopped" state so a transient API
+// blip clears the overlay rather than freezing a stale track.
+func (p *nowPlayingPoller) poll(ctx context.Context, channel string) {
+	track, outcome := p.req.NowPlaying(ctx, channel)
+	payload := nowPlayingPayload{Provider: "spotify"}
+	if outcome == commands.SongOK {
+		payload.Title = track.Title
+		payload.Artist = track.Artist
+		payload.IsPlaying = true
+	}
+	key := payload.Title + "\x00" + payload.Artist + "\x00" + boolKey(payload.IsPlaying)
+	if p.last[channel] == key {
+		return
+	}
+	p.last[channel] = key
+
+	buf, err := json.Marshal(nowPlayingEnvelope{Type: "song.now_playing", Data: payload})
+	if err != nil {
+		p.logger.WarnContext(ctx, "now-playing: marshal failed", "channel", channel, "err", err)
+		return
+	}
+	p.sink.Broadcast(buf)
+}
+
+func boolKey(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
 }
 
 // mapSpotifyErr translates a Spotify client error into a chat-facing outcome.

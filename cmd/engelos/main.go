@@ -348,6 +348,20 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		logger:   logger,
 	}
 
+	// Now-playing overlay poller: when Spotify is configured, poll the
+	// streamer's channels and push song.now_playing events to the WS hub so
+	// the /overlay/now-playing OBS source updates live.
+	if nowPlayingChannels := splitCSV(os.Getenv("ENGELOS_TWITCH_CHANNELS")); len(nowPlayingChannels) > 0 {
+		poller := &nowPlayingPoller{
+			req:      songRequester,
+			sink:     hub,
+			channels: nowPlayingChannels,
+			logger:   logger,
+		}
+		go poller.run(ctx)
+		logger.Info("now-playing overlay poller started", "channels", len(nowPlayingChannels))
+	}
+
 	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
