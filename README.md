@@ -21,13 +21,20 @@ Free forever, no premium tier, no vendor lock-in, your data on your machine.
 
 ---
 
-engelOS is a **suite**, not a single bot. It grew out of
+engelOS is a **platform**, not a single bot. It grew out of
 **[EngelGuard](https://github.com/Luca-Pelzer/engelguard)**, an earlier Python Twitch bot. Building
 EngelGuard made one thing clear: what I actually wanted was far bigger than any single bot, so I
 rebuilt everything from scratch in Go as one coherent suite. EngelGuard didn't disappear; it's the
 moderation bot **inside** engelOS. The Twitch and Discord bots are still EngelGuard, and engelOS is
 the bigger home they live in, tying moderation, commands, a points economy, games, giveaways, and
 engagement systems together in a single static binary with an embedded web dashboard.
+
+The goal is for everything to live under one roof: the chat bots, the Discord integration, the web
+dashboard, and over time a plugin/addon ecosystem and a downloadable companion client. The companion
+client is the ambitious part of the vision: a small app a streamer installs so the bot can trigger
+real actions on their machine in response to events (a channel-point redemption firing an on-screen
+effect, for example). Most of that is still on the roadmap below, but it's why engelOS is built as a
+platform from day one rather than a one-off bot.
 
 > [!IMPORTANT]
 > **Phase 1 alpha.** The core is live and tested under Go's race detector, but the public OSS launch
@@ -215,7 +222,9 @@ All configuration is via environment variables:
 
 - YouTube and Kick adapters
 - AI features: Auto-Clipper, real-time Translator, context-aware AI-Mod, AI Co-Host, AI-Voice/TTS
-- Stream-Wrapped, Addon/Script marketplace
+- Stream-Wrapped, plugin/addon ecosystem and marketplace
+- Downloadable companion client (lets the bot trigger on-machine actions from events, e.g. a
+  channel-point redemption firing an on-screen effect)
 - TUI (Bubble Tea), native GUI (Wails v2)
 - Managed Cloud-Premium tier (Phase 2+, not in this repo)
 
