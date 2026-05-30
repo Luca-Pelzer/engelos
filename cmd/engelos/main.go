@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -39,6 +40,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/liveops"
+	"github.com/Luca-Pelzer/engelos/internal/loyalty"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
 	"github.com/Luca-Pelzer/engelos/internal/overlay"
@@ -223,6 +225,19 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("automod audit store opened", "dsn", automodAuditDSN)
 
+	loyaltyDSN := filepath.Join(dataDir, "loyalty.db")
+	loyaltyStore, err := loyalty.OpenSQLiteStore(ctx, loyaltyDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open loyalty store %s: %w", loyaltyDSN, err)
+	}
+	defer func() {
+		if cerr := loyaltyStore.Close(); cerr != nil {
+			logger.Warn("loyalty store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("loyalty store opened", "dsn", loyaltyDSN)
+	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown)
+
 	automodEngine, err := automod.NewEngine(automod.DefaultConfig())
 	if err != nil {
 		return fmt.Errorf("init automod engine: %w", err)
@@ -279,7 +294,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, logger)
+	economy.withResolver(userProfileProvider{adapter: twitchAdapter}.UserProfile)
+
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -316,6 +333,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
 		Commands:         cmdRouter,
 		Moderator:        moderationAdapter{svc: moderationSvc},
+		Economy:          economy,
 		Activity:         timerScheduler,
 		Logger:           logger,
 	})
@@ -539,6 +557,138 @@ func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, vi
 	}, nil
 }
 
+// Loyalty economy tuning. A viewer earns defaultEarnAmount points at most once
+// per defaultEarnCooldown of chatting — the per-viewer cooldown is the
+// anti-farming gate (idle lurkers and message-flooding bots cannot accumulate
+// faster than this rate).
+const (
+	defaultEarnAmount   = 10
+	defaultEarnCooldown = 60 * time.Second
+)
+
+// economyAdapter wires the loyalty store into both the dispatcher (Award, the
+// cooldown-gated earn path) and the loyalty chat commands (Balance/Transfer/
+// Top). It owns the per-viewer earn-cooldown state. A nil store disables every
+// path safely. The profile resolver turns a !give target username into the
+// recipient's stable platform id, since the store transfers by viewer id.
+type economyAdapter struct {
+	store        loyalty.Store
+	tenantID     string
+	earnAmount   int64
+	earnEvery    time.Duration
+	resolve      func(ctx context.Context, login string) (commands.UserProfile, error)
+	logger       *slog.Logger
+	mu           sync.Mutex
+	lastEarnedAt map[string]time.Time
+}
+
+func newEconomyAdapter(store loyalty.Store, tenantID string, amount int64, every time.Duration) *economyAdapter {
+	return &economyAdapter{
+		store:        store,
+		tenantID:     tenantID,
+		earnAmount:   amount,
+		earnEvery:    every,
+		logger:       slog.Default(),
+		lastEarnedAt: make(map[string]time.Time),
+	}
+}
+
+// withResolver sets the username→profile resolver used by Transfer and returns
+// the adapter for chaining.
+func (e *economyAdapter) withResolver(r func(ctx context.Context, login string) (commands.UserProfile, error)) *economyAdapter {
+	e.resolve = r
+	return e
+}
+
+// Award credits the viewer once per earn cooldown. The cooldown check and the
+// timestamp update are done under the lock so two near-simultaneous messages
+// from one viewer cannot both earn.
+func (e *economyAdapter) Award(ctx context.Context, tenantID, channel, viewerID, username string) {
+	if e == nil || e.store == nil || viewerID == "" {
+		return
+	}
+	key := channel + "|" + viewerID
+	now := time.Now()
+	e.mu.Lock()
+	if last, ok := e.lastEarnedAt[key]; ok && now.Sub(last) < e.earnEvery {
+		e.mu.Unlock()
+		return
+	}
+	e.lastEarnedAt[key] = now
+	e.mu.Unlock()
+
+	if _, err := e.store.Earn(ctx, tenantID, channel, viewerID, username, e.earnAmount); err != nil {
+		e.logger.Warn("loyalty earn failed", "channel", channel, "viewer", viewerID, "err", err)
+	}
+}
+
+// Balance implements commands.LoyaltyProvider.
+func (e *economyAdapter) Balance(ctx context.Context, channel, viewerID string) (int64, commands.LoyaltyError) {
+	if e == nil || e.store == nil {
+		return 0, commands.LoyaltyUnavailable
+	}
+	acct, err := e.store.Balance(ctx, e.tenantID, channel, viewerID)
+	switch {
+	case err == nil:
+		return acct.Balance, commands.LoyaltyOK
+	case errors.Is(err, loyalty.ErrNotFound):
+		return 0, commands.LoyaltyNotFound
+	default:
+		return 0, commands.LoyaltyUnavailable
+	}
+}
+
+// Transfer implements commands.LoyaltyProvider. It resolves the target
+// username to a stable viewer id (via the profile resolver) before moving
+// funds, and reports the recipient's canonical display name back for the reply.
+func (e *economyAdapter) Transfer(ctx context.Context, channel, fromViewerID, toUsername string, amount int64) (commands.LoyaltyError, string) {
+	if e == nil || e.store == nil || e.resolve == nil {
+		return commands.LoyaltyUnavailable, ""
+	}
+	prof, err := e.resolve(ctx, toUsername)
+	if err != nil {
+		return commands.LoyaltyInvalid, ""
+	}
+	toViewerID := prof.Login
+	display := prof.DisplayName
+	if prof.Login == "" {
+		return commands.LoyaltyInvalid, ""
+	}
+	_, _, err = e.store.Transfer(ctx, e.tenantID, channel, fromViewerID, toViewerID, prof.Login, amount)
+	switch {
+	case err == nil:
+		return commands.LoyaltyOK, display
+	case errors.Is(err, loyalty.ErrInsufficient):
+		return commands.LoyaltyInsufficient, ""
+	case errors.Is(err, loyalty.ErrNotFound):
+		return commands.LoyaltyNotFound, ""
+	case errors.Is(err, loyalty.ErrInvalid):
+		return commands.LoyaltyInvalid, ""
+	default:
+		return commands.LoyaltyUnavailable, ""
+	}
+}
+
+// Top implements commands.LoyaltyProvider.
+func (e *economyAdapter) Top(ctx context.Context, channel string, n int) []commands.LoyaltyEntry {
+	if e == nil || e.store == nil {
+		return nil
+	}
+	accts, err := e.store.Leaderboard(ctx, e.tenantID, channel, n)
+	if err != nil {
+		return nil
+	}
+	out := make([]commands.LoyaltyEntry, 0, len(accts))
+	for _, a := range accts {
+		name := a.Username
+		if name == "" {
+			name = a.ViewerID
+		}
+		out = append(out, commands.LoyaltyEntry{Username: name, Balance: a.Balance})
+	}
+	return out
+}
+
 // moderationAdapter bridges the runtime.Moderator interface (positional, to
 // keep the runtime decoupled) to the moderation.Service. A nil svc yields a
 // no-op that always passes, so AutoMod can be absent without a nil-check at the
@@ -583,7 +733,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -627,6 +777,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	profileProvider := userProfileProvider{adapter: twitchAdapter}
 	register(commands.NewAccountAgeCommand(profileProvider))
 	register(commands.NewShoutoutCommand(profileProvider, streamProvider))
+
+	register(commands.NewPointsCommand(loyaltyProvider))
+	register(commands.NewGiveCommand(loyaltyProvider))
+	register(commands.NewPointsLeaderboardCommand(loyaltyProvider))
 
 	register(commands.NewEightBallCommand())
 	register(commands.NewLurkCommand())

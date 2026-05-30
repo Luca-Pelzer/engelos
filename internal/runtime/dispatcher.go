@@ -72,6 +72,15 @@ type Broadcaster interface {
 	Broadcast(eventType string, payload any)
 }
 
+// Economy is the narrow contract the dispatcher uses to award loyalty points
+// for chat activity. The adapter wired in main applies a per-viewer earn
+// cooldown (anti-farming) so idle or bot accounts cannot accumulate points by
+// flooding; the dispatcher simply reports every message and lets the adapter
+// decide whether it earns. Award must be safe for concurrent use.
+type Economy interface {
+	Award(ctx context.Context, tenantID, channel, viewerID, username string)
+}
+
 // CommandInvocation is the platform-neutral context a [CommandRouter] needs
 // to route a chat command. The dispatcher fills it from an incoming
 // message event, including the author's privilege flags so the router can
@@ -193,6 +202,10 @@ type Config struct {
 	// the platform (delete/timeout/ban) and the message is dropped from
 	// further processing (no command, points or streak).
 	Moderator Moderator
+
+	// Economy, when non-nil, is told about every chat message so it can award
+	// loyalty points (the adapter rate-limits earning per viewer).
+	Economy Economy
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -398,6 +411,11 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 				"err", err,
 			)
 		}
+	}
+
+	if d.cfg.Economy != nil {
+		d.cfg.Economy.Award(ctx, d.cfg.TenantID,
+			ev.Channel, ev.Message.UserID, ev.Message.Username)
 	}
 
 	if d.cfg.Streak != nil {
