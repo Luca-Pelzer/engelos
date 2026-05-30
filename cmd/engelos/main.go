@@ -689,6 +689,38 @@ func (e *economyAdapter) Top(ctx context.Context, channel string, n int) []comma
 	return out
 }
 
+// Wager implements commands.GameBank: it spends the stake first (so a player
+// who cannot afford the bet risks nothing), then on a win credits the payout.
+// Spend and Earn are each atomic in the store; doing the spend before the
+// credit guarantees the balance can never go negative even on a partial
+// failure (a failed credit just means the player loses the stake, never more).
+func (e *economyAdapter) Wager(ctx context.Context, channel, viewerID string, bet, payout int64) (int64, commands.LoyaltyError) {
+	if e == nil || e.store == nil {
+		return 0, commands.LoyaltyUnavailable
+	}
+	spent, err := e.store.Spend(ctx, e.tenantID, channel, viewerID, bet)
+	switch {
+	case err == nil:
+	case errors.Is(err, loyalty.ErrInsufficient):
+		return 0, commands.LoyaltyInsufficient
+	case errors.Is(err, loyalty.ErrNotFound):
+		return 0, commands.LoyaltyNotFound
+	case errors.Is(err, loyalty.ErrInvalid):
+		return 0, commands.LoyaltyInvalid
+	default:
+		return 0, commands.LoyaltyUnavailable
+	}
+	if payout <= 0 {
+		return spent.Balance, commands.LoyaltyOK
+	}
+	won, err := e.store.Earn(ctx, e.tenantID, channel, viewerID, spent.Username, payout)
+	if err != nil {
+		e.logger.Warn("loyalty wager payout failed", "channel", channel, "viewer", viewerID, "err", err)
+		return spent.Balance, commands.LoyaltyOK
+	}
+	return won.Balance, commands.LoyaltyOK
+}
+
 // moderationAdapter bridges the runtime.Moderator interface (positional, to
 // keep the runtime decoupled) to the moderation.Service. A nil svc yields a
 // no-op that always passes, so AutoMod can be absent without a nil-check at the
@@ -781,6 +813,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewPointsCommand(loyaltyProvider))
 	register(commands.NewGiveCommand(loyaltyProvider))
 	register(commands.NewPointsLeaderboardCommand(loyaltyProvider))
+	if bank, ok := loyaltyProvider.(commands.GameBank); ok && loyaltyProvider != nil {
+		register(commands.NewGambleCommand(bank))
+		register(commands.NewSlotsCommand(bank))
+	}
 
 	register(commands.NewEightBallCommand())
 	register(commands.NewLurkCommand())
