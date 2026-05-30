@@ -452,7 +452,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// access token fresh so song requests never 401 mid-stream. Scoped to
 	// Spotify identities only, so it never touches Twitch tokens.
 	spotifyOAuthCfg := buildSpotifyOAuthConfig(cryptoBox, logger)
+	var oauthSpotify *handlers.SpotifyOAuth
 	if spotifyOAuthCfg != nil {
+		oauthSpotify = handlers.NewSpotifyOAuth(authStore, defaultTenantID, logger, spotifyOAuthCfg).
+			WithCookieSecure(false)
 		spotifyRefresher, rerr := oauthrefresh.New(oauthrefresh.Config{
 			Store:  providerScopedStore{inner: refreshStoreAdapter{store: authStore}, provider: auth.ProviderSpotify},
 			Tokens: spotifyTokenSource{cfg: spotifyOAuthCfg},
@@ -487,6 +490,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Streak:          streakSystem,
 		StatsProvider:   dispatcherStatsAdapter{d: dispatcher},
 		OAuthTwitch:     oauthTwitch,
+		OAuthSpotify:    oauthSpotify,
 		RedemptionStore: redemptionStore,
 		CommandStore:    customStore,
 		CounterStore:    counterStore,

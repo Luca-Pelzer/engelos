@@ -97,6 +97,11 @@ type Deps struct {
 	// payload is still served.
 	StatsProvider handlers.StatsProvider
 
+	// OAuthSpotify, when non-nil, mounts the "Connect Spotify" routes under
+	// /api/v1/auth/spotify/*. The callback requires an authenticated session
+	// (it links Spotify to the logged-in user). Nil leaves it unmounted.
+	OAuthSpotify *handlers.SpotifyOAuth
+
 	// OAuthTwitch, when non-nil, mounts the "Login with Twitch" routes
 	// at GET /api/v1/auth/twitch/login and GET /api/v1/auth/twitch/callback.
 	// Nil leaves the OAuth feature disabled (the routes are not mounted).
@@ -177,6 +182,10 @@ func NewRouter(deps Deps) chi.Router {
 			if deps.OAuthTwitch != nil {
 				r.Get("/twitch/login", deps.OAuthTwitch.Login)
 				r.Get("/twitch/callback", deps.OAuthTwitch.Callback)
+			}
+			if deps.OAuthSpotify != nil {
+				r.With(apimw.RequireSession).Get("/spotify/login", deps.OAuthSpotify.Login)
+				r.With(apimw.RequireSession).Get("/spotify/callback", deps.OAuthSpotify.Callback)
 			}
 		})
 		r.Route("/users", func(r chi.Router) {
