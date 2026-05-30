@@ -1,6 +1,6 @@
 <div align="center">
 
-# engelOS
+# EngelOS
 
 ### The open-source streaming bot that does what the paid ones do, and the things they won't.
 
@@ -15,17 +15,17 @@
 Moderation, custom commands, a loyalty economy, mini-games, and provably-fair giveaways.
 Free forever, no premium tier, no vendor lock-in, your data on your machine.
 
-[Why engelOS?](#-why-engelos) • [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Architecture](#-architecture) • [Status](#-project-status)
+[Why EngelOS?](#-why-engelos) • [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Architecture](#-architecture) • [Status](#-project-status)
 
 </div>
 
 ---
 
-engelOS is a **platform**, not a single bot. It grew out of
+EngelOS is a **platform**, not a single bot. It grew out of
 **[EngelGuard](https://github.com/Luca-Pelzer/engelguard)**, an earlier Python Twitch bot. Building
 EngelGuard made one thing clear: what I actually wanted was far bigger than any single bot, so I
 rebuilt everything from scratch in Go as one coherent suite. EngelGuard didn't disappear; it's the
-moderation bot **inside** engelOS. The Twitch and Discord bots are still EngelGuard, and engelOS is
+moderation bot **inside** EngelOS. The Twitch and Discord bots are still EngelGuard, and EngelOS is
 the bigger home they live in, tying moderation, commands, a points economy, games, giveaways, and
 engagement systems together in a single static binary with an embedded web dashboard.
 
@@ -33,7 +33,7 @@ The goal is for everything to live under one roof: the chat bots, the Discord in
 dashboard, and over time a plugin/addon ecosystem and a downloadable companion client. The companion
 client is the ambitious part of the vision: a small app a streamer installs so the bot can trigger
 real actions on their machine in response to events (a channel-point redemption firing an on-screen
-effect, for example). Most of that is still on the roadmap below, but it's why engelOS is built as a
+effect, for example). Most of that is still on the roadmap below, but it's why EngelOS is built as a
 platform from day one rather than a one-off bot.
 
 > [!IMPORTANT]
@@ -43,7 +43,7 @@ platform from day one rather than a one-off bot.
 
 ---
 
-## 🎯 Why engelOS?
+## 🎯 Why EngelOS?
 
 Tired of Nightbot Premium, StreamElements' limits, or cloud bots that own your data?
 
@@ -65,7 +65,7 @@ Plus a few things the big bots simply don't offer:
 
 ### Quick comparison
 
-| | engelOS | Nightbot | StreamElements | EngelGuard (Python) |
+| | EngelOS | Nightbot | StreamElements | EngelGuard (Python) |
 |---|:---:|:---:|:---:|:---:|
 | Cost | **Free forever** | Free + Premium | Free + Premium | Free |
 | Self-hosted | ✅ | ❌ cloud only | ❌ cloud only | ✅ |
@@ -172,7 +172,7 @@ All configuration is via environment variables:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  engelOS Core Daemon (Go, single static binary)          │
+│  EngelOS Core Daemon (Go, single static binary)          │
 │                                                          │
 │  ┌────────────────────┐    ┌────────────────────────┐    │
 │  │ Platform Adapters  │ →  │  Runtime Dispatcher    │    │
@@ -280,6 +280,6 @@ against it without AGPL obligations.
 
 <div align="center">
 
-**engelOS**, built in the open, the successor to [EngelGuard](https://github.com/Luca-Pelzer/engelguard).
+**EngelOS**, built in the open, the successor to [EngelGuard](https://github.com/Luca-Pelzer/engelguard).
 
 </div>
