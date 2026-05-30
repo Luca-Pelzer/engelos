@@ -869,6 +869,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 		register(acceptCmd)
 	}
 
+	for _, c := range commands.NewGiveawayCommands() {
+		register(c)
+	}
+
 	register(commands.NewEightBallCommand())
 	register(commands.NewLurkCommand())
 	register(commands.NewUnlurkCommand())
