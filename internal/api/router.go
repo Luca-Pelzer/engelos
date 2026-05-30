@@ -14,6 +14,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
+	"github.com/Luca-Pelzer/engelos/internal/featureflags"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
@@ -117,6 +118,11 @@ type Deps struct {
 	// Moderation, when non-nil, exposes the AutoMod config + audit endpoints
 	// under /api/v1/automod/*. Nil makes those endpoints return 501.
 	Moderation *moderation.Service
+
+	// FeatureStore, when non-nil, exposes the per-channel feature-flag
+	// overrides (e.g. the points "economy" toggle) under /api/v1/features/*.
+	// Nil makes those endpoints return 501 (feature off).
+	FeatureStore featureflags.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -142,6 +148,7 @@ func NewRouter(deps Deps) chi.Router {
 	commandsH := handlers.NewCommands(deps.CommandStore, deps.TenantID, logger)
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
+	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -239,6 +246,14 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/config", automodH.GetConfig)
 			r.Put("/config", automodH.PutConfig)
 			r.Get("/audit", automodH.Audit)
+		})
+
+		r.Route("/features", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", featuresH.List)
+			r.Put("/{feature}", featuresH.Set)
 		})
 	})
 

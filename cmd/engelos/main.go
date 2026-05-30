@@ -37,6 +37,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
+	"github.com/Luca-Pelzer/engelos/internal/featureflags"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/liveops"
@@ -237,7 +238,21 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 	}()
 	logger.Info("loyalty store opened", "dsn", loyaltyDSN)
-	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown)
+
+	featureFlagsDSN := filepath.Join(dataDir, "featureflags.db")
+	featureFlagStore, err := featureflags.OpenSQLiteStore(ctx, featureFlagsDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open feature flags store %s: %w", featureFlagsDSN, err)
+	}
+	defer func() {
+		if cerr := featureFlagStore.Close(); cerr != nil {
+			logger.Warn("feature flags store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("feature flags store opened", "dsn", featureFlagsDSN)
+
+	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
+		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
 	rewardsDSN := filepath.Join(dataDir, "rewards.db")
 	rewardsStore, err := rewards.OpenSQLiteStore(ctx, rewardsDSN, logger)
@@ -310,7 +325,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	economy.withResolver(userProfileProvider{adapter: twitchAdapter}.UserProfile)
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -431,6 +446,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		CommandStore:    customStore,
 		CounterStore:    counterStore,
 		Moderation:      moderationSvc,
+		FeatureStore:    featureFlagStore,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")
@@ -592,10 +608,60 @@ type economyAdapter struct {
 	earnAmount   int64
 	earnEvery    time.Duration
 	resolve      func(ctx context.Context, login string) (commands.UserProfile, error)
+	gate         featureGate
 	logger       *slog.Logger
 	mu           sync.Mutex
 	lastEarnedAt map[string]time.Time
 }
+
+// featureGate reports whether the per-channel points economy is switched on.
+// economyAdapter consults it before every balance-changing operation so a
+// streamer can disable the entire economy (earning plus every points game) for
+// their channel without restarting the daemon. The economy defaults ON: a nil
+// gate, or any lookup error, leaves it enabled so a storage hiccup never
+// silently freezes points for everyone.
+type featureGate interface {
+	EconomyEnabled(ctx context.Context, channel string) bool
+}
+
+// featureGateAdapter resolves the "economy" toggle from the featureflags store,
+// defaulting to ON when no explicit override is stored (so existing channels
+// keep their economy until a mod deliberately turns it off).
+type featureGateAdapter struct {
+	store    featureflags.Store
+	tenantID string
+}
+
+// EconomyEnabled returns the channel's "economy" flag, defaulting to true. A
+// store error is treated as enabled (fail-open) and is the caller's last line:
+// freezing every viewer's points on a transient read error would be a worse
+// outcome than briefly honouring a toggle that is being flipped off.
+func (a featureGateAdapter) EconomyEnabled(ctx context.Context, channel string) bool {
+	if a.store == nil {
+		return true
+	}
+	enabled, err := a.store.GetOrDefault(ctx, a.tenantID, channel, featureEconomy, true)
+	if err != nil {
+		return true
+	}
+	return enabled
+}
+
+// SetEconomy persists an explicit on/off override for the channel's economy,
+// satisfying commands.FeatureToggleStore so the mods-only !economy command can
+// flip it from chat.
+func (a featureGateAdapter) SetEconomy(ctx context.Context, channel string, enabled bool) error {
+	if a.store == nil {
+		return nil
+	}
+	return a.store.Set(ctx, a.tenantID, channel, featureEconomy, enabled)
+}
+
+// featureEconomy is the feature key for the per-channel points economy toggle.
+// Enabling it turns on earning AND every points-based game at once (gamble,
+// slots, duel, heist, rewards); disabling it freezes them all. It is the single
+// switch enabling the whole points economy at once.
+const featureEconomy = "economy"
 
 func newEconomyAdapter(store loyalty.Store, tenantID string, amount int64, every time.Duration) *economyAdapter {
 	return &economyAdapter{
@@ -615,11 +681,32 @@ func (e *economyAdapter) withResolver(r func(ctx context.Context, login string) 
 	return e
 }
 
+// withFeatureGate sets the per-channel economy toggle source and returns the
+// adapter for chaining. A nil gate (the zero value) leaves the economy always
+// enabled.
+func (e *economyAdapter) withFeatureGate(g featureGate) *economyAdapter {
+	e.gate = g
+	return e
+}
+
+// enabled reports whether the points economy is on for channel, defaulting to
+// true when no gate is wired so the adapter behaves exactly as before until a
+// toggle is set.
+func (e *economyAdapter) enabled(ctx context.Context, channel string) bool {
+	if e == nil || e.gate == nil {
+		return true
+	}
+	return e.gate.EconomyEnabled(ctx, channel)
+}
+
 // Award credits the viewer once per earn cooldown. The cooldown check and the
 // timestamp update are done under the lock so two near-simultaneous messages
 // from one viewer cannot both earn.
 func (e *economyAdapter) Award(ctx context.Context, tenantID, channel, viewerID, username string) {
 	if e == nil || e.store == nil || viewerID == "" {
+		return
+	}
+	if !e.enabled(ctx, channel) {
 		return
 	}
 	key := channel + "|" + viewerID
@@ -639,7 +726,7 @@ func (e *economyAdapter) Award(ctx context.Context, tenantID, channel, viewerID,
 
 // Balance implements commands.LoyaltyProvider.
 func (e *economyAdapter) Balance(ctx context.Context, channel, viewerID string) (int64, commands.LoyaltyError) {
-	if e == nil || e.store == nil {
+	if e == nil || e.store == nil || !e.enabled(ctx, channel) {
 		return 0, commands.LoyaltyUnavailable
 	}
 	acct, err := e.store.Balance(ctx, e.tenantID, channel, viewerID)
@@ -657,7 +744,7 @@ func (e *economyAdapter) Balance(ctx context.Context, channel, viewerID string) 
 // username to a stable viewer id (via the profile resolver) before moving
 // funds, and reports the recipient's canonical display name back for the reply.
 func (e *economyAdapter) Transfer(ctx context.Context, channel, fromViewerID, toUsername string, amount int64) (commands.LoyaltyError, string) {
-	if e == nil || e.store == nil || e.resolve == nil {
+	if e == nil || e.store == nil || e.resolve == nil || !e.enabled(ctx, channel) {
 		return commands.LoyaltyUnavailable, ""
 	}
 	prof, err := e.resolve(ctx, toUsername)
@@ -686,7 +773,7 @@ func (e *economyAdapter) Transfer(ctx context.Context, channel, fromViewerID, to
 
 // Top implements commands.LoyaltyProvider.
 func (e *economyAdapter) Top(ctx context.Context, channel string, n int) []commands.LoyaltyEntry {
-	if e == nil || e.store == nil {
+	if e == nil || e.store == nil || !e.enabled(ctx, channel) {
 		return nil
 	}
 	accts, err := e.store.Leaderboard(ctx, e.tenantID, channel, n)
@@ -710,7 +797,7 @@ func (e *economyAdapter) Top(ctx context.Context, channel string, n int) []comma
 // credit guarantees the balance can never go negative even on a partial
 // failure (a failed credit just means the player loses the stake, never more).
 func (e *economyAdapter) Wager(ctx context.Context, channel, viewerID string, bet, payout int64) (int64, commands.LoyaltyError) {
-	if e == nil || e.store == nil {
+	if e == nil || e.store == nil || !e.enabled(ctx, channel) {
 		return 0, commands.LoyaltyUnavailable
 	}
 	spent, err := e.store.Spend(ctx, e.tenantID, channel, viewerID, bet)
@@ -739,7 +826,7 @@ func (e *economyAdapter) Wager(ctx context.Context, channel, viewerID string, be
 // CanAfford implements commands.DuelBank: reports whether the viewer currently
 // holds at least amount points.
 func (e *economyAdapter) CanAfford(ctx context.Context, channel, viewerID string, amount int64) bool {
-	if e == nil || e.store == nil {
+	if e == nil || e.store == nil || !e.enabled(ctx, channel) {
 		return false
 	}
 	acct, err := e.store.Balance(ctx, e.tenantID, channel, viewerID)
@@ -757,7 +844,7 @@ func (e *economyAdapter) CanAfford(ctx context.Context, channel, viewerID string
 // preceding CanAfford checks plus the store's atomic single-writer spends make
 // a mid-settle shortfall effectively impossible for a non-adversarial chat.
 func (e *economyAdapter) Settle(ctx context.Context, channel, winnerID, loserID string, amount int64) (int64, commands.LoyaltyError) {
-	if e == nil || e.store == nil {
+	if e == nil || e.store == nil || !e.enabled(ctx, channel) {
 		return 0, commands.LoyaltyUnavailable
 	}
 	if !e.CanAfford(ctx, channel, winnerID, amount) || !e.CanAfford(ctx, channel, loserID, amount) {
@@ -785,7 +872,7 @@ func (e *economyAdapter) Settle(ctx context.Context, channel, winnerID, loserID 
 // Collect implements commands.HeistBank: it spends a player's stake as they
 // join a heist, reporting false (and taking nothing) when they cannot afford it.
 func (e *economyAdapter) Collect(ctx context.Context, channel, viewerID string, amount int64) bool {
-	if e == nil || e.store == nil {
+	if e == nil || e.store == nil || !e.enabled(ctx, channel) {
 		return false
 	}
 	if _, err := e.store.Spend(ctx, e.tenantID, channel, viewerID, amount); err != nil {
@@ -798,7 +885,7 @@ func (e *economyAdapter) Collect(ctx context.Context, channel, viewerID string, 
 // The username is left empty because the account already exists (the player was
 // Collected from), so Earn only adjusts the balance.
 func (e *economyAdapter) Payout(ctx context.Context, channel, viewerID string, amount int64) {
-	if e == nil || e.store == nil || amount <= 0 {
+	if e == nil || e.store == nil || amount <= 0 || !e.enabled(ctx, channel) {
 		return
 	}
 	if _, err := e.store.Earn(ctx, e.tenantID, channel, viewerID, viewerID, amount); err != nil {
@@ -809,7 +896,7 @@ func (e *economyAdapter) Payout(ctx context.Context, channel, viewerID string, a
 // Spend implements commands.RedeemBank: it deducts a reward's cost from the
 // viewer, mapping the loyalty store sentinels onto the command-facing enum.
 func (e *economyAdapter) Spend(ctx context.Context, channel, viewerID string, amount int64) commands.LoyaltyError {
-	if e == nil || e.store == nil {
+	if e == nil || e.store == nil || !e.enabled(ctx, channel) {
 		return commands.LoyaltyUnavailable
 	}
 	_, err := e.store.Spend(ctx, e.tenantID, channel, viewerID, amount)
@@ -950,7 +1037,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -995,6 +1082,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewAccountAgeCommand(profileProvider))
 	register(commands.NewShoutoutCommand(profileProvider, streamProvider))
 	register(commands.NewFollowAgeCommand(profileProvider))
+
+	if featureToggle != nil {
+		register(commands.NewEconomyToggleCommand(featureToggle))
+	}
 
 	register(commands.NewPointsCommand(loyaltyProvider))
 	register(commands.NewGiveCommand(loyaltyProvider))
