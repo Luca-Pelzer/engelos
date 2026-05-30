@@ -47,6 +47,10 @@ var (
 // into chat without quoting and never collide with whitespace tokenisation.
 var nameRE = regexp.MustCompile(`^[a-z0-9_]+$`)
 
+// maxMessageLen caps stored timer text below Twitch's ~500-char chat limit, so
+// a stored timer can never be crafted to exceed what the platform accepts.
+const maxMessageLen = 480
+
 // Timer is a periodic auto-announcement scoped to a (tenant, channel).
 type Timer struct {
 	ID           string
@@ -126,6 +130,9 @@ func validate(t Timer) error {
 	}
 	if strings.TrimSpace(t.Message) == "" {
 		return fmt.Errorf("%w: message is required", ErrInvalid)
+	}
+	if len(t.Message) > maxMessageLen {
+		return fmt.Errorf("%w: message length %d exceeds %d", ErrInvalid, len(t.Message), maxMessageLen)
 	}
 	if t.Interval < MinInterval {
 		return fmt.Errorf("%w: interval %s is below the %s floor",

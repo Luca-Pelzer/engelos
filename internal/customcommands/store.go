@@ -53,6 +53,10 @@ var validRoles = map[string]struct{}{
 // tokenisation by the commands engine.
 var nameRE = regexp.MustCompile(`^[a-z0-9_]+$`)
 
+// maxResponseLen caps stored response text below Twitch's ~500-char chat limit,
+// so a stored command can never be crafted to exceed what the platform accepts.
+const maxResponseLen = 480
+
 // CustomCommand is a streamer-defined text command scoped to a
 // (tenant, channel). Name is the trigger WITHOUT the prefix, lower-cased.
 // Response is the raw text emitted (may contain $user/$channel/$args
@@ -113,6 +117,9 @@ func validate(c CustomCommand) error {
 	}
 	if strings.TrimSpace(c.Response) == "" {
 		return fmt.Errorf("%w: response is required", ErrInvalid)
+	}
+	if len(c.Response) > maxResponseLen {
+		return fmt.Errorf("%w: response length %d exceeds %d", ErrInvalid, len(c.Response), maxResponseLen)
 	}
 	if _, ok := validRoles[c.MinRole]; !ok {
 		return fmt.Errorf("%w: min_role %q is not one of everyone|subscriber|vip|moderator|broadcaster",

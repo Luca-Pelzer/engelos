@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -100,6 +101,15 @@ func TestCreate_InvalidMessage(t *testing.T) {
 	ctx := context.Background()
 
 	in := sampleTimer("local", "chan-A", "rules", "   ")
+	_, err := s.Create(ctx, in)
+	assert.ErrorIs(t, err, ErrInvalid)
+}
+
+func TestCreate_MessageTooLong(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	in := sampleTimer("local", "chan-A", "rules", strings.Repeat("x", maxMessageLen+1))
 	_, err := s.Create(ctx, in)
 	assert.ErrorIs(t, err, ErrInvalid)
 }

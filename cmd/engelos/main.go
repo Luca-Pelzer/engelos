@@ -40,6 +40,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/server"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/web"
+	"github.com/coder/websocket"
 	"golang.org/x/oauth2"
 	twitchoauth "golang.org/x/oauth2/twitch"
 )
@@ -177,7 +178,21 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		"grace_window", streakSystem.Config().GraceWindow,
 	)
 
-	hub := ws.NewHub(logger)
+	allowLAN := envBool("ENGELOS_ALLOW_LAN")
+	allowedOrigins := splitCSV(os.Getenv("ENGELOS_ALLOWED_ORIGINS"))
+
+	// Loopback-only (the default) keeps the permissive InsecureSkipVerify hub
+	// since the socket is only reachable from localhost (e.g. OBS). Once the
+	// daemon is exposed (AllowLAN) and an explicit origin allowlist exists,
+	// restrict the WebSocket handshake to those origins so a malicious web page
+	// cannot open the chat-event socket.
+	var hubOpts []ws.HubOption
+	if allowLAN && len(allowedOrigins) > 0 {
+		hubOpts = append(hubOpts, ws.WithAcceptOptions(&websocket.AcceptOptions{
+			OriginPatterns: allowedOrigins,
+		}))
+	}
+	hub := ws.NewHub(logger, hubOpts...)
 	go hub.Run(ctx)
 
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)

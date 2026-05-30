@@ -16,6 +16,14 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 )
 
+// Login rate-limit budget: ~1 attempt/sec sustained per client IP with a small
+// burst, throttling credential-stuffing without impeding a human retyping a
+// password.
+const (
+	loginRPS   = 1
+	loginBurst = 5
+)
+
 // WSHandler is the narrow interface the router needs from the WebSocket hub.
 // internal/api/ws.Hub satisfies it without the router importing the concrete
 // type at the routing layer.
@@ -132,7 +140,7 @@ func NewRouter(deps Deps) chi.Router {
 			r.Use(apimw.SessionAuth(deps.AuthStore, "", logger))
 		}
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/login", authH.Login)
+			r.With(apimw.RateLimit(loginRPS, loginBurst)).Post("/login", authH.Login)
 			r.Post("/logout", authH.Logout)
 			if deps.OAuthTwitch != nil {
 				r.Get("/twitch/login", deps.OAuthTwitch.Login)
