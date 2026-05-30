@@ -52,7 +52,9 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/spotify"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests/youtube"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/web"
 	"github.com/coder/websocket"
@@ -266,6 +268,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("song request store opened", "dsn", songRequestDSN)
 
+	songQueueDSN := filepath.Join(dataDir, "songqueue.db")
+	songQueueStore, err := queue.OpenSQLiteStore(ctx, songQueueDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open song queue store %s: %w", songQueueDSN, err)
+	}
+	defer func() {
+		if cerr := songQueueStore.Close(); cerr != nil {
+			logger.Warn("song queue store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("song queue store opened", "dsn", songQueueDSN)
+
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
 		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
@@ -340,10 +354,24 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	economy.withResolver(userProfileProvider{adapter: twitchAdapter}.UserProfile)
 
-	songRequester := spotifyRequester{
+	spotifyReq := spotifyRequester{
 		cfg:      songRequestStore,
 		client:   spotify.New(spotify.WithLogger(logger)),
 		auth:     authStore,
+		tenantID: defaultTenantID,
+		logger:   logger,
+	}
+	youtubeReq := youtubeRequester{
+		cfg:      songRequestStore,
+		queue:    songQueueStore,
+		client:   youtube.New(os.Getenv("ENGELOS_YOUTUBE_API_KEY"), youtube.WithLogger(logger)),
+		tenantID: defaultTenantID,
+		logger:   logger,
+	}
+	songRequester := multiProviderRequester{
+		cfg:      songRequestStore,
+		spotify:  spotifyReq,
+		youtube:  youtubeReq,
 		tenantID: defaultTenantID,
 		logger:   logger,
 	}
@@ -511,6 +539,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Moderation:       moderationSvc,
 		FeatureStore:     featureFlagStore,
 		SongRequestStore: songRequestStore,
+		SongQueueStore:   songQueueStore,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")

@@ -20,6 +20,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
 )
 
 // Login rate-limit budget: ~1 attempt/sec sustained per client IP with a small
@@ -134,6 +135,11 @@ type Deps struct {
 	// (provider, playlist, max-duration) under /api/v1/songrequests. Nil makes
 	// those endpoints return 501 (feature off).
 	SongRequestStore songrequests.Store
+
+	// SongQueueStore, when non-nil, exposes the bot-managed YouTube song queue
+	// to the player overlay at /api/v1/songqueue/next (intentionally NOT
+	// session-protected; an OBS browser source cannot log in). Nil returns 501.
+	SongQueueStore queue.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -161,6 +167,7 @@ func NewRouter(deps Deps) chi.Router {
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
+	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -279,6 +286,10 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/", songRequestsH.Get)
 			r.Put("/", songRequestsH.Set)
 		})
+
+		// /songqueue is intentionally NOT session-protected: the OBS browser
+		// source player has no login and only advances the public song queue.
+		r.Get("/songqueue/next", songQueueH.Next)
 	})
 
 	if deps.Overlay != nil {

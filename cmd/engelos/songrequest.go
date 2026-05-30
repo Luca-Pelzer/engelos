@@ -11,7 +11,9 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/spotify"
+	"github.com/Luca-Pelzer/engelos/internal/songrequests/youtube"
 )
 
 // spotifyRequester implements commands.SongRequester for the Spotify
@@ -140,7 +142,7 @@ type nowPlayingBroadcaster interface {
 // than push) is necessary because Spotify has no now-playing webhook; the
 // poller dedupes so an unchanged track is broadcast at most once.
 type nowPlayingPoller struct {
-	req      spotifyRequester
+	req      commands.SongRequester
 	sink     nowPlayingBroadcaster
 	channels []string
 	interval time.Duration
@@ -192,7 +194,7 @@ func (p *nowPlayingPoller) run(ctx context.Context) {
 // blip clears the overlay rather than freezing a stale track.
 func (p *nowPlayingPoller) poll(ctx context.Context, channel string) {
 	track, outcome := p.req.NowPlaying(ctx, channel)
-	payload := nowPlayingPayload{Provider: "spotify"}
+	payload := nowPlayingPayload{}
 	if outcome == commands.SongOK {
 		payload.Title = track.Title
 		payload.Artist = track.Artist
@@ -230,4 +232,179 @@ func mapSpotifyErr(err error) commands.SongOutcome {
 	default:
 		return commands.SongUnavailable
 	}
+}
+
+// youtubeRequester implements commands.SongRequester for the YouTube
+// "bot-managed queue" approach: requested videos are appended to a per-channel
+// queue store, and the /overlay/song-player browser source promotes and plays
+// them via the songqueue API. It resolves the search query (or a YouTube URL)
+// through the YouTube Data API, enforces the channel's max-duration, then
+// enqueues. Decoupled: internal/commands sees only the SongRequester interface.
+type youtubeRequester struct {
+	cfg      songrequests.Store
+	queue    queue.Store
+	client   *youtube.Client
+	tenantID string
+	logger   *slog.Logger
+}
+
+// channelEnabled reports whether YouTube is the enabled provider for channel.
+func (r youtubeRequester) channelEnabled(ctx context.Context, channel string) (songrequests.Config, bool) {
+	c, err := r.cfg.GetOrDefault(ctx, r.tenantID, channel)
+	if err != nil {
+		r.logger.WarnContext(ctx, "songrequest: config lookup failed", "channel", channel, "err", err)
+		return songrequests.Config{}, false
+	}
+	if !c.Enabled || c.Provider != "youtube" {
+		return songrequests.Config{}, false
+	}
+	return c, true
+}
+
+// Request resolves the query to a YouTube video (URL lookup or search),
+// enforces max-duration, and enqueues it for the channel's player.
+func (r youtubeRequester) Request(ctx context.Context, channel, query string) (commands.SongTrack, commands.SongOutcome) {
+	cfg, ok := r.channelEnabled(ctx, channel)
+	if !ok {
+		return commands.SongTrack{}, commands.SongUnavailable
+	}
+
+	var vid youtube.Video
+	if id, isURL := youtube.ParseVideoID(query); isURL {
+		v, err := r.client.GetVideo(ctx, id)
+		if err != nil {
+			return commands.SongTrack{}, mapYouTubeErr(err)
+		}
+		vid = v
+	} else {
+		results, err := r.client.Search(ctx, query, 1)
+		if err != nil {
+			return commands.SongTrack{}, mapYouTubeErr(err)
+		}
+		if len(results) == 0 {
+			return commands.SongTrack{}, commands.SongNotFound
+		}
+		// Search snippets carry no duration; fetch details so the
+		// max-duration check and the player have a real length.
+		v, err := r.client.GetVideo(ctx, results[0].ID)
+		if err != nil {
+			return commands.SongTrack{}, mapYouTubeErr(err)
+		}
+		vid = v
+	}
+
+	if cfg.MaxDurationSec > 0 && vid.DurationMS > cfg.MaxDurationSec*1000 {
+		return commands.SongTrack{}, commands.SongTooLong
+	}
+	if _, err := r.queue.Enqueue(ctx, queue.Item{
+		TenantID:   r.tenantID,
+		Channel:    channel,
+		VideoID:    vid.ID,
+		Title:      vid.Title,
+		Artist:     vid.Channel,
+		DurationMS: vid.DurationMS,
+	}); err != nil {
+		r.logger.WarnContext(ctx, "songrequest: enqueue failed", "channel", channel, "err", err)
+		return commands.SongTrack{}, commands.SongUnavailable
+	}
+	return commands.SongTrack{Title: vid.Title, Artist: vid.Channel}, commands.SongOK
+}
+
+// NowPlaying returns the queue's currently playing item.
+func (r youtubeRequester) NowPlaying(ctx context.Context, channel string) (commands.SongTrack, commands.SongOutcome) {
+	if _, ok := r.channelEnabled(ctx, channel); !ok {
+		return commands.SongTrack{}, commands.SongUnavailable
+	}
+	cur, err := r.queue.Current(ctx, r.tenantID, channel)
+	if err != nil {
+		if errors.Is(err, queue.ErrEmpty) {
+			return commands.SongTrack{}, commands.SongNothingPlaying
+		}
+		return commands.SongTrack{}, commands.SongUnavailable
+	}
+	return commands.SongTrack{Title: cur.Title, Artist: cur.Artist}, commands.SongOK
+}
+
+// Skip marks the current item played; the player advances on its own poll, so
+// the queue simply drops the current song.
+func (r youtubeRequester) Skip(ctx context.Context, channel string) commands.SongOutcome {
+	if _, ok := r.channelEnabled(ctx, channel); !ok {
+		return commands.SongUnavailable
+	}
+	cur, err := r.queue.Current(ctx, r.tenantID, channel)
+	if err != nil {
+		if errors.Is(err, queue.ErrEmpty) {
+			return commands.SongNothingPlaying
+		}
+		return commands.SongUnavailable
+	}
+	if err := r.queue.MarkPlayed(ctx, r.tenantID, channel, cur.ID); err != nil {
+		return commands.SongUnavailable
+	}
+	return commands.SongOK
+}
+
+// mapYouTubeErr translates a YouTube client error into a chat-facing outcome.
+func mapYouTubeErr(err error) commands.SongOutcome {
+	switch {
+	case errors.Is(err, youtube.ErrNotFound):
+		return commands.SongNotFound
+	default:
+		return commands.SongUnavailable
+	}
+}
+
+// multiProviderRequester routes each SongRequester call to the provider the
+// channel has configured (spotify or youtube), so a single requester can serve
+// channels that picked different backends. An unset/unknown provider yields
+// SongUnavailable. It reads the per-channel config once per call; the wrapped
+// providers re-check the config themselves, which is cheap and keeps each
+// provider independently testable.
+type multiProviderRequester struct {
+	cfg      songrequests.Store
+	spotify  commands.SongRequester
+	youtube  commands.SongRequester
+	tenantID string
+	logger   *slog.Logger
+}
+
+// pick returns the provider for the channel, or nil when song requests are
+// disabled or the provider is unknown/unconfigured.
+func (m multiProviderRequester) pick(ctx context.Context, channel string) commands.SongRequester {
+	c, err := m.cfg.GetOrDefault(ctx, m.tenantID, channel)
+	if err != nil || !c.Enabled {
+		return nil
+	}
+	switch c.Provider {
+	case "spotify":
+		return m.spotify
+	case "youtube":
+		return m.youtube
+	default:
+		return nil
+	}
+}
+
+func (m multiProviderRequester) Request(ctx context.Context, channel, query string) (commands.SongTrack, commands.SongOutcome) {
+	p := m.pick(ctx, channel)
+	if p == nil {
+		return commands.SongTrack{}, commands.SongUnavailable
+	}
+	return p.Request(ctx, channel, query)
+}
+
+func (m multiProviderRequester) NowPlaying(ctx context.Context, channel string) (commands.SongTrack, commands.SongOutcome) {
+	p := m.pick(ctx, channel)
+	if p == nil {
+		return commands.SongTrack{}, commands.SongUnavailable
+	}
+	return p.NowPlaying(ctx, channel)
+}
+
+func (m multiProviderRequester) Skip(ctx context.Context, channel string) commands.SongOutcome {
+	p := m.pick(ctx, channel)
+	if p == nil {
+		return commands.SongUnavailable
+	}
+	return p.Skip(ctx, channel)
 }

@@ -1,0 +1,121 @@
+<!doctype html>
+<!--
+  engelOS overlay: song-player (YouTube queue player)
+  ==============================================================
+  Browser-source player for the bot-managed YouTube song-request queue.
+  Unlike the other overlays this one PLAYS audio/video, so it loads the
+  official YouTube IFrame Player API (the only external dependency, and
+  unavoidable for embedded playback).
+
+  REST contract (same-origin):
+    GET /api/v1/songqueue/next?channel=<channel>
+      -> 200 {"video_id","title","artist"}  : marks the current item played,
+                                               promotes the next queued item,
+                                               and returns it to play.
+      -> 204                                 : queue empty; the player idles
+                                               and polls again shortly.
+
+  Query parameters:
+    - channel : REQUIRED. The channel whose queue to play.
+    - volume  : 0-100 (default 60).
+
+  Example: /overlay/song-player?channel=engelswtf&volume=50
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / song player</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;overflow:hidden;width:100%;height:100%}
+  #player{position:fixed;inset:0}
+  #idle{
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    font:14px/1.4 "Inter","Segoe UI",system-ui,sans-serif;
+    color:rgba(255,255,255,.5);text-shadow:0 1px 3px rgba(0,0,0,.8);
+    display:none;
+  }
+  #conn{position:fixed;top:8px;right:10px;font-size:10px;letter-spacing:.08em;opacity:.4;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+</style>
+</head>
+<body>
+<div id="player"></div>
+<div id="idle">waiting for song requests&hellip;</div>
+<div id="conn">●</div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const channel = (params.get("channel") || "").trim();
+  let volume = parseInt(params.get("volume") || "60", 10);
+  if (isNaN(volume) || volume < 0 || volume > 100) volume = 60;
+
+  const idle = document.getElementById("idle");
+  const conn = document.getElementById("conn");
+  let player = null;
+  let ready = false;
+  let polling = false;
+  const POLL_MS = 5000;
+
+  function showIdle(on) { idle.style.display = on ? "block" : "none"; }
+
+  // Fetch the next song; marks the current one played server-side.
+  async function nextSong() {
+    if (!channel) { conn.textContent = "no channel"; return; }
+    try {
+      const res = await fetch("/api/v1/songqueue/next?channel=" + encodeURIComponent(channel), {
+        headers: { "accept": "application/json" }
+      });
+      conn.style.opacity = ".7";
+      if (res.status === 204) {
+        showIdle(true);
+        schedulePoll();
+        return;
+      }
+      if (!res.ok) { schedulePoll(); return; }
+      const song = await res.json();
+      if (!song || !song.video_id) { schedulePoll(); return; }
+      showIdle(false);
+      play(song.video_id);
+    } catch {
+      conn.style.opacity = ".25";
+      schedulePoll();
+    }
+  }
+
+  function schedulePoll() {
+    if (polling) return;
+    polling = true;
+    setTimeout(() => { polling = false; nextSong(); }, POLL_MS);
+  }
+
+  function play(videoId) {
+    if (!ready || !player) return;
+    player.loadVideoById(videoId);
+    player.setVolume(volume);
+    player.playVideo();
+  }
+
+  // YouTube IFrame API calls this global when the script has loaded.
+  window.onYouTubeIframeAPIReady = function () {
+    player = new YT.Player("player", {
+      height: "100%",
+      width: "100%",
+      playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1, rel: 0, playsinline: 1 },
+      events: {
+        onReady: () => { ready = true; player.setVolume(volume); nextSong(); },
+        onStateChange: ev => {
+          // 0 = ENDED -> advance to the next queued song.
+          if (ev.data === YT.PlayerState.ENDED) nextSong();
+        },
+        onError: () => { nextSong(); }
+      }
+    });
+  };
+
+  // Load the official IFrame Player API (required for embedded playback).
+  const tag = document.createElement("script");
+  tag.src = "https://www.youtube.com/iframe_api";
+  document.head.appendChild(tag);
+})();
+</script>
+</body>
+</html>
