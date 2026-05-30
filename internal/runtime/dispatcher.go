@@ -110,6 +110,21 @@ type CoHost interface {
 	Maybe(ctx context.Context, channel, userID, username, text string) (reply string, ok bool)
 }
 
+// ClipDetector is the narrow contract the dispatcher feeds chat/sub/raid
+// activity so an auto-clipper can decide when a clip-worthy moment happens. A
+// thin adapter over the internal/clipper engine satisfies it (wired in main),
+// so the runtime stays free of any clipper import.
+//
+// Each method reports whether THIS event triggered a clip moment; the adapter
+// owns what to do on a trigger (create the clip, announce it). Every method
+// must be safe for concurrent use and best-effort, never blocking the
+// dispatcher.
+type ClipDetector interface {
+	Message(ctx context.Context, channel, userID, username string)
+	Sub(ctx context.Context, channel string)
+	Raid(ctx context.Context, channel string, viewers int)
+}
+
 // Economy is the narrow contract the dispatcher uses to award loyalty points
 // for chat activity. The adapter wired in main applies a per-viewer earn
 // cooldown (anti-farming) so idle or bot accounts cannot accumulate points by
@@ -259,6 +274,11 @@ type Config struct {
 	// bot and posts the reply to chat. Best-effort: it runs after command
 	// routing and a failure never blocks message processing.
 	CoHost CoHost
+
+	// ClipDetector, when non-nil, is fed every chat message, sub and raid so
+	// an auto-clipper can capture clip-worthy moments. Best-effort and
+	// fire-and-forget: it never blocks message processing.
+	ClipDetector ClipDetector
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -425,12 +445,18 @@ func (d *Dispatcher) handle(ctx context.Context, p adapters.Platform, ev adapter
 			d.cfg.Wrapped.RecordSub(ctx, ev.Channel,
 				ev.Subscription.UserID, ev.Subscription.Username, 0)
 		}
+		if d.cfg.ClipDetector != nil && ev.Channel != "" {
+			d.cfg.ClipDetector.Sub(ctx, ev.Channel)
+		}
 	case adapters.EventChannelRaided:
 		d.stats.mu.Lock()
 		d.stats.raids++
 		d.stats.mu.Unlock()
 		if d.cfg.Wrapped != nil && ev.Raid != nil && ev.Raid.FromUsername != "" {
 			d.cfg.Wrapped.RecordRaid(ctx, ev.Channel, ev.Raid.FromUsername)
+		}
+		if d.cfg.ClipDetector != nil && ev.Raid != nil && ev.Channel != "" {
+			d.cfg.ClipDetector.Raid(ctx, ev.Channel, ev.Raid.ViewerCount)
 		}
 	}
 }
@@ -460,6 +486,10 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 	d.translate(ctx, p, ev)
 
 	d.cohost(ctx, p, ev)
+
+	if d.cfg.ClipDetector != nil {
+		d.cfg.ClipDetector.Message(ctx, ev.Channel, ev.Message.UserID, ev.Message.Username)
+	}
 
 	if d.cfg.Pity != nil && d.cfg.PointsPerMessage > 0 {
 		if _, err := d.cfg.Pity.GrantPoints(ctx, d.cfg.TenantID,

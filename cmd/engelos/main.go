@@ -449,6 +449,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	msgTranslator := newMessageTranslator(translateStore, claudeClient, defaultTenantID, logger)
 	cohostCfg := cohostConfigAdapter{store: cohostStore, tenantID: defaultTenantID, logger: logger}
 	coHost := newCoHostResponder(cohostStore, claudeClient, defaultTenantID, logger)
+	autoClip := newAutoClipper(twitchAdapter, claudeClient, platformSender{platforms: platforms},
+		splitCSV(os.Getenv("ENGELOS_CLIPPER_CHANNELS")), logger)
 
 	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, translateCfg, cohostCfg, logger)
 
@@ -492,6 +494,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Wrapped:          newWrappedRecorder(wrappedStore, defaultTenantID, logger),
 		Translator:       msgTranslator,
 		CoHost:           coHost,
+		ClipDetector:     autoClip,
 		Logger:           logger,
 	})
 	go func() {
