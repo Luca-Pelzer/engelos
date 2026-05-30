@@ -14,6 +14,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 )
 
 // Login rate-limit budget: ~1 attempt/sec sustained per client IP with a small
@@ -96,6 +97,11 @@ type Deps struct {
 	// at GET /api/v1/auth/twitch/login and GET /api/v1/auth/twitch/callback.
 	// Nil leaves the OAuth feature disabled (the routes are not mounted).
 	OAuthTwitch *handlers.OAuth
+
+	// RedemptionStore, when non-nil, exposes the Channel-Points reward→action
+	// binding CRUD under /api/v1/redemptions/*. Nil makes those endpoints
+	// return 501 (feature off).
+	RedemptionStore redemptions.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -117,6 +123,7 @@ func NewRouter(deps Deps) chi.Router {
 	pityH := handlers.NewPity(deps.Pity, deps.TenantID, logger)
 	streakH := handlers.NewStreak(deps.Streak, deps.TenantID, logger)
 	statsH := handlers.NewStats(deps.Version, deps.StatsProvider, logger)
+	redemptionsH := handlers.NewRedemptions(deps.RedemptionStore, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -174,6 +181,17 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/status", streakH.Status)
 			r.Get("/leaderboard", streakH.Leaderboard)
 			r.Post("/reset", streakH.Reset)
+		})
+
+		r.Route("/redemptions", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", redemptionsH.List)
+			r.Post("/", redemptionsH.Create)
+			r.Put("/{rewardID}", redemptionsH.Update)
+			r.Post("/{rewardID}/enabled", redemptionsH.SetEnabled)
+			r.Delete("/{rewardID}", redemptionsH.Delete)
 		})
 	})
 
