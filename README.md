@@ -10,12 +10,15 @@
 [![Platforms](https://img.shields.io/badge/Linux%20·%20macOS%20·%20Windows-self--hosted-success.svg)](#-quick-start)
 [![Status: Alpha](https://img.shields.io/badge/status-Phase%201%20alpha-orange.svg)](#-project-status)
 [![Successor to EngelGuard](https://img.shields.io/badge/successor%20to-EngelGuard-9146FF.svg)](https://github.com/Luca-Pelzer/engelguard)
+[![GitHub stars](https://img.shields.io/github/stars/Luca-Pelzer/engelos?style=social)](https://github.com/Luca-Pelzer/engelos/stargazers)
 
 **One fast, self-hosted binary for Twitch and Discord.**
 Moderation, custom commands, Channel-Points triggers (with a points fallback), mini-games, and
 provably-fair giveaways. Self-host it free forever, your data on your machine.
 
 [Why EngelOS?](#-why-engelos) • [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Architecture](#-architecture) • [Status](#-project-status)
+
+⭐ **If this looks useful, [star the repo](https://github.com/Luca-Pelzer/engelos)** to follow along and help it grow.
 
 </div>
 
@@ -288,6 +291,20 @@ docs/                    MASTER-VISION.md and long-form docs
 
 ---
 
+## ⭐ Star the project
+
+EngelOS is built in the open by one person, and a star is the simplest way to help. It isn't vanity:
+
+- It tells me which features people actually want, so I build the right things next.
+- It puts EngelOS in front of more streamers who are tired of paying for the closed bots.
+- It's the encouragement that keeps a long, ambitious project (5+ years of roadmap) moving.
+
+If you self-host it, plan to, or just like where it's heading,
+**[drop a ⭐ on the repo](https://github.com/Luca-Pelzer/engelos)**. Watch the repo to follow releases,
+and open an issue with ideas or bugs. That's the whole ask, and it genuinely matters at this stage.
+
+---
+
 ## 🤝 Contributing
 
 Not accepting external contributions **yet**: the codebase moves too fast and the public APIs aren't
@@ -309,5 +326,7 @@ against it without AGPL obligations.
 <div align="center">
 
 **EngelOS**, built in the open, the successor to [EngelGuard](https://github.com/Luca-Pelzer/engelguard).
+
+If you made it this far, a ⭐ would mean a lot. Thanks for reading.
 
 </div>
