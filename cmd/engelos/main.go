@@ -43,6 +43,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/liveops"
 	"github.com/Luca-Pelzer/engelos/internal/loyalty"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
+	"github.com/Luca-Pelzer/engelos/internal/moments"
 	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
 	"github.com/Luca-Pelzer/engelos/internal/overlay"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
@@ -293,6 +294,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("wrapped store opened", "dsn", wrappedDSN)
 
+	momentsDSN := filepath.Join(dataDir, "moments.db")
+	momentsStore, err := moments.OpenSQLiteStore(ctx, momentsDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open moments store %s: %w", momentsDSN, err)
+	}
+	defer func() {
+		if cerr := momentsStore.Close(); cerr != nil {
+			logger.Warn("moments store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("moments store opened", "dsn", momentsDSN)
+
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
 		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
@@ -403,7 +416,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		logger.Info("now-playing overlay poller started", "channels", len(nowPlayingChannels))
 	}
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, logger)
+	momentCtrl := newMomentController(momentsStore, runtime.NewWSBroadcaster(hub, logger), defaultTenantID, logger)
+
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -1225,7 +1240,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, songRequester commands.SongRequester, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, songRequester commands.SongRequester, momentCtrl commands.MomentController, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -1286,6 +1301,11 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 		register(commands.NewSongRequestCommand(songRequester))
 		register(commands.NewNowPlayingCommand(songRequester))
 		register(commands.NewSkipSongCommand(songRequester))
+	}
+
+	if momentCtrl != nil {
+		register(commands.NewMomentCommand(momentCtrl))
+		register(commands.NewHereCommand(momentCtrl))
 	}
 
 	register(commands.NewPointsCommand(loyaltyProvider))

@@ -1,0 +1,139 @@
+<!doctype html>
+<!--
+  engelOS overlay: moment (BeReal-style Moment Alert)
+  ==============================================================
+  Full-bleed alert banner that flashes when a mod opens a "Moment". Built for
+  an OBS browser source: transparent background, large centered call-to-action
+  telling viewers to type !here before the window closes.
+
+  Handled WebSocket envelope types ({type, data}):
+    - moment.opened  (data.title/window_sec)
+    - moment.closed  (data.title/rarity/participants)
+
+  Query parameters:
+    - theme  : "dark" (default) | "light"
+    - accent : 6-hex without # (default a970ff)
+
+  Example: /overlay/moment?accent=ff3b6b
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / moment</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;overflow:hidden;width:100%;height:100%}
+  :root{
+    --accent:#a970ff;
+    --fg:#ffffff;
+    --card:rgba(20,20,28,.82);
+    --card-border:rgba(255,255,255,.12);
+    --shadow:0 12px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.3);
+    --stroke:0 2px 8px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.95);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  }
+  body.theme-light{--fg:#0c0c12;--card:rgba(255,255,255,.9);--card-border:rgba(0,0,0,.1);--stroke:0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(0,0,0,.25)}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  .moment{
+    min-width:520px;max-width:78vw;padding:34px 48px;border-radius:24px;text-align:center;
+    background:var(--card);border:1px solid var(--card-border);box-shadow:var(--shadow);
+    color:var(--fg);backdrop-filter:blur(8px);
+    opacity:0;transform:scale(.85) translateY(24px);
+    transition:opacity .4s cubic-bezier(.2,.8,.2,1), transform .4s cubic-bezier(.2,.8,.2,1);
+  }
+  .moment.show{opacity:1;transform:scale(1) translateY(0)}
+  .moment.pulse{animation:pulse 1.4s ease-in-out infinite}
+  .kicker{font-size:18px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);text-shadow:var(--stroke)}
+  .title{font-size:40px;font-weight:900;letter-spacing:-.01em;margin:10px 0 6px;text-shadow:var(--stroke)}
+  .cta{font-size:24px;font-weight:700;text-shadow:var(--stroke)}
+  .cta b{color:var(--accent)}
+  .timer{margin-top:18px;height:8px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden}
+  .timer i{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;transform:scaleX(1)}
+  /* result (moment.closed) styling, rarity-tinted */
+  .result .kicker{color:var(--rarity,var(--accent))}
+  .result .title{font-size:34px}
+  .rarity{display:inline-block;margin-top:8px;padding:6px 16px;border-radius:99px;font-weight:800;font-size:16px;letter-spacing:.05em;text-transform:uppercase;background:var(--rarity,var(--accent));color:#15021c}
+  #conn{position:fixed;top:8px;right:10px;font-size:10px;letter-spacing:.08em;opacity:.4;color:var(--fg);text-shadow:var(--stroke)}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}
+</style>
+</head>
+<body>
+<div id="conn">&#9679;</div>
+<div id="stage"><div class="moment" id="card" aria-live="assertive"></div></div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const theme = (params.get("theme") || "dark").toLowerCase();
+  const accent = (params.get("accent") || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 6);
+  if (theme === "light") document.body.classList.add("theme-light");
+  if (accent.length === 6) document.documentElement.style.setProperty("--accent", "#" + accent);
+
+  const rarityColor = { common: "#9aa0a6", rare: "#3ea6ff", legendary: "#ffb02e" };
+  const conn = document.getElementById("conn");
+  const card = document.getElementById("card");
+  let hideTimer = null, tick = null;
+
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+  function clearTimers(){ if(hideTimer){clearTimeout(hideTimer);hideTimer=null;} if(tick){clearInterval(tick);tick=null;} }
+
+  function showOpened(d){
+    clearTimers();
+    const win = Math.max(5, Number(d.window_sec) || 60);
+    card.className = "moment";
+    card.innerHTML =
+      '<div class="kicker">&#128680; Moment</div>' +
+      '<div class="title">' + esc(d.title || "Something big just happened!") + '</div>' +
+      '<div class="cta">Type <b>!here</b> to prove you were here</div>' +
+      '<div class="timer"><i id="bar"></i></div>';
+    void card.offsetWidth;
+    card.classList.add("show", "pulse");
+    const bar = document.getElementById("bar");
+    const start = Date.now();
+    bar.style.transition = "transform " + win + "s linear";
+    requestAnimationFrame(() => { bar.style.transform = "scaleX(0)"; });
+    hideTimer = setTimeout(hide, win * 1000 + 400);
+  }
+
+  function showClosed(d){
+    clearTimers();
+    const rarity = String(d.rarity || "common").toLowerCase();
+    const col = rarityColor[rarity] || rarityColor.common;
+    card.style.setProperty("--rarity", col);
+    card.className = "moment result";
+    card.innerHTML =
+      '<div class="kicker">Moment over</div>' +
+      '<div class="title">' + esc(d.title || "") + '</div>' +
+      '<div class="cta">' + esc(d.participants || 0) + ' were there</div>' +
+      '<div class="rarity">' + esc(rarity) + '</div>';
+    void card.offsetWidth;
+    card.classList.add("show");
+    hideTimer = setTimeout(hide, 8000);
+  }
+
+  function hide(){ clearTimers(); card.classList.remove("show", "pulse"); }
+
+  function handle(env){
+    const d = env && env.data; if(!d) return;
+    switch(env.type){
+      case "moment.opened": showOpened(d); break;
+      case "moment.closed": showClosed(d); break;
+      default: return;
+    }
+  }
+
+  let ws=null, backoff=500;
+  function connect(){
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    try { ws = new WebSocket(proto + location.host + "/api/v1/ws"); }
+    catch { schedule(); return; }
+    ws.onopen = () => { conn.style.opacity=".7"; backoff=500; };
+    ws.onclose = () => { conn.style.opacity=".25"; schedule(); };
+    ws.onerror = () => { conn.style.opacity=".25"; };
+    ws.onmessage = ev => { try { handle(JSON.parse(ev.data)); } catch {} };
+  }
+  function schedule(){ setTimeout(connect, backoff); backoff = Math.min(backoff*2, 10000); }
+  connect();
+})();
+</script>
+</body>
+</html>
