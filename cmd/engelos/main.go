@@ -721,6 +721,52 @@ func (e *economyAdapter) Wager(ctx context.Context, channel, viewerID string, be
 	return won.Balance, commands.LoyaltyOK
 }
 
+// CanAfford implements commands.DuelBank: reports whether the viewer currently
+// holds at least amount points.
+func (e *economyAdapter) CanAfford(ctx context.Context, channel, viewerID string, amount int64) bool {
+	if e == nil || e.store == nil {
+		return false
+	}
+	acct, err := e.store.Balance(ctx, e.tenantID, channel, viewerID)
+	if err != nil {
+		return false
+	}
+	return acct.Balance >= amount
+}
+
+// Settle implements commands.DuelBank for a player-vs-player duel: it confirms
+// BOTH players can still afford the stake, spends the stake from each, then
+// credits the whole pot (amount*2) to the winner. Affordability is checked
+// before any spend so a failed duel never leaves one player out of pocket; the
+// only window is between the two spends, which is acceptable because the
+// preceding CanAfford checks plus the store's atomic single-writer spends make
+// a mid-settle shortfall effectively impossible for a non-adversarial chat.
+func (e *economyAdapter) Settle(ctx context.Context, channel, winnerID, loserID string, amount int64) (int64, commands.LoyaltyError) {
+	if e == nil || e.store == nil {
+		return 0, commands.LoyaltyUnavailable
+	}
+	if !e.CanAfford(ctx, channel, winnerID, amount) || !e.CanAfford(ctx, channel, loserID, amount) {
+		return 0, commands.LoyaltyInsufficient
+	}
+	winnerAcct, err := e.store.Spend(ctx, e.tenantID, channel, winnerID, amount)
+	if err != nil {
+		return 0, commands.LoyaltyInsufficient
+	}
+	if _, err := e.store.Spend(ctx, e.tenantID, channel, loserID, amount); err != nil {
+		// Refund the winner's stake so a loser-spend failure moves no money.
+		if _, rerr := e.store.Earn(ctx, e.tenantID, channel, winnerID, winnerAcct.Username, amount); rerr != nil {
+			e.logger.Warn("duel refund failed", "channel", channel, "viewer", winnerID, "err", rerr)
+		}
+		return 0, commands.LoyaltyInsufficient
+	}
+	won, err := e.store.Earn(ctx, e.tenantID, channel, winnerID, winnerAcct.Username, amount*2)
+	if err != nil {
+		e.logger.Warn("duel payout failed", "channel", channel, "viewer", winnerID, "err", err)
+		return 0, commands.LoyaltyUnavailable
+	}
+	return won.Balance, commands.LoyaltyOK
+}
+
 // moderationAdapter bridges the runtime.Moderator interface (positional, to
 // keep the runtime decoupled) to the moderation.Service. A nil svc yields a
 // no-op that always passes, so AutoMod can be absent without a nil-check at the
@@ -816,6 +862,11 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	if bank, ok := loyaltyProvider.(commands.GameBank); ok && loyaltyProvider != nil {
 		register(commands.NewGambleCommand(bank))
 		register(commands.NewSlotsCommand(bank))
+	}
+	if dbank, ok := loyaltyProvider.(commands.DuelBank); ok && loyaltyProvider != nil {
+		duelCmd, acceptCmd := commands.NewDuelGame(dbank)
+		register(duelCmd)
+		register(acceptCmd)
 	}
 
 	register(commands.NewEightBallCommand())
