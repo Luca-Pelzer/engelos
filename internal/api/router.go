@@ -22,6 +22,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
+	"github.com/Luca-Pelzer/engelos/internal/translate"
 	"github.com/Luca-Pelzer/engelos/internal/wrapped"
 )
 
@@ -143,6 +144,10 @@ type Deps struct {
 	// those endpoints return 501 (feature off).
 	SongRequestStore songrequests.Store
 
+	// TranslateStore, when non-nil, exposes per-channel chat-translation config
+	// under /api/v1/translate. Nil makes those endpoints return 501.
+	TranslateStore translate.Store
+
 	// SongQueueStore, when non-nil, exposes the bot-managed YouTube song queue
 	// to the player overlay at /api/v1/songqueue/next (intentionally NOT
 	// session-protected; an OBS browser source cannot log in). Nil returns 501.
@@ -184,6 +189,7 @@ func NewRouter(deps Deps) chi.Router {
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
+	translateH := handlers.NewTranslate(deps.TranslateStore, deps.TenantID, logger)
 	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
 	wrappedH := handlers.NewWrapped(deps.WrappedStore, deps.WrappedRanker, deps.TenantID, logger)
 
@@ -310,6 +316,14 @@ func NewRouter(deps Deps) chi.Router {
 			}
 			r.Get("/", songRequestsH.Get)
 			r.Put("/", songRequestsH.Set)
+		})
+
+		r.Route("/translate", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", translateH.Get)
+			r.Put("/", translateH.Set)
 		})
 
 		// /songqueue is intentionally NOT session-protected: the OBS browser

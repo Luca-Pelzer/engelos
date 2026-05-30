@@ -616,6 +616,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Moderation:       moderationSvc,
 		FeatureStore:     featureFlagStore,
 		SongRequestStore: songRequestStore,
+		TranslateStore:   translateStore,
 		SongQueueStore:   songQueueStore,
 		WrappedStore:     wrappedStore,
 		WrappedRanker:    wrappedRankerAdapter{loyalty: loyaltyStore, streak: streakSystem, tenantID: defaultTenantID},
