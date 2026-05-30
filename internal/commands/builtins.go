@@ -833,6 +833,69 @@ func NewResetCounterCommand(store CounterStore) Command {
 	}
 }
 
+// defaultUptimeCooldown throttles the channel-wide read-only !uptime
+// command. 5s keeps chat tidy when several viewers ask back-to-back while
+// the underlying provider's own TTL cache absorbs the rest.
+const defaultUptimeCooldown = 5 * time.Second
+
+// UptimeProvider reports a channel's live status for the !uptime command.
+// An adapter over the Twitch adapter is wired in main.
+type UptimeProvider interface {
+	// Uptime returns since (stream start) and live=true when the channel is
+	// currently live; live=false means offline. err is non-nil only on a
+	// lookup failure (e.g. the platform API is unavailable).
+	Uptime(ctx context.Context, channel string) (since time.Time, live bool, err error)
+}
+
+// NewUptimeCommand returns "!uptime" (MinRole RoleEveryone, ~5s global
+// Cooldown). Replies "<channel> has been live for 2h 13m" when live,
+// "<channel> is offline" when not, and a friendly "couldn't check uptime
+// right now" on error. A nil provider yields "uptime is unavailable".
+func NewUptimeCommand(provider UptimeProvider) Command {
+	return Command{
+		Name:     "uptime",
+		Help:     "Show how long the stream has been live.",
+		Cooldown: defaultUptimeCooldown,
+		Handler: func(ctx context.Context, msg Message, _ []string) Reply {
+			if provider == nil {
+				return Reply{Text: "uptime is unavailable"}
+			}
+			channel := strings.TrimPrefix(strings.TrimSpace(msg.Channel), "#")
+			since, live, err := provider.Uptime(ctx, channel)
+			if err != nil {
+				return Reply{Text: "couldn't check uptime right now"}
+			}
+			if !live {
+				return Reply{Text: fmt.Sprintf("%s is offline", channel)}
+			}
+			return Reply{Text: fmt.Sprintf("%s has been live for %s",
+				channel, formatDuration(time.Since(since)))}
+		},
+	}
+}
+
+// formatDuration renders a stream's elapsed live time as a compact human
+// string: "3d 4h" once 24h+ (days + hours), "2h 13m" for an hour or more
+// (hours + minutes), "45m" under an hour, and "just went live" under a
+// minute. Sub-minute durations collapse to the friendly phrase rather than
+// reading "0m".
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return "just went live"
+	}
+	if d >= 24*time.Hour {
+		days := d / (24 * time.Hour)
+		hours := (d % (24 * time.Hour)) / time.Hour
+		return fmt.Sprintf("%dd %dh", days, hours)
+	}
+	if d >= time.Hour {
+		hours := d / time.Hour
+		minutes := (d % time.Hour) / time.Minute
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	return fmt.Sprintf("%dm", d/time.Minute)
+}
+
 // mentionOf returns "@username" when Username is set, falling back to
 // "@viewer" so replies never read as "you have X points".
 func mentionOf(msg Message) string {

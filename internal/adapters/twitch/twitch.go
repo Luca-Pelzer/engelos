@@ -98,6 +98,7 @@ type helixClient interface {
 	UnbanUser(*helix.UnbanUserParams) (*helix.UnbanUserResponse, error)
 	DeleteChatMessage(*helix.DeleteChatMessageParams) (*helix.DeleteChatMessageResponse, error)
 	GetUsers(*helix.UsersParams) (*helix.UsersResponse, error)
+	GetStreams(*helix.StreamsParams) (*helix.StreamsResponse, error)
 	SetUserAccessToken(token string)
 }
 
@@ -118,6 +119,32 @@ type Adapter struct {
 	disconnectOnce sync.Once
 	ircDone        chan struct{}
 	cancelWatcher  context.CancelFunc
+
+	// streamMu guards streamCache. It is dedicated (rather than reusing
+	// a.mu) so a slow Helix GetStreams call never blocks the IRC / SetToken
+	// paths that take a.mu.
+	streamMu    sync.Mutex
+	streamCache map[string]streamCacheEntry
+
+	// nowFn is the clock seam for cache-expiry checks; defaults to
+	// time.Now and is overridden by tests to drive TTL expiry.
+	nowFn func() time.Time
+}
+
+type streamCacheEntry struct {
+	info      StreamInfo
+	fetchedAt time.Time
+}
+
+// streamCacheTTL bounds how long a [StreamInfo] result is reused so
+// repeated !uptime calls cannot exhaust the Helix rate limit.
+const streamCacheTTL = 60 * time.Second
+
+// StreamInfo is a point-in-time view of a channel's live status, returned
+// by [Adapter.StreamInfo].
+type StreamInfo struct {
+	Live      bool
+	StartedAt time.Time
 }
 
 // New constructs a Twitch adapter from cfg. The returned adapter is
@@ -135,6 +162,8 @@ func New(cfg Config) *Adapter {
 		anon:        strings.TrimSpace(cfg.OAuthToken) == "",
 		healthErr:   ErrNotConnected,
 		channelToID: make(map[string]string),
+		streamCache: make(map[string]streamCacheEntry),
+		nowFn:       time.Now,
 	}
 	return a
 }
@@ -562,6 +591,55 @@ func (a *Adapter) moderator() string {
 	return a.moderatorID
 }
 
+// StreamInfo reports whether the given channel (Twitch login, without '#')
+// is live and, if so, when the stream started. Results are cached for a
+// short TTL so repeated !uptime calls cannot exhaust the Helix rate limit.
+// Returns [ErrHelixUnavailable] when the adapter has no Helix client
+// (anonymous mode).
+//
+// Locking: streamMu is held only around cache reads/writes, never across
+// the Helix network call (read under lock → unlock → call Helix → re-lock
+// → store). A duplicate concurrent fetch is tolerated rather than
+// serialised. Successful results are cached; on a Helix error nothing is
+// cached so the next call retries.
+func (a *Adapter) StreamInfo(_ context.Context, login string) (StreamInfo, error) {
+	login = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(login)), "#")
+
+	a.mu.Lock()
+	hx := a.helix
+	a.mu.Unlock()
+	if hx == nil {
+		return StreamInfo{}, ErrHelixUnavailable
+	}
+
+	a.streamMu.Lock()
+	if e, ok := a.streamCache[login]; ok && a.nowFn().Sub(e.fetchedAt) < streamCacheTTL {
+		a.streamMu.Unlock()
+		return e.info, nil
+	}
+	a.streamMu.Unlock()
+
+	resp, err := hx.GetStreams(&helix.StreamsParams{UserLogins: []string{login}})
+	if err != nil {
+		return StreamInfo{}, fmt.Errorf("twitch: get streams for %q: %w", login, err)
+	}
+
+	var info StreamInfo
+	if resp != nil {
+		for _, s := range resp.Data.Streams {
+			if s.Type == "live" || !s.StartedAt.IsZero() {
+				info = StreamInfo{Live: true, StartedAt: s.StartedAt}
+				break
+			}
+		}
+	}
+
+	a.streamMu.Lock()
+	a.streamCache[login] = streamCacheEntry{info: info, fetchedAt: a.nowFn()}
+	a.streamMu.Unlock()
+	return info, nil
+}
+
 func (a *Adapter) resolveModeratorID() {
 	a.mu.Lock()
 	hx := a.helix
@@ -694,6 +772,9 @@ func (w *helixWrapper) DeleteChatMessage(p *helix.DeleteChatMessageParams) (*hel
 }
 func (w *helixWrapper) GetUsers(p *helix.UsersParams) (*helix.UsersResponse, error) {
 	return w.c.GetUsers(p)
+}
+func (w *helixWrapper) GetStreams(p *helix.StreamsParams) (*helix.StreamsResponse, error) {
+	return w.c.GetStreams(p)
 }
 func (w *helixWrapper) SetUserAccessToken(token string) { w.c.SetUserAccessToken(token) }
 

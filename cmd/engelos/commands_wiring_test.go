@@ -65,7 +65,7 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	_, err = streakSys.Tick(ctx, tenant, channel, viewer, user)
 	require.NoError(t, err)
 
-	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, counterStore, logger)
+	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, counterStore, nil, logger)
 
 	pityReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!pity",
@@ -142,4 +142,10 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.True(t, handled)
 	require.Contains(t, counterReply.Text, "deaths")
 	require.Contains(t, counterReply.Text, "1")
+
+	uptimeReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!uptime",
+	})
+	require.True(t, handled)
+	require.NotEmpty(t, uptimeReply.Text)
 }

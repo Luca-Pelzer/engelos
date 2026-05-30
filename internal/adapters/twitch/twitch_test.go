@@ -126,6 +126,9 @@ type fakeHelix struct {
 	getUsersResp    *helix.UsersResponse
 	getUsersErr     error
 	defaultUsersFor map[string]string
+	getStreamsCalls []*helix.StreamsParams
+	getStreamsResp  *helix.StreamsResponse
+	getStreamsErr   error
 }
 
 func (h *fakeHelix) SetUserAccessToken(token string) {
@@ -217,6 +220,25 @@ func (h *fakeHelix) GetUsers(p *helix.UsersParams) (*helix.UsersResponse, error)
 		resp.Data.Users = append(resp.Data.Users, helix.User{ID: "bot-id", Login: "bot"})
 	}
 	return resp, nil
+}
+
+func (h *fakeHelix) GetStreams(p *helix.StreamsParams) (*helix.StreamsResponse, error) {
+	h.mu.Lock()
+	h.getStreamsCalls = append(h.getStreamsCalls, p)
+	h.mu.Unlock()
+	if h.getStreamsErr != nil {
+		return nil, h.getStreamsErr
+	}
+	if h.getStreamsResp != nil {
+		return h.getStreamsResp, nil
+	}
+	return &helix.StreamsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) getStreamsCallCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.getStreamsCalls)
 }
 
 func newTestAdapter(t *testing.T, anon bool) (*Adapter, *fakeIRCClient, *fakeHelix) {
@@ -803,4 +825,78 @@ func TestSetToken_RaceWithHealthAndDo(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+func liveStreamsResp(start time.Time) *helix.StreamsResponse {
+	resp := &helix.StreamsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}
+	resp.Data.Streams = []helix.Stream{{UserLogin: "broadcaster", Type: "live", StartedAt: start}}
+	return resp
+}
+
+func TestStreamInfo_AnonymousReturnsHelixUnavailable(t *testing.T) {
+	a, _, _ := newTestAdapter(t, true)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.StreamInfo(context.Background(), "broadcaster")
+	assert.ErrorIs(t, err, ErrHelixUnavailable)
+}
+
+func TestStreamInfo_Live(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	start := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	hx.getStreamsResp = liveStreamsResp(start)
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	info, err := a.StreamInfo(context.Background(), "#Broadcaster")
+	require.NoError(t, err)
+	assert.True(t, info.Live)
+	assert.Equal(t, start, info.StartedAt)
+}
+
+func TestStreamInfo_Offline(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.getStreamsResp = &helix.StreamsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	info, err := a.StreamInfo(context.Background(), "broadcaster")
+	require.NoError(t, err)
+	assert.False(t, info.Live)
+	assert.True(t, info.StartedAt.IsZero())
+}
+
+func TestStreamInfo_CachesWithinTTLAndExpires(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.getStreamsResp = liveStreamsResp(time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	now := time.Date(2026, 5, 30, 13, 0, 0, 0, time.UTC)
+	a.nowFn = func() time.Time { return now }
+
+	_, err := a.StreamInfo(context.Background(), "broadcaster")
+	require.NoError(t, err)
+	_, err = a.StreamInfo(context.Background(), "broadcaster")
+	require.NoError(t, err)
+	assert.Equal(t, 1, hx.getStreamsCallCount(), "second call within TTL must hit cache")
+
+	now = now.Add(streamCacheTTL + time.Second)
+	_, err = a.StreamInfo(context.Background(), "broadcaster")
+	require.NoError(t, err)
+	assert.Equal(t, 2, hx.getStreamsCallCount(), "call past TTL must re-fetch")
+}
+
+func TestStreamInfo_HelixErrorNotCached(t *testing.T) {
+	a, _, hx := newTestAdapter(t, false)
+	hx.getStreamsErr = errors.New("boom")
+	require.NoError(t, a.Connect(context.Background()))
+	t.Cleanup(func() { _ = a.Disconnect(context.Background()) })
+
+	_, err := a.StreamInfo(context.Background(), "broadcaster")
+	require.Error(t, err)
+	_, err = a.StreamInfo(context.Background(), "broadcaster")
+	require.Error(t, err)
+	assert.Equal(t, 2, hx.getStreamsCallCount(), "errors must not be cached; both calls hit Helix")
 }

@@ -224,7 +224,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, twitchAdapter, logger)
 
 	timerScheduler, err := timers.New(timers.Config{
 		Store:    timerStore,
@@ -462,7 +462,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, twitchAdapter *twitch.Adapter, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -493,6 +493,7 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewCounterSubCommand(counterAdminStore))
 	register(commands.NewSetCounterCommand(counterAdminStore))
 	register(commands.NewResetCounterCommand(counterAdminStore))
+	register(commands.NewUptimeCommand(uptimeProvider{adapter: twitchAdapter}))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
@@ -701,6 +702,28 @@ func (a counterAdmin) Set(ctx context.Context, channel, name string, value int64
 		return 0, err
 	}
 	return c.Value, nil
+}
+
+// errNoTwitchAdapter is returned by uptimeProvider when no Twitch adapter is
+// configured, so the !uptime command renders its graceful error reply
+// instead of crashing.
+var errNoTwitchAdapter = errors.New("uptime: twitch adapter not configured")
+
+// uptimeProvider maps the Twitch adapter's StreamInfo onto the narrow
+// commands.UptimeProvider, keeping internal/commands free of any twitch
+// import. A nil adapter (Twitch not configured) yields an error so the
+// command replies "couldn't check uptime" rather than dereferencing nil.
+type uptimeProvider struct{ adapter *twitch.Adapter }
+
+func (p uptimeProvider) Uptime(ctx context.Context, channel string) (time.Time, bool, error) {
+	if p.adapter == nil {
+		return time.Time{}, false, errNoTwitchAdapter
+	}
+	info, err := p.adapter.StreamInfo(ctx, channel)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return info.StartedAt, info.Live, nil
 }
 
 // commandRouterAdapter maps the commands.Engine onto runtime.CommandRouter,
