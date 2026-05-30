@@ -70,7 +70,8 @@ func (h *Migrate) Import(w http.ResponseWriter, r *http.Request) {
 	skipped := append([]string{}, result.Skipped...)
 	skipped = append(skipped, failed...)
 
-	timersImported := h.persistTimers(r, channel, result.Timers)
+	timersImported, timersFailed := h.persistTimers(r, channel, result.Timers)
+	skipped = append(skipped, timersFailed...)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"channel":           channel,
@@ -118,11 +119,12 @@ func (h *Migrate) persistCommands(r *http.Request, channel string, cmds []migrat
 }
 
 // persistTimers creates each parsed timer when a timer store is configured.
-func (h *Migrate) persistTimers(r *http.Request, channel string, ts []migrate.Timer) int {
+func (h *Migrate) persistTimers(r *http.Request, channel string, ts []migrate.Timer) (int, []string) {
 	if h.timers == nil {
-		return 0
+		return 0, nil
 	}
 	var imported int
+	var failed []string
 	for _, t := range ts {
 		_, err := h.timers.Create(r.Context(), timers.Timer{
 			TenantID:     h.tenantID,
@@ -137,9 +139,10 @@ func (h *Migrate) persistTimers(r *http.Request, channel string, ts []migrate.Ti
 		if err != nil {
 			h.logger.WarnContext(r.Context(), "migrate: timer create failed",
 				slog.String("name", t.Name), slog.Any("err", err))
+			failed = append(failed, "timer "+t.Name+": "+err.Error())
 			continue
 		}
 		imported++
 	}
-	return imported
+	return imported, failed
 }

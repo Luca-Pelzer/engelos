@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -103,6 +104,14 @@ func (a *autoClipper) capture(channel string, reason clipper.Reason) {
 
 		clip, err := a.creator.CreateClip(ctx, channel, 30)
 		if err != nil {
+			// Anonymous/unauthenticated Twitch cannot create clips; log that
+			// quietly at debug so a non-affiliate or token-less deployment is
+			// not spammed with warnings on every hype moment.
+			if errors.Is(err, twitch.ErrHelixUnavailable) {
+				a.logger.DebugContext(ctx, "autoclip: skipped, twitch unavailable",
+					"channel", channel, "reason", string(reason))
+				return
+			}
 			a.logger.WarnContext(ctx, "autoclip: create failed",
 				"channel", channel, "reason", string(reason), "err", err)
 			return

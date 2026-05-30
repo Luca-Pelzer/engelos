@@ -658,7 +658,7 @@ func (d *Dispatcher) routeCommand(ctx context.Context, p adapters.Platform, ev a
 }
 
 func (d *Dispatcher) translate(ctx context.Context, p adapters.Platform, ev adapters.Event) {
-	if d.cfg.Translator == nil || p == nil {
+	if d.cfg.Translator == nil || p == nil || ev.Message == nil {
 		return
 	}
 	reply, ok := d.cfg.Translator.Maybe(ctx, ev.Channel, ev.Message.UserID, ev.Message.Content)
@@ -676,7 +676,7 @@ func (d *Dispatcher) translate(ctx context.Context, p adapters.Platform, ev adap
 }
 
 func (d *Dispatcher) cohost(ctx context.Context, p adapters.Platform, ev adapters.Event) {
-	if d.cfg.CoHost == nil || p == nil {
+	if d.cfg.CoHost == nil || p == nil || ev.Message == nil {
 		return
 	}
 	reply, ok := d.cfg.CoHost.Maybe(ctx, ev.Channel, ev.Message.UserID, ev.Message.Username, ev.Message.Content)

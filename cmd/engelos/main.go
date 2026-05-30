@@ -457,7 +457,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// plain-language rules via ENGELOS_CONTEXTMOD_RULES. It escalates only
 	// messages the rule engine passed, and fails open to the existing behaviour.
 	contextRules := strings.TrimSpace(os.Getenv("ENGELOS_CONTEXTMOD_RULES"))
-	contextEscalator := contextmod.NewEscalator(claudeClient, contextmod.DefaultOptions())
+	var contextEscalator *contextmod.Escalator
+	if contextRules != "" {
+		contextEscalator = contextmod.NewEscalator(claudeClient, contextmod.DefaultOptions())
+	}
 
 	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, translateCfg, cohostCfg, logger)
 
