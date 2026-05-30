@@ -76,7 +76,7 @@ func main() {
 
 	slog.Info("engelOS starting",
 		"version", Version,
-		"phase", "1B — adapters + auth + web + dispatcher",
+		"phase", "1B - adapters + auth + web + dispatcher",
 	)
 
 	ctx, cancel := signal.NotifyContext(
@@ -422,7 +422,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
-	// is an affiliate/partner — custom rewards 403 otherwise. In every other
+	// is an affiliate/partner - custom rewards 403 otherwise. In every other
 	// case it logs the reason and stays a no-op, so anonymous/non-affiliate
 	// deployments boot cleanly with the rest of the bot unaffected.
 	startChannelPoints(ctx, logger, twitchAdapter, redemptionStore,
@@ -481,7 +481,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		// Twitch user-access tokens expire ~4h after issuance; without
 		// proactive refresh the stored bot token goes stale and Helix
 		// calls 401. Live re-application to the connected adapter is
-		// Phase 5b — here only persistence + the OnRefresh hook run.
+		// Phase 5b - here only persistence + the OnRefresh hook run.
 		refresher, rerr := oauthrefresh.New(oauthrefresh.Config{
 			Store:  providerScopedStore{inner: refreshStoreAdapter{store: authStore}, provider: auth.ProviderTwitch},
 			Tokens: twitchTokenSource{cfg: twitchOAuthCfg},
@@ -588,8 +588,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 }
 
 // envBool reports whether the named environment variable is set to a truthy
-// value ("1", "true", "yes", "on", case-insensitive). Anything else — including
-// unset — is false, so the daemon keeps its loopback-only default unless the
+// value ("1", "true", "yes", "on", case-insensitive). Anything else - including
+// unset - is false, so the daemon keeps its loopback-only default unless the
 // operator explicitly opts in.
 func envBool(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
@@ -792,7 +792,7 @@ func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, vi
 }
 
 // Loyalty economy tuning. A viewer earns defaultEarnAmount points at most once
-// per defaultEarnCooldown of chatting — the per-viewer cooldown is the
+// per defaultEarnCooldown of chatting - the per-viewer cooldown is the
 // anti-farming gate (idle lurkers and message-flooding bots cannot accumulate
 // faster than this rate).
 const (
@@ -1604,7 +1604,7 @@ func startChannelPoints(
 
 	// The affiliate gate is checked against the broadcaster (first joined
 	// channel). A non-affiliate channel cannot own custom rewards, so the
-	// feature would only 403 — better to stay off and say why.
+	// feature would only 403 - better to stay off and say why.
 	broadcaster := channels[0]
 	btype, err := tw.BroadcasterType(ctx, broadcaster)
 	if err != nil {
@@ -1978,7 +1978,7 @@ func (q leaderboardQuerier) StreakTop(tenantID, channel string, n int) []command
 
 // startPlatforms inspects environment variables and starts every platform
 // adapter that is enabled. Returns the connected platforms, the Twitch
-// adapter handle (nil when Twitch is not started — used so the OAuth
+// adapter handle (nil when Twitch is not started - used so the OAuth
 // refresher can live-rotate its token via SetToken), and a cleanup
 // function that disconnects them in reverse order.
 //

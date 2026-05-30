@@ -156,7 +156,7 @@ func validatePeriod(period string) (string, error) {
 
 // validateKey normalises and checks the (tenant, channel, viewer, period)
 // key, returning the canonical components or an error wrapping ErrInvalid.
-// Username is intentionally not validated — it is stored verbatim.
+// Username is intentionally not validated - it is stored verbatim.
 func validateKey(tenantID, channel, viewerID, period string) (t, c, v, p string, err error) {
 	t = strings.TrimSpace(tenantID)
 	if t == "" {

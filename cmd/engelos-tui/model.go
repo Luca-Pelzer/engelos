@@ -29,7 +29,7 @@ const (
 )
 
 // chatBufferCap bounds the in-memory chat backlog. 200 entries matches the
-// task spec — old lines drop off the top to keep the viewport snappy.
+// task spec - old lines drop off the top to keep the viewport snappy.
 const chatBufferCap = 200
 
 // statsPollInterval is the cadence at which the dashboard polls /stats.
@@ -385,7 +385,7 @@ func (lm *loginModel) toggleFocus() {
 }
 
 func (lm loginModel) View(width, height int) string {
-	title := TitleStyle.Render("engelOS — sign in")
+	title := TitleStyle.Render("engelOS - sign in")
 	form := lipgloss.JoinVertical(lipgloss.Left,
 		MutedStyle.Render("email"),
 		lm.email.View(),

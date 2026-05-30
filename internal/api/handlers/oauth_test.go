@@ -135,7 +135,7 @@ func TestOAuth_Login_RedirectsAndSetsStateCookie(t *testing.T) {
 	assert.True(t, stateCookie.HttpOnly)
 	assert.False(t, stateCookie.Secure)
 	assert.Equal(t, http.SameSiteLaxMode, stateCookie.SameSite,
-		"SameSite must be Lax — Strict would drop the cookie on the cross-site return from Twitch")
+		"SameSite must be Lax - Strict would drop the cookie on the cross-site return from Twitch")
 	assert.Greater(t, stateCookie.MaxAge, 0)
 	assert.NotEmpty(t, stateCookie.Value)
 
@@ -588,7 +588,7 @@ func TestOAuth_NormalizePurpose(t *testing.T) {
 	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose(""))
 	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose("garbage"))
 	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose("BOT"),
-		"normalization is case-sensitive — only exact literal 'bot' opts in")
+		"normalization is case-sensitive - only exact literal 'bot' opts in")
 	assert.Equal(t, auth.OAuthPurposeUser, normalizePurpose("admin"),
 		"unknown purposes must collapse to the safe default, never error")
 }
@@ -654,7 +654,7 @@ func TestOAuth_Login_BotPurpose_PropagatesToStateAndCookie(t *testing.T) {
 	loc, err := resp.Location()
 	require.NoError(t, err)
 	assert.Equal(t, stateCookie.Value, loc.Query().Get("state"),
-		"the OAuth state query param must equal the cookie value verbatim — "+
+		"the OAuth state query param must equal the cookie value verbatim - "+
 			"this is what binds purpose to CSRF without trusting query data")
 }
 

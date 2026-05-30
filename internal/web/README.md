@@ -1,4 +1,4 @@
-# internal/web — embedded SvelteKit dashboard
+# internal/web - embedded SvelteKit dashboard
 
 This package wraps the prerendered SvelteKit static build (from
 `web/packages/local/build/`) in a `//go:embed` directive and exposes it as a

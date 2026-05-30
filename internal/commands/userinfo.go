@@ -122,7 +122,7 @@ func NewAccountAgeCommand(provider UserProfileProvider) Command {
 }
 
 // NewShoutoutCommand returns "!so" (MinRole RoleModerator, ~5s cooldown). It
-// shouts out another streamer: "Go give <name> a follow at twitch.tv/<login> —
+// shouts out another streamer: "Go give <name> a follow at twitch.tv/<login> -
 // they were last playing <game>!" (omitting the game when unknown). A missing
 // argument yields usage. Uses both the profile provider (for the canonical
 // login/name) and the stream-status provider (for the last category).
@@ -154,10 +154,10 @@ func NewShoutoutCommand(profiles UserProfileProvider, streams StreamStatusProvid
 				}
 			}
 			if game != "" {
-				return Reply{Text: fmt.Sprintf("📢 Go give %s a follow at twitch.tv/%s — they were last seen playing %s!",
+				return Reply{Text: fmt.Sprintf("📢 Go give %s a follow at twitch.tv/%s - they were last seen playing %s!",
 					display, login, game)}
 			}
-			return Reply{Text: fmt.Sprintf("📢 Go give %s a follow at twitch.tv/%s — show them some love! 💜",
+			return Reply{Text: fmt.Sprintf("📢 Go give %s a follow at twitch.tv/%s - show them some love! 💜",
 				display, login)}
 		},
 	}
@@ -165,7 +165,7 @@ func NewShoutoutCommand(profiles UserProfileProvider, streams StreamStatusProvid
 
 // formatAge renders a long-lived duration as a human "Xy Ym" / "Ym Zd" / "Zd"
 // string for account ages. It uses approximate year (365d) and month (30d)
-// lengths — exact calendar math is unnecessary for a chat readout.
+// lengths - exact calendar math is unnecessary for a chat readout.
 func formatAge(d time.Duration) string {
 	days := int(d.Hours() / 24)
 	if days < 1 {

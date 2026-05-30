@@ -346,8 +346,8 @@ func (c *Client) RemoveFromPlaylist(ctx context.Context, token, playlistID, trac
 	return nil
 }
 
-// NowPlaying returns the currently playing track. When nothing is playing —
-// including an HTTP 204 No Content — it returns (Track{}, false, nil).
+// NowPlaying returns the currently playing track. When nothing is playing -
+// including an HTTP 204 No Content - it returns (Track{}, false, nil).
 // (GET /v1/me/player/currently-playing).
 func (c *Client) NowPlaying(ctx context.Context, token string) (Track, bool, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, "/v1/me/player/currently-playing", token, nil)

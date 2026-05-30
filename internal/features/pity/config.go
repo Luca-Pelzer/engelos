@@ -9,7 +9,7 @@ import (
 // Config controls the behaviour of a [System].
 //
 // Defaults are provided by [DefaultConfig]. Always call [Config.Validate] before
-// passing a Config to [New] — invalid values are rejected with descriptive
+// passing a Config to [New] - invalid values are rejected with descriptive
 // errors rather than panicking.
 type Config struct {
 	// PointsPerMessage is the canonical grant size for a chat message.

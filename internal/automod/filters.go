@@ -165,7 +165,7 @@ func (e *Engine) active(enabled bool, exemptMin Role, user UserContext) bool {
 //
 // Semantics: a user is exempt when their role is at or above exemptMin. The
 // zero value (RoleEveryone) means "no per-filter exemption" so that a freshly
-// enabled filter applies to all non-staff users — moderators and the
+// enabled filter applies to all non-staff users - moderators and the
 // broadcaster are always exempt via the global short-circuit in Evaluate.
 func roleExempt(userRole, exemptMin Role) bool {
 	if exemptMin <= RoleEveryone {

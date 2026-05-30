@@ -32,7 +32,7 @@ var (
 //
 // Scopes is the subset of Permission strings this key may exercise. The
 // effective permission of a request is therefore
-// (key.Scopes ∩ key.OwnerRole.Permissions()) — that is, a key cannot
+// (key.Scopes ∩ key.OwnerRole.Permissions()) - that is, a key cannot
 // elevate above its creator.
 type APIKey struct {
 	ID          string

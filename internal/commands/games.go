@@ -16,7 +16,7 @@ const gameUserCooldown = 5 * time.Second
 
 // gambleWinChance is the !gamble win probability as a percentage. A 47% chance
 // on an even-money (double-or-nothing) bet gives the house a 6% edge:
-// EV = 0.47*2 - 1 = -0.06, so over time the points sink wins — which is the
+// EV = 0.47*2 - 1 = -0.06, so over time the points sink wins - which is the
 // point of a loyalty-points game (keeps the economy from inflating).
 const gambleWinChance = 47
 
@@ -56,7 +56,7 @@ func NewGambleCommand(bank GameBank) Command { return newGambleCommand(bank, ran
 func newGambleCommand(bank GameBank, randInt63 func() int64) Command {
 	return Command{
 		Name:         "gamble",
-		Help:         "Bet your " + pointsName + " on a coin flip — !gamble <amount|all|50%>.",
+		Help:         "Bet your " + pointsName + " on a coin flip - !gamble <amount|all|50%>.",
 		UserCooldown: gameUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
 			return playWager(ctx, bank, msg, args, "gamble", "gamble",
@@ -96,7 +96,7 @@ func NewSlotsCommand(bank GameBank) Command { return newSlotsCommand(bank, rand.
 func newSlotsCommand(bank GameBank, randInt63 func() int64) Command {
 	return Command{
 		Name:         "slots",
-		Help:         "Spin the slot machine — !slots <amount|all|50%>.",
+		Help:         "Spin the slot machine - !slots <amount|all|50%>.",
 		UserCooldown: gameUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
 			return playWager(ctx, bank, msg, args, "slots", "spin",
@@ -114,13 +114,13 @@ func newSlotsCommand(bank GameBank, randInt63 func() int64) Command {
 					if payout > 0 {
 						profit := payout - bet
 						win := func(newBal int64) string {
-							return fmt.Sprintf("🎰 %sspun %s — WON %s %s! Balance: %s",
+							return fmt.Sprintf("🎰 %sspun %s - WON %s %s! Balance: %s",
 								mentionPrefix(msg), reels, formatPoints(profit), pointsName, formatPoints(newBal))
 						}
 						return payout, win, nil
 					}
 					loss := func(newBal int64) string {
-						return fmt.Sprintf("🎰 %sspun %s — no win, lost %s. Balance: %s",
+						return fmt.Sprintf("🎰 %sspun %s - no win, lost %s. Balance: %s",
 							mentionPrefix(msg), reels, formatPoints(bet), formatPoints(newBal))
 					}
 					return 0, nil, loss

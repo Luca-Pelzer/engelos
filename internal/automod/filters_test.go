@@ -241,7 +241,7 @@ func TestRepetitionFilter(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Banned words — every MatchMode
+// Banned words - every MatchMode
 // ---------------------------------------------------------------------------
 
 func TestBannedWordsMatchModes(t *testing.T) {

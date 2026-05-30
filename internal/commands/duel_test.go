@@ -345,7 +345,7 @@ func TestAccept_SettleInsufficientFellThrough(t *testing.T) {
 	reply := cmd.Handler(context.Background(),
 		Message{Channel: "chan", UserID: "u2", Username: "alice"}, nil)
 
-	assert.Equal(t, "@alice the duel fell through — someone couldn't cover it.", reply.Text)
+	assert.Equal(t, "@alice the duel fell through - someone couldn't cover it.", reply.Text)
 }
 
 func TestAccept_SettleErrorGeneric(t *testing.T) {

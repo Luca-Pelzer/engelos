@@ -44,7 +44,7 @@ const (
 // passes limit <= 0.
 const defaultUpcomingLimit = 5
 
-// Event is a scheduled Live-Ops item scoped to a (tenant, channel) — e.g.
+// Event is a scheduled Live-Ops item scoped to a (tenant, channel) - e.g.
 // a "Double Points Weekend" or "Season 3 starts" the bot counts down to.
 // Number is a per-channel 1-based sequence shown to users; it is NOT a
 // global primary key. ID is the internal ULID primary key. EndsAt is nil

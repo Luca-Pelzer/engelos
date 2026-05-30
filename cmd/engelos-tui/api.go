@@ -1,4 +1,4 @@
-// Package main hosts the engelos-tui binary — a terminal dashboard that
+// Package main hosts the engelos-tui binary - a terminal dashboard that
 // connects to a running engelOS daemon over HTTP/WebSocket and renders
 // live stats, leaderboards, and chat events.
 //
@@ -64,7 +64,7 @@ type Stats struct {
 
 // LeaderboardEntry is one row of /api/v1/streak/leaderboard (and the
 // future pity equivalent). Fields not present in a given response remain
-// zero — callers should treat them as best-effort.
+// zero - callers should treat them as best-effort.
 type LeaderboardEntry struct {
 	Channel     string `json:"channel"`
 	ViewerID    string `json:"viewer_id"`
@@ -98,7 +98,7 @@ type StreakStatus struct {
 }
 
 // WSEvent is the parsed envelope emitted by the WebSocket goroutine for
-// every server-pushed message. Raw is the original payload — callers can
+// every server-pushed message. Raw is the original payload - callers can
 // re-parse it for nested fields if needed.
 type WSEvent struct {
 	Type string          `json:"type"`
@@ -115,7 +115,7 @@ type Client struct {
 }
 
 // NewClient builds a Client pointed at baseURL (e.g. http://127.0.0.1:8080).
-// When insecure is true, TLS certificate verification is skipped — useful
+// When insecure is true, TLS certificate verification is skipped - useful
 // for self-signed tailnet certs. The returned client always carries a
 // cookie jar; the caller does not need to manage cookies manually.
 func NewClient(baseURL string, insecure bool) (*Client, error) {
@@ -221,7 +221,7 @@ func (c *Client) Me(ctx context.Context) (User, error) {
 	return u, nil
 }
 
-// Stats fetches /api/v1/stats. The dispatcher block is best-effort —
+// Stats fetches /api/v1/stats. The dispatcher block is best-effort -
 // older daemons may omit it; the returned struct will then have zero
 // values in DispatcherStats.
 func (c *Client) Stats(ctx context.Context) (Stats, error) {
@@ -327,7 +327,7 @@ func (c *Client) StreamWebSocket(ctx context.Context) (<-chan WSEvent, error) {
 				return
 			}
 			ev := WSEvent{Raw: append([]byte(nil), data...)}
-			// Tolerate non-JSON frames silently — the server may send
+			// Tolerate non-JSON frames silently - the server may send
 			// plain text pings in some configurations.
 			_ = json.Unmarshal(data, &ev)
 			select {

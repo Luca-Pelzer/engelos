@@ -47,7 +47,7 @@ type LeaderboardEntry struct {
 // ReadModel is the in-memory projection of the streak event log.
 //
 // It is safe for concurrent use. [System] is the single canonical writer in
-// production, but [ReadModel.Apply] may be invoked from any goroutine — for
+// production, but [ReadModel.Apply] may be invoked from any goroutine - for
 // example a background replay during [System.Recover].
 type ReadModel struct {
 	mu     sync.RWMutex

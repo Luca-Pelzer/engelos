@@ -133,7 +133,7 @@ const (
 
 // Config is the full, independently-tunable filter configuration. Each filter
 // embeds an Enabled flag, an ExemptMinRole (users at or above that role bypass
-// the individual filter — moderators and broadcasters are ALWAYS globally
+// the individual filter - moderators and broadcasters are ALWAYS globally
 // exempt regardless), a TimeoutSecs base timeout, plus its own parameters.
 type Config struct {
 	// Mode controls overall engine behaviour. Default ModeActive.
@@ -181,7 +181,7 @@ type SymbolsConfig struct {
 }
 
 // LinksConfig governs link detection. The !permit flow lives in the
-// dispatcher/escalation layer, NOT here — this filter only detects links and
+// dispatcher/escalation layer, NOT here - this filter only detects links and
 // honours the allow-list.
 type LinksConfig struct {
 	Enabled       bool
@@ -217,7 +217,7 @@ type LengthConfig struct {
 }
 
 // RepetitionConfig governs the within-message repetition filter. It carries NO
-// cross-message state — the escalation package has no role here.
+// cross-message state - the escalation package has no role here.
 type RepetitionConfig struct {
 	Enabled       bool
 	ExemptMinRole Role
@@ -247,7 +247,7 @@ type BannedEntry struct {
 	MatchMode MatchMode
 	// CaseSensitive, when false (the default), matches case-insensitively.
 	CaseSensitive bool
-	// Verdict is the severity to assign on a match — usually VerdictTimeout
+	// Verdict is the severity to assign on a match - usually VerdictTimeout
 	// or VerdictBan.
 	Verdict Verdict
 }

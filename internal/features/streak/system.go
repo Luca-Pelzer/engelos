@@ -400,7 +400,7 @@ func (s *System) checkMilestone(newDays int, current State) (int, int, int) {
 
 // UseFreeze manually spends one freeze credit to bridge a single day. It
 // emits a streak.frozen event with DaysBridged=1 and does NOT advance
-// DaysCurrent — the streak is held in place. Returns
+// DaysCurrent - the streak is held in place. Returns
 // [ErrNoFreezesAvailable] when the viewer has zero credits.
 func (s *System) UseFreeze(ctx context.Context, tenantID, channel, viewerID, username string) (Result, error) {
 	if err := validateIdentity(tenantID, channel, viewerID); err != nil {

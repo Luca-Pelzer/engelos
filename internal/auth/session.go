@@ -47,7 +47,7 @@ type Session struct {
 
 // NewSession mints a fresh session for the given user. It returns the
 // plaintext token (which must be transported to the caller exactly
-// once — typically via a Set-Cookie header) and the persisted Session
+// once - typically via a Set-Cookie header) and the persisted Session
 // record whose TokenHash matches that token.
 //
 // lifetime <= 0 falls back to DefaultSessionLifetime.

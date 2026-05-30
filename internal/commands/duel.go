@@ -33,7 +33,7 @@ type DuelBank interface {
 	Balance(ctx context.Context, channel, viewerID string) (int64, LoyaltyError)
 	// Settle takes `amount` from both players and gives the pot (amount*2) to
 	// winnerID. Returns the winner's post-settlement balance, or a non-OK
-	// status if either stake could not be taken (in which case NO money moves —
+	// status if either stake could not be taken (in which case NO money moves -
 	// the implementation must verify both can afford BEFORE spending).
 	Settle(ctx context.Context, channel, winnerID, loserID string, amount int64) (winnerBalance int64, status LoyaltyError)
 }
@@ -142,7 +142,7 @@ func (r *duelRegistry) expired(c *challenge) bool {
 func NewDuelCommand(bank DuelBank, reg *duelRegistry) Command {
 	return Command{
 		Name:         "duel",
-		Help:         "Challenge another viewer to wager " + pointsName + " — !duel <user> <amount|all|50%>.",
+		Help:         "Challenge another viewer to wager " + pointsName + " - !duel <user> <amount|all|50%>.",
 		UserCooldown: duelChallengeUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
 			if bank == nil || reg == nil {
@@ -207,7 +207,7 @@ func NewAcceptCommand(bank DuelBank, reg *duelRegistry) Command {
 func newAcceptCommand(bank DuelBank, reg *duelRegistry, randInt63 func() int64) Command {
 	return Command{
 		Name:         "accept",
-		Help:         "Accept a pending duel challenge — !accept.",
+		Help:         "Accept a pending duel challenge - !accept.",
 		UserCooldown: duelAcceptUserCooldown,
 		Handler: func(ctx context.Context, msg Message, _ []string) Reply {
 			if bank == nil || reg == nil {
@@ -243,7 +243,7 @@ func newAcceptCommand(bank DuelBank, reg *duelRegistry, randInt63 func() int64) 
 				return Reply{Text: fmt.Sprintf("⚔️ %s beat %s and won the %s-%s pot! 🏆",
 					winnerName, loserName, formatPoints(pot), pointsName)}
 			case LoyaltyInsufficient:
-				return Reply{Text: fmt.Sprintf("%sthe duel fell through — someone couldn't cover it.",
+				return Reply{Text: fmt.Sprintf("%sthe duel fell through - someone couldn't cover it.",
 					mentionPrefix(msg))}
 			default:
 				return Reply{Text: "couldn't settle the duel right now."}

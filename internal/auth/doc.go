@@ -1,6 +1,6 @@
 // Package auth implements authentication, authorization, and credential
 // management for engelOS. It is intentionally usable in both self-hosted
-// (local) and cloud deployments — auth is mandatory even for self-hosters
+// (local) and cloud deployments - auth is mandatory even for self-hosters
 // because a single bot instance is typically shared with moderators.
 //
 // The package provides:

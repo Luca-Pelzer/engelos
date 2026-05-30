@@ -44,7 +44,7 @@ type LeaderboardEntry struct {
 // ReadModel is the in-memory projection of the pity event log.
 //
 // It is safe for concurrent use. [System] is the single canonical writer in
-// production, but [ReadModel.Apply] may be invoked from any goroutine — for
+// production, but [ReadModel.Apply] may be invoked from any goroutine - for
 // example a background replay during [System.Recover].
 type ReadModel struct {
 	mu             sync.RWMutex
@@ -59,7 +59,7 @@ func NewReadModel() *ReadModel {
 
 // WithWindowDuration enables timestamp-driven window rollover during
 // [ReadModel.Apply] of [EventTypePointsGranted]. When unset (the default),
-// PointsThisWindow accumulates monotonically — fine for naive consumers, but
+// PointsThisWindow accumulates monotonically - fine for naive consumers, but
 // callers that want correct rate-limit replay (notably [System.Recover]) must
 // set the window so replay matches live behaviour.
 //

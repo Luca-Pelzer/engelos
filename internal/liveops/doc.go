@@ -1,5 +1,5 @@
 // Package liveops provides scheduled Live-Ops events scoped to a
-// (tenant, channel) — the streamer "what's next?" feature (e.g. a
+// (tenant, channel) - the streamer "what's next?" feature (e.g. a
 // "Double Points Weekend" or "Season 3 starts" the bot counts down to).
 //
 // A [Store] persists events in pure-Go SQLite (modernc.org/sqlite,

@@ -2,7 +2,7 @@
 // platform-neutral router that parses prefixed chat messages (e.g. "!pity",
 // "!streak", "!commands") and dispatches them to registered handlers.
 //
-// The engine returns a reply [Reply] to its caller — it never talks to a
+// The engine returns a reply [Reply] to its caller - it never talks to a
 // chat platform itself. That decoupling lets the runtime dispatcher own the
 // platform-side I/O while this package owns parsing and routing.
 //
@@ -55,18 +55,18 @@
 // dimension. Cooldowns are checked AFTER the permission gate and BEFORE
 // the handler runs. If EITHER dimension is currently within its window,
 // the invocation is silently suppressed: [Engine.Handle] returns
-// (Reply{}, true) — same "handled but empty" shape as a denied
+// (Reply{}, true) - same "handled but empty" shape as a denied
 // invocation, for the same anti-spam reasons.
 //
 // Cooldown timers are armed only on a SUCCESSFUL handler return.
 // Permission-denied and on-cooldown attempts do NOT reset or extend the
-// window — only an actual fire updates the last-fire timestamp. The
+// window - only an actual fire updates the last-fire timestamp. The
 // clock used for cooldown bookkeeping is taken from Config.Now (default
 // [time.Now]); tests can inject a fake clock to drive cooldown
 // transitions deterministically.
 //
 // Broadcaster and moderator privilege does NOT exempt callers from
-// cooldowns at this layer — the behaviour is kept simple and predictable.
+// cooldowns at this layer - the behaviour is kept simple and predictable.
 // Role-based exemptions can be layered on top of the engine later.
 //
 // # Concurrency
@@ -81,7 +81,7 @@
 // # Panic recovery
 //
 // A panic in a handler is recovered, logged, and reported to the caller as
-// (Reply{}, true) — i.e. the message WAS a command but produced no reply.
+// (Reply{}, true) - i.e. the message WAS a command but produced no reply.
 // One bad command can never crash the dispatcher.
 //
 // # Custom commands
@@ -103,7 +103,7 @@
 // substitutes $user, $channel and $args before the reply is returned.
 // Substitution is case-sensitive and non-recursive; unknown $-tokens
 // are left untouched. A panicking Resolver is recovered, logged, and
-// treated as a miss — never crashes the dispatcher.
+// treated as a miss - never crashes the dispatcher.
 //
 // Mods manage custom commands through the [NewAddCommand],
 // [NewEditCommand] and [NewDeleteCommand] built-ins, which speak to a

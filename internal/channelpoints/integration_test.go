@@ -25,7 +25,7 @@ func openRealStore(t *testing.T, name string) redemptions.Store {
 }
 
 // TestIntegration_ChatRedemption_RealStore exercises the full redemption
-// path with the REAL redemptions store and REAL executor — only the Twitch
+// path with the REAL redemptions store and REAL executor - only the Twitch
 // boundary (chat + fulfiller) is faked. This is the closest we can get to a
 // live affiliate redemption without an affiliate channel: it proves a stored
 // binding is found, its templated chat action runs, and the redemption is
@@ -148,7 +148,7 @@ func TestIntegration_DisabledBinding_RealStore(t *testing.T) {
 
 // TestIntegration_UnboundReward_RealStore proves a redemption for a reward
 // with no binding in the real store is ignored without touching the
-// redemption (no fulfill, no cancel) — exactly the "not ours to manage"
+// redemption (no fulfill, no cancel) - exactly the "not ours to manage"
 // contract Firebot-style bots rely on.
 func TestIntegration_UnboundReward_RealStore(t *testing.T) {
 	store := openRealStore(t, "cp_integ_unbound")

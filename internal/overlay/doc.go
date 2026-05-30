@@ -17,10 +17,10 @@
 //
 // Three overlays ship today:
 //
-//   - /overlay/events       — bottom-anchored activity feed (chat + alerts).
-//   - /overlay/alerts       — centered single-alert player (subs / raids /
+//   - /overlay/events       - bottom-anchored activity feed (chat + alerts).
+//   - /overlay/alerts       - centered single-alert player (subs / raids /
 //     streak milestones), Streamlabs-style.
-//   - /overlay/leaderboard  — corner panel of top streaks, polled from the
+//   - /overlay/leaderboard  - corner panel of top streaks, polled from the
 //     REST leaderboard endpoint and refreshed on milestone events.
 //
 // /overlay/ (empty name) serves a tiny index page listing the three URLs so

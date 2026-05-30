@@ -14,9 +14,9 @@ import (
 
 func TestExpandVariables_AllTokens(t *testing.T) {
 	msg := commands.Message{Username: "alice", Channel: "kalmegh"}
-	got := commands.ExpandVariables("hi $user, welcome to $channel — $args",
+	got := commands.ExpandVariables("hi $user, welcome to $channel - $args",
 		msg, []string{"have", "fun"})
-	assert.Equal(t, "hi alice, welcome to kalmegh — have fun", got)
+	assert.Equal(t, "hi alice, welcome to kalmegh - have fun", got)
 }
 
 func TestExpandVariables_NoArgsBecomesEmpty(t *testing.T) {

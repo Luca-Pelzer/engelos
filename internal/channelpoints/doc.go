@@ -8,8 +8,8 @@
 //
 // An [Executor] receives one [eventsub.RedemptionEvent] per redemption via
 // [Executor.Handle], looks up the binding for the redeemed reward, runs the
-// bound action (chat message, counter increment/reset, or none), and — when
-// the binding opts into auto-fulfilment — marks the redemption FULFILLED on
+// bound action (chat message, counter increment/reset, or none), and - when
+// the binding opts into auto-fulfilment - marks the redemption FULFILLED on
 // success or CANCELED (refund) on failure.
 //
 // To stay decoupled and testable this package depends only on the narrow

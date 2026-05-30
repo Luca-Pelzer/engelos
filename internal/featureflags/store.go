@@ -53,7 +53,7 @@ type Flag struct {
 // Store is the persistence contract for per-channel feature toggles. All
 // methods are safe for concurrent use; Set is an atomic upsert so
 // concurrent writers of the same flag never collide. Only EXPLICIT
-// overrides are stored — an unset flag has no row and the caller supplies
+// overrides are stored - an unset flag has no row and the caller supplies
 // its own default.
 type Store interface {
 	// Set explicitly enables or disables a feature for a channel (upsert).

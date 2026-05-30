@@ -1,11 +1,11 @@
-# engelOS — Master Vision Plan v2
+# engelOS - Master Vision Plan v2
 
 > **Codename:** engelOS
 > **Tagline:** *The streaming bot that remembers you. Open source. Run it anywhere.*
-> **Mission:** Der Industry-Standard für Streaming-Bots — ein Operating-Layer für Streaming-Communities, OSS-Core + Cloud-Premium, läuft auf jedem OS
+> **Mission:** Der Industry-Standard für Streaming-Bots - ein Operating-Layer für Streaming-Communities, OSS-Core + Cloud-Premium, läuft auf jedem OS
 > **Owner:** Luca (engelswtf)
 > **License:** AGPL-3.0 (Core Daemon) + Apache-2.0 (SDK/Plugin-API/Client-Libraries) + Proprietary (Cloud-Features)
-> **Erstellt:** 2026-05-27 — komplett neu geschrieben am 2026-05-28 nach Stack-Recherche
+> **Erstellt:** 2026-05-27 - komplett neu geschrieben am 2026-05-28 nach Stack-Recherche
 > **Vorgänger:** v1 (siehe Git-History)
 
 ---
@@ -15,18 +15,18 @@
 **Was wir bauen:** Einen All-in-One Streaming-Bot der das **Netdata-Modell** auf die Streaming-Welt überträgt: OSS-Core den jeder selbst auf Linux/macOS/Windows installieren kann (Self-Hosting wie Netdata-Agent), plus eine Cloud-Version mit Premium-Features die wir managed hosten und monetarisieren.
 
 **Was es einzigartig macht:**
-1. **OSS-Core** — kein anderer großer Streaming-Bot ist Open Source mit AGPL-Lizenz. Trust, Transparenz, keine Vendor-Lock-in-Sorge
-2. **Cross-OS** — läuft auf allen drei Major-OS als Single-Binary (Cloud auf Linux Server, Self-Hoster auf Pi/NAS/Desktop ihrer Wahl)
-3. **Vier UI-Modi** — Headless-Daemon, TUI für SSH-Power-User, Native-GUI für Desktop-Streamer, Web-UI für Browser-Access
-4. **Memory-Layer statt Command-Router** — der Bot *kennt* Viewer/Streamer über Zeit und Plattformen
-5. **First-Mover-Features** — AI Co-Host, Cross-Streamer-Loyalty, Pity-System, Stream-Wrapped, Moment-Alerts
+1. **OSS-Core** - kein anderer großer Streaming-Bot ist Open Source mit AGPL-Lizenz. Trust, Transparenz, keine Vendor-Lock-in-Sorge
+2. **Cross-OS** - läuft auf allen drei Major-OS als Single-Binary (Cloud auf Linux Server, Self-Hoster auf Pi/NAS/Desktop ihrer Wahl)
+3. **Vier UI-Modi** - Headless-Daemon, TUI für SSH-Power-User, Native-GUI für Desktop-Streamer, Web-UI für Browser-Access
+4. **Memory-Layer statt Command-Router** - der Bot *kennt* Viewer/Streamer über Zeit und Plattformen
+5. **First-Mover-Features** - AI Co-Host, Cross-Streamer-Loyalty, Pity-System, Stream-Wrapped, Moment-Alerts
 
 **Markt-Realität:**
 - 14M+ potenzielle Bot-User weltweit
 - $300-500M TAM, +15%/Jahr Wachstum
 - Top-Bots (Nightbot 2012, MEE6 2015, StreamElements 2017) sind frozen in time
 - **Kein OSS-Streaming-Bot existiert** mit moderner Architektur + Cloud-Companion (Lücke!)
-- Indie-Dev kann gewinnen — Markt zu "boring" für VCs, zu spezialisiert für Big-Tech
+- Indie-Dev kann gewinnen - Markt zu "boring" für VCs, zu spezialisiert für Big-Tech
 
 **Stack (committed):**
 - **Core:** Go 1.24+ (Single-Binary, CGO_ENABLED=0, Cross-Compile von Linux-CI)
@@ -34,7 +34,7 @@
 - **TUI:** Bubble Tea (Charmbracelet)
 - **Frontend:** Svelte / SvelteKit (shared zwischen Wails-GUI und Cloud-Web)
 - **DB:** SQLite (lokal, `modernc.org/sqlite` pure-Go) + PostgreSQL (Cloud, `jackc/pgx`)
-- **AI-Sidecars:** Python (FastAPI) — Cloud-only oder via BYOK self-hostbar
+- **AI-Sidecars:** Python (FastAPI) - Cloud-only oder via BYOK self-hostbar
 
 **Pfad:**
 - Phase 0 (Jetzt-Juni 2026): EngelGuard fixen, engelOS-Skelett aufsetzen, OSS von Tag 1
@@ -62,15 +62,15 @@
 
 ### Was engelOS IST
 - ✅ **Cross-Platform-Software** die auf Linux/macOS/Windows läuft (deine Wahl)
-- ✅ **OSS-Core** unter AGPL-3.0 — du kannst es selbst hosten, forken, auditieren
+- ✅ **OSS-Core** unter AGPL-3.0 - du kannst es selbst hosten, forken, auditieren
 - ✅ **Cloud-Premium-Option** für die die nicht selbst hosten wollen
 - ✅ **Community-Layer** über Twitch/YouTube/Kick/Discord hinwegläuft
 - ✅ **Memory-System** das Viewer und ihre Geschichte über Plattformen + Zeit kennt
 - ✅ **AI-First** ohne lokale GPU-Anforderung (Cloud-only AI oder BYOK)
-- ✅ **Network-Effect-Platform** — wert wird größer mit mehr Streamern
-- ✅ **Multi-UI** — Daemon, TUI, Native-GUI, Web — je nachdem wie der User es will
+- ✅ **Network-Effect-Platform** - wert wird größer mit mehr Streamern
+- ✅ **Multi-UI** - Daemon, TUI, Native-GUI, Web - je nachdem wie der User es will
 
-### Das Netdata-Modell — unsere strategische Inspiration
+### Das Netdata-Modell - unsere strategische Inspiration
 
 | Netdata | engelOS |
 |---|---|
@@ -82,7 +82,7 @@
 
 ---
 
-## 🏗️ ARCHITEKTUR — Die 8 unverhandelbaren Prinzipien
+## 🏗️ ARCHITEKTUR - Die 8 unverhandelbaren Prinzipien
 
 ### 1. **OSS-Core + Cloud-Premium (Open Core Modell)**
 
@@ -131,7 +131,7 @@
 | Managed Hosting | – | – | ✅ |
 | Backup + DR | manuell | manuell | ✅ automatisch |
 
-**Konzept:** AI Co-Host bleibt Cloud-only, weil Voice-Clone-Setup hochspezialisiert ist und ein hochwertiges WebRTC-Audio-Routing-Setup braucht. Alle anderen AI-Features (Translator, AI-Mod, Auto-Clipper) erlauben BYOK self-hostbar — der User bringt eigenen API-Key. Cloud-Version bietet dieselben Features ohne Setup-Aufwand + optimierte Pipelines.
+**Konzept:** AI Co-Host bleibt Cloud-only, weil Voice-Clone-Setup hochspezialisiert ist und ein hochwertiges WebRTC-Audio-Routing-Setup braucht. Alle anderen AI-Features (Translator, AI-Mod, Auto-Clipper) erlauben BYOK self-hostbar - der User bringt eigenen API-Key. Cloud-Version bietet dieselben Features ohne Setup-Aufwand + optimierte Pipelines.
 
 **Warum nicht alles BYOK:** Wenn alle "Wow-Features" self-hostbar wären, fehlt die Monetarisierungs-Brücke. Co-Host ist genau die richtige Balance: zu komplex für Mainstream-Self-Hoster (gut für Cloud-Conversion), aber einzelnes Premium-Feature (keine "Cloud-only-Lock-in"-Wahrnehmung).
 
@@ -169,9 +169,9 @@ Build-Pipeline (GitHub Actions + GoReleaser)
 | **macOS Desktop** (Mac-Streamer privat) | Local Companion | Native-GUI + Web/PWA |
 | **Windows Desktop** (Mainstream-Streamer) | Local Companion | Native-GUI + Web/PWA |
 
-Alles funktioniert überall — nur die *bevorzugte* UI-Form unterscheidet sich.
+Alles funktioniert überall - nur die *bevorzugte* UI-Form unterscheidet sich.
 
-**Phase-1-Realität (Dezember 2026):** Native-GUI (Wails) ist noch nicht released — Code-Signing-Budget kommt erst mit Cloud-Revenue (Phase 2). Phase 1 hat **PWA (Progressive Web App)** auf allen 3 OS: User öffnet `http://localhost:8080` im Browser, klickt "Install as App", kriegt Desktop-Icon ohne Code-Signing-Pain. Phase 2 dann echte Native-Apps.
+**Phase-1-Realität (Dezember 2026):** Native-GUI (Wails) ist noch nicht released - Code-Signing-Budget kommt erst mit Cloud-Revenue (Phase 2). Phase 1 hat **PWA (Progressive Web App)** auf allen 3 OS: User öffnet `http://localhost:8080` im Browser, klickt "Install as App", kriegt Desktop-Icon ohne Code-Signing-Pain. Phase 2 dann echte Native-Apps.
 
 ### 3. **Vier UI-Modi für vier Use-Cases**
 
@@ -221,7 +221,7 @@ Alles funktioniert überall — nur die *bevorzugte* UI-Form unterscheidet sich.
 ```
 web/                         # ein Svelte-Monorepo
 ├── packages/
-│   ├── shared/              # 80-90% des Codes — UI-Komponenten
+│   ├── shared/              # 80-90% des Codes - UI-Komponenten
 │   │   ├── ChatViewer/
 │   │   ├── CommandEditor/
 │   │   ├── AutoModRules/
@@ -231,11 +231,11 @@ web/                         # ein Svelte-Monorepo
 │   │   ├── UserManagement/  # auch lokal!
 │   │   ├── ApiKeysManager/  # auch lokal!
 │   │   └── ...
-│   ├── local/               # 10% — lokal-spezifisch
+│   ├── local/               # 10% - lokal-spezifisch
 │   │   ├── SetupWizard/
 │   │   ├── UpgradeToCloud/  # Conversion-CTA
 │   │   └── DebugConsole/
-│   └── cloud/               # 10% — cloud-spezifisch
+│   └── cloud/               # 10% - cloud-spezifisch
 │       ├── Billing/
 │       ├── TeamSeats/
 │       ├── AdminPanel/      # für uns
@@ -257,10 +257,10 @@ web/                         # ein Svelte-Monorepo
 | Rolle | Permissions |
 |---|---|
 | **Owner** | Alles. Genau einer pro Instanz/Account. |
-| **Admin** | Settings, Integrations, Mods einladen — nicht: Owner-Settings, Billing |
-| **Mod** | Commands, AutoMod, Logs, Chat-Actions — nicht: Credentials, Tokens, API-Keys |
+| **Admin** | Settings, Integrations, Mods einladen - nicht: Owner-Settings, Billing |
+| **Mod** | Commands, AutoMod, Logs, Chat-Actions - nicht: Credentials, Tokens, API-Keys |
 | **Viewer** | Nur Read-Only (Dashboards, Stats, Logs) |
-| **API-Token (Service-Account)** | Scope-beschränkt, revocable, audit-loggt — für Maschinen-Use-Cases |
+| **API-Token (Service-Account)** | Scope-beschränkt, revocable, audit-loggt - für Maschinen-Use-Cases |
 
 **Auth-Mechanismen:**
 
@@ -420,13 +420,13 @@ User-Flow im Dashboard:
 4. z.B. Overlay-System: "Show Now-Playing as Browser-Source"
 ```
 
-**Warum:** Spotify ist nur eine von vielen. Game-APIs, Music-Services, Fitness, IoT — alle müssen integrierbar sein **ohne dass wir jede einzeln in den Core hardcoden**. Wie Home Assistant Integrations.
+**Warum:** Spotify ist nur eine von vielen. Game-APIs, Music-Services, Fitness, IoT - alle müssen integrierbar sein **ohne dass wir jede einzeln in den Core hardcoden**. Wie Home Assistant Integrations.
 
 ---
 
 ## 🏆 DIE 12 KILLER-FEATURES + Overlay-System
 
-### TIER A — Build First (Foundation + Quick Wins)
+### TIER A - Build First (Foundation + Quick Wins)
 
 #### 1. **AI Auto-Clipper** (BYOK + Cloud) 🔥🔥🔥
 - Erkennt Excitement-Peaks (Chat-Velocity, Sub-Spikes, Emote-Explosionen)
@@ -450,7 +450,7 @@ User-Flow im Dashboard:
 - Nach X Stunden ohne Win → garantierte Belohnung
 - Soft-Pity bei 70% (sichtbar: "Du bist nah dran!")
 - Eliminiert "ich gewinne nie was"-Frustration
-- **Competitor-Status:** Kein Streaming-Bot hat Pity-Mechanik (verified durch Competitor-Inventur). Gacha-Communities (Genshin/Honkai) haben es perfektioniert — wir adaptieren.
+- **Competitor-Status:** Kein Streaming-Bot hat Pity-Mechanik (verified durch Competitor-Inventur). Gacha-Communities (Genshin/Honkai) haben es perfektioniert - wir adaptieren.
 - **Effort:** ~2 Wochen Solo-Dev
 - **Tech:** Pure Go, Event-Log + Read-Model
 
@@ -460,11 +460,11 @@ User-Flow im Dashboard:
 - 7/30/100/365-Tage-Milestones
 - Streak-Leaderboard in Discord
 - **Competitor-Status:** MEE6 hat Daily-Rewards aber keine Streaks. Tatsu hat Streaks aber kein Freeze-System. Kein Bot hat Streak-Wager.
-- **Retention-Evidence:** Duolingo (+89% DAU mit Streaks), Snapchat (Snap-Streaks), GitHub (Contribution-Graph) — alle dokumentiert
+- **Retention-Evidence:** Duolingo (+89% DAU mit Streaks), Snapchat (Snap-Streaks), GitHub (Contribution-Graph) - alle dokumentiert
 - **Effort:** ~3 Wochen Solo-Dev
 - **Tech:** Pure Go, Cron-Job für Daily-Tick
 
-### TIER B — Build Next (Engagement Magic)
+### TIER B - Build Next (Engagement Magic)
 
 #### 5. **AI Co-Host (TTS in Streamer-Stimme)** (Cloud-only) 🔥🔥🔥
 - ElevenLabs Professional Voice Clone → klingt wie du
@@ -479,7 +479,7 @@ User-Flow im Dashboard:
 - LLM liest letzte 50 Messages als Context
 - Versteht "das ist Krebs" als Gaming-Slang vs. Hass
 - Lernt Community-Norms über Zeit
-- Twitch's eigener AutoMod ist keyword-basiert (verified — Twitch AutoMod Docs)
+- Twitch's eigener AutoMod ist keyword-basiert (verified - Twitch AutoMod Docs)
 - **Competitor-Status:** StreamElements + Fossabot haben keyword-AutoMod. Nightbot: keyword-AutoMod. Kein Bot bietet Context-Window-AI-Mod.
 - **Effort:** ~6 Wochen Solo-Dev
 - **Tech:** Claude Haiku 4.5 mit Rolling-Window-Prompt, BYOK in Settings
@@ -510,21 +510,21 @@ User-Flow im Dashboard:
 
 #### 9. **BeReal-Style "Moment Alerts"** (OSS Core) 📸
 - Zufälliges (oder Streamer-triggered) Discord-Push:
-  - "🚨 MOMENT: [Streamer] hat gerade was Wahnsinns gemacht — 5 Min für den Clip!"
+  - "🚨 MOMENT: [Streamer] hat gerade was Wahnsinns gemacht - 5 Min für den Clip!"
 - Viewer die in 5 Min reagieren → "I Was There"-Badge
 - Moment-Archive in Discord-Channel
 - Moment-Rarity-Tiers (Common/Rare/Legendary)
 - **Competitor-Status:** Novel-Konzept aus BeReal-Mechanik adaptiert. Kein bekannter Streaming-Bot bietet vergleichbares Moment-System.
 - **Effort:** ~3 Wochen Solo-Dev
 
-### TIER C — The Moat (Network Effects, Phase 3+)
+### TIER C - The Moat (Network Effects, Phase 3+)
 
 #### 10. **Unified Chat (Twitch + YouTube + Kick + Discord)** (OSS Core)
 - Ein WebSocket aggregiert ALLE Plattform-Chats
 - Mod-Aktionen sync über Platforms
 - Twitch-Ban → Kick-Ban (mit Consent)
 - Eine Identity, eine Bot-Personality, ein Command-Set
-- **DER Moat** — Switch-Cost ist enorm wenn drauf
+- **DER Moat** - Switch-Cost ist enorm wenn drauf
 - **Effort:** High (4-6 Wochen)
 - **Tech:** Adapter-Layer + Unified-Event-Bus
 
@@ -546,15 +546,15 @@ User-Flow im Dashboard:
 - **Competitor-Status:** Loyalty-Tracking ist überall, aber Casino-Style VIP-Concierge-Behandlung mit personalisierter Memory ist novel.
 - **Lock-in-Hypothese:** VIPs mit 2+ Jahren History wechseln ungern (zu testen Phase 3-4)
 
-### TIER D — Platform-Layer (Trigger-Infrastruktur + Ökosystem)
+### TIER D - Platform-Layer (Trigger-Infrastruktur + Ökosystem)
 
 > Diese Features wurden nach der initialen 12er-Liste ergänzt (Brainstorming 2026-05). Sie bilden zusammen eine **Plattform-Schicht**: Channel-Points ist der *Trigger*, Marketplace/AI-Voice/Sticker sind die *getriggerten Aktionen*. Strategisch sind sie wichtiger als einzelne Gimmick-Features, weil sie eine offene Erweiterbarkeit schaffen, die kein Konkurrent hat.
 
 #### 13. **Twitch Channel-Points-Integration (Trigger-Engine)** (OSS Core) 🔥🔥🔥
-- Twitch hat eine **native Punkte-Währung** (Kanalpunkte/Channel Points) die jeder Viewer beim Zuschauen sammelt — viel besser akzeptiert und interaktiver als bot-eigene "Loyalty-Points", weil direkt im Twitch-UI unter dem Stream sichtbar.
+- Twitch hat eine **native Punkte-Währung** (Kanalpunkte/Channel Points) die jeder Viewer beim Zuschauen sammelt - viel besser akzeptiert und interaktiver als bot-eigene "Loyalty-Points", weil direkt im Twitch-UI unter dem Stream sichtbar.
 - engelOS erstellt/verwaltet **Custom Rewards** und reagiert live auf Einlösungen (Redemptions): `Reward eingelöst → Bot-Aktion auslösen` (Command ausführen, Counter erhöhen, Chat-/Discord-Post, Overlay-Animation, später: Marketplace-Skript ausführen).
 - **Refund-Loop:** Bei ungültiger Eingabe automatisch `CANCELED` → Viewer kriegt Punkte zurück. Bei Erfolg `FULFILLED`.
-- **Konfiguration über Dashboard, NICHT über Chat** — Reward↔Aktion-Mapping wird im Web-UI gebunden (Datums-/Dropdown-Auswahl statt Chat-Tipperei).
+- **Konfiguration über Dashboard, NICHT über Chat** - Reward↔Aktion-Mapping wird im Web-UI gebunden (Datums-/Dropdown-Auswahl statt Chat-Tipperei).
 - **Competitor-Status:** Firebot (OSS) hat das am besten gelöst (Reward → Effect-List). StreamElements/Nightbot/Streamlabs bieten Channel-Point-Trigger nur rudimentär. Unser Vorteil: Channel-Points als *universelle Trigger-Schicht* für ALLE Bot-Features + den Marketplace.
 - **Effort:** ~3-4 Wochen Solo-Dev (EventSub-WebSocket-Client + Reward-CRUD + Trigger-Mapping-Store + Dashboard-UI).
 - **Tech:** `nicklaw5/helix/v2` (hat bereits alle Reward-CRUD- + Redemption-Methoden) + selbstgebauter EventSub-WebSocket-Client gegen `wss://eventsub.wss.twitch.tv/ws` (via `coder/websocket`, schon im Projekt). Scope `channel:manage:redemptions`, Broadcaster-User-Token.
@@ -562,15 +562,15 @@ User-Flow im Dashboard:
 - **🔴 Plattform-Constraint:** Der Bot kann nur Rewards `FULFILLED`/`CANCELED` setzen, die seine **eigene OAuth-App erstellt** hat (`manageable`-Flag). Fremde Rewards kann er nur *beobachten*, nicht refunden.
 
 #### 14. **Addon-/Skript-Marketplace** (OSS Core + kuratierter Store) 🔥🔥🔥💎
-- Community-Skripte/Addons die auf Trigger (Channel-Points, Events, Commands) reagieren — z.B. **Trolling-Effekte**: Bildschirm kurz schwarz, Spiel minimieren, Maus zittern, Sound abspielen, Filter über Webcam, „Fake-Bluescreen", etc.
+- Community-Skripte/Addons die auf Trigger (Channel-Points, Events, Commands) reagieren - z.B. **Trolling-Effekte**: Bildschirm kurz schwarz, Spiel minimieren, Maus zittern, Sound abspielen, Filter über Webcam, „Fake-Bluescreen", etc.
 - **Kuratierter Marketplace:** Skripte werden einmal sauber gebaut, von einem **Review-Team / automatisiert analysiert** (kein Schadcode, keine Viren, vernünftige Qualität), **signiert**, und sind dann 1-Klick installierbar.
 - **🔴🔒 SICHERHEIT = oberste Priorität (größte Angriffsfläche im ganzen Produkt):**
   - **Capability-/Permission-Sandbox:** Jedes Addon deklariert explizit was es darf (z.B. „darf Chat schreiben", „darf OS-Fenster steuern", „darf Datei X lesen"). Der User bestätigt diese Permissions bei Installation (wie Android-App-Permissions).
   - **Code-Signing + Review-Gate:** Nur signierte, vom Team geprüfte Addons im offiziellen Store. Unsignierte nur mit lautem „auf eigene Gefahr"-Warnhinweis.
   - **Isolation:** Addons laufen NICHT mit den Bot-Rechten/Tokens. Kein Addon darf an OAuth-Tokens, Secrets oder die DB direkt. Sie kommunizieren über eine schmale, abgesicherte API (gleiche Decoupling-Philosophie wie unsere internen Adapter).
-  - **OS-Steuerung (Bildschirm schwarz, Spiel minimieren):** Diese „krassen" Effekte brauchen OS-Level-Zugriff auf der Streamer-Maschine → höchste Risikoklasse. Müssen über einen separaten, explizit autorisierten **lokalen Agent/Companion** mit eng begrenzten, deklarierten Fähigkeiten laufen — niemals beliebiger Skript-Code mit Vollzugriff.
+  - **OS-Steuerung (Bildschirm schwarz, Spiel minimieren):** Diese „krassen" Effekte brauchen OS-Level-Zugriff auf der Streamer-Maschine → höchste Risikoklasse. Müssen über einen separaten, explizit autorisierten **lokalen Agent/Companion** mit eng begrenzten, deklarierten Fähigkeiten laufen - niemals beliebiger Skript-Code mit Vollzugriff.
 - **Monetarisierung-Potenzial:** Kostenlose Community-Addons + optionale Premium-Addons (Revenue-Share mit Autoren) = Plattform-Ökonomie wie bei OBS-Plugins/VST.
-- **Competitor-Status:** Firebot hat „Effects" + Setups-Import, aber keinen kuratierten Security-vetteten Marketplace. Streamer.bot hat mächtige Aktionen aber keine Sandbox/Review. **Ein signierter, sandboxed Addon-Store ist novel** — und der eigentliche Moat (Switch-Cost + Netzwerkeffekt Autoren↔User).
+- **Competitor-Status:** Firebot hat „Effects" + Setups-Import, aber keinen kuratierten Security-vetteten Marketplace. Streamer.bot hat mächtige Aktionen aber keine Sandbox/Review. **Ein signierter, sandboxed Addon-Store ist novel** - und der eigentliche Moat (Switch-Cost + Netzwerkeffekt Autoren↔User).
 - **Effort:** Sehr hoch (~10-16 Wochen über mehrere Phasen). Permission-Modell + Sandbox + Signing-Pipeline + Store-Backend + Review-Workflow.
 - **Tech:** Addon-Manifest (deklarierte Permissions), WASM- oder Prozess-Isolation für untrusted Code, Signing (minisign/cosign-Stil), Store-Backend, lokaler Companion-Agent für OS-Effekte.
 
@@ -578,7 +578,7 @@ User-Flow im Dashboard:
 - Viele Streamer bauen sich eigene KI-Persönlichkeiten (Donation-Vorleser, Chat-Reaktionen). Aktuell hand-gefrickelt mit viel Aufwand. engelOS macht das **nativ + ohne Setup-Hölle**.
 - **Funktionen:** Donations/Bits/Subs vorlesen, auf @bot-Mentions reagieren, Channel-Point-Reward „lass die KI etwas sagen", Discord-Voice-Ansagen.
 - **Stimmen:** Auswahl aus ElevenLabs-Stimmen ODER eigene **Voice-Clone** trainieren (die eigene Stimme oder eine Wunschstimme). BYOK = User hinterlegt eigenen ElevenLabs-Key, Cloud-Tier = managed.
-- **Verhältnis zu #5 (AI Co-Host):** #5 ist der „spricht-wie-du Vollblut-Co-Host mit <300ms Latenz". #15 ist die breitere, einfacher zugängliche TTS-Persönlichkeits-Schicht (Vorlesen + simple Reaktionen) — #15 ist die Einstiegsstufe, #5 die Premium-Ausbaustufe. Teilen sich die Audio-/ElevenLabs-Infrastruktur.
+- **Verhältnis zu #5 (AI Co-Host):** #5 ist der „spricht-wie-du Vollblut-Co-Host mit <300ms Latenz". #15 ist die breitere, einfacher zugängliche TTS-Persönlichkeits-Schicht (Vorlesen + simple Reaktionen) - #15 ist die Einstiegsstufe, #5 die Premium-Ausbaustufe. Teilen sich die Audio-/ElevenLabs-Infrastruktur.
 - **Competitor-Status:** Streamlabs Cloudbot hat TTS, aber generische Stimmen ohne Persönlichkeit/Clone. Kein Bot bietet einfaches natives Voice-Clone + Persönlichkeits-Setup.
 - **Effort:** ~4-5 Wochen Solo-Dev (ElevenLabs-Integration + Voice-Management-UI + Audio-Routing nach OBS).
 - **Tech:** ElevenLabs API/WebSocket, Audio-Output via Virtual-Audio-Cable/WebRTC nach OBS, BYOK-Key-Storage (verschlüsselt).
@@ -587,7 +587,7 @@ User-Flow im Dashboard:
 
 OBS Browser-Sources für Stream-Overlays. Jedes Overlay ist eine eigene URL aus dem lokalen oder Cloud-Web-Server, die der User in OBS reinzieht.
 
-**Architektur-Prinzip:** Der Bot **hostet die Overlay-HTML selbst** — lokal (`http://localhost:8080/overlay/...`) wenn self-hosted, oder über den Cloud-Web-Server. Der User zieht die URL als OBS-Browser-Source rein und stellt alles im Dashboard ein. Keine externe Abhängigkeit, keine fremden Server. (Bereits live: events/alerts/leaderboard.)
+**Architektur-Prinzip:** Der Bot **hostet die Overlay-HTML selbst** - lokal (`http://localhost:8080/overlay/...`) wenn self-hosted, oder über den Cloud-Web-Server. Der User zieht die URL als OBS-Browser-Source rein und stellt alles im Dashboard ein. Keine externe Abhängigkeit, keine fremden Server. (Bereits live: events/alerts/leaderboard.)
 
 **Overlay-Library (Phase 1-2):**
 - 🎵 **Spotify Now-Playing** (Track + Cover + Progress-Bar, customizable Theme)
@@ -598,10 +598,10 @@ OBS Browser-Sources für Stream-Overlays. Jedes Overlay ist eine eigene URL aus 
 - 🔥 **Streak-Counter** (Win-Streak, Death-Counter, manual increments)
 - 📅 **Schedule / Next-Stream-Overlay**
 
-**Overlay-Library (erweitert — Brainstorming 2026-05):**
-- 📰 **AI-News-Overlay** — kuratierte/KI-zusammengefasste News-Einblendung im Stream (Idee aus Lucas früherem „KI-News-Ding"). Konfigurierbare Themen/Quellen, Auto-Refresh, schönes Theme. Lokal oder Cloud gehostet.
-- ✨ **Sticker-Unlock-Overlay** — Viewer schalten per Channel-Points (Feature #13) **Sticker frei**, die mit einer **coolen Animation** über den Stream laufen (Gambling-Site-/Lootbox-Ästhetik: Rarity-Tiers Common→Legendary, Sound, Partikel). Hoher Hype-/Interaktions-Faktor, perfekter Channel-Points-Showcase.
-- 🎰 **Reward-Reveal-Animationen** — generische „Channel-Point eingelöst"-Effekte (Slot-Machine-Reveal, Konfetti) als wiederverwendbare Overlay-Bausteine für Marketplace-Addons.
+**Overlay-Library (erweitert - Brainstorming 2026-05):**
+- 📰 **AI-News-Overlay** - kuratierte/KI-zusammengefasste News-Einblendung im Stream (Idee aus Lucas früherem „KI-News-Ding"). Konfigurierbare Themen/Quellen, Auto-Refresh, schönes Theme. Lokal oder Cloud gehostet.
+- ✨ **Sticker-Unlock-Overlay** - Viewer schalten per Channel-Points (Feature #13) **Sticker frei**, die mit einer **coolen Animation** über den Stream laufen (Gambling-Site-/Lootbox-Ästhetik: Rarity-Tiers Common→Legendary, Sound, Partikel). Hoher Hype-/Interaktions-Faktor, perfekter Channel-Points-Showcase.
+- 🎰 **Reward-Reveal-Animationen** - generische „Channel-Point eingelöst"-Effekte (Slot-Machine-Reveal, Konfetti) als wiederverwendbare Overlay-Bausteine für Marketplace-Addons.
 - 💝 **Top-Supporter-Leaderboard**
 - 🎬 **Recent-Clip-Auto-Replay** ("Replay of the day")
 - 🎮 **Game-Stats-Overlay** (Phase 2+, per Integration: Apex K/D, LoL Rank, etc.)
@@ -624,18 +624,18 @@ OBS Browser-Sources für Stream-Overlays. Jedes Overlay ist eine eigene URL aus 
 - Anonymous Peer-Support + Crisis-Detection (Mental Health → PR-Gold)
 - IoT/Smart-Light-Triggers (Sub → Philips Hue flasht grün)
 - Stream-Health-Monitoring (Bitrate, Encoding, Viewer-Anomalies)
-- Workflow-Engine ("Zapier for Streaming" — Visual Rule Builder)
+- Workflow-Engine ("Zapier for Streaming" - Visual Rule Builder)
 
 ---
 
-## 💻 TECH-STACK — Detaillierte Komponenten-Liste
+## 💻 TECH-STACK - Detaillierte Komponenten-Liste
 
 ### Core Daemon (Go)
 
 ```
 Language:       Go 1.24+
 Build Tool:     go build + GoReleaser für Multi-OS-Distribution
-CGO:            DISABLED (CGO_ENABLED=0) — required für Cross-Compile
+CGO:            DISABLED (CGO_ENABLED=0) - required für Cross-Compile
 
 Critical Deps:
 ─────────────────────────────────────────────────────
@@ -684,7 +684,7 @@ Framework:      github.com/wailsapp/wails/v2
 Frontend:       Svelte (embedded in Wails)
 Bindings:       Go ↔ TypeScript via Wails-generated bindings
 Build Targets:  darwin/amd64, darwin/arm64, windows/amd64, linux/amd64
-Bundle Size:    ~30-50MB (Webview not bundled — uses system Webview)
+Bundle Size:    ~30-50MB (Webview not bundled - uses system Webview)
 Packaging:
   - macOS:      .app → .dmg (wails build -platform darwin/universal)
   - Windows:    .exe → .msi (wails build -platform windows/amd64 -nsis)
@@ -727,7 +727,7 @@ Build-Targets:
   - apps/cloud-web  → SvelteKit SSR → deploy nach Vercel/eigener Server
 ```
 
-### AI-Sidecars (Python — nur Cloud / BYOK)
+### AI-Sidecars (Python - nur Cloud / BYOK)
 
 ```
 Language:       Python 3.12+
@@ -754,7 +754,7 @@ Queue:          NATS oder Redis Streams (für AI-Job-Queue)
 CDN:            Cloudflare (Overlays + Static Assets)
 
 Hosting (Cloud-Production):
-  - Hetzner CCX23 (Phase 3) — €25/Mo
+  - Hetzner CCX23 (Phase 3) - €25/Mo
   - Hetzner Cloud Volume für Postgres + Backups
   - Cloudflare in front (DDoS + CDN)
   - Geo-Replication ab Phase 5
@@ -806,13 +806,13 @@ Wenn Viewer-Points zwischen Streamern portabel sind, ist das eine **gemeinsame D
 ### Trademark + Naming (Phase-0-Action-Item!)
 
 **Bevor wir alles auf den Namen "engelOS" branden:**
-- [ ] **DPMA-Suche** (Deutsches Patent- und Markenamt) für "engelos" / "engel OS" in Klassen 9 (Software) und 42 (SaaS) — kostenlos online
-- [ ] **EUIPO-Suche** (EU-Trademark) — kostenlos online
-- [ ] **USPTO-Suche** (US-Trademark) — kostenlos online
-- [ ] **Domain-Konflikt-Check:** engelos.app, engelos.com, engelos.org, engelos.io — alle verfügbar?
+- [ ] **DPMA-Suche** (Deutsches Patent- und Markenamt) für "engelos" / "engel OS" in Klassen 9 (Software) und 42 (SaaS) - kostenlos online
+- [ ] **EUIPO-Suche** (EU-Trademark) - kostenlos online
+- [ ] **USPTO-Suche** (US-Trademark) - kostenlos online
+- [ ] **Domain-Konflikt-Check:** engelos.app, engelos.com, engelos.org, engelos.io - alle verfügbar?
 - [ ] Falls Konflikt → Plan-B-Namen vorbereiten (engelbot, streamengel, oasis, stream-os, watchbase, ...)
 
-**Risiko:** "engel" ist deutsches Allerwelts-Wort. "Engel & Völkers" (Immobilien), "Engelhart" (Cosmetics), "Engel-Bicycles" — alle in *anderen* Klassen, sollte kein Konflikt sein. Aber: ohne Suche keine Sicherheit. Cease-and-Desist in Jahr 2 würde das ganze Projekt zerstören.
+**Risiko:** "engel" ist deutsches Allerwelts-Wort. "Engel & Völkers" (Immobilien), "Engelhart" (Cosmetics), "Engel-Bicycles" - alle in *anderen* Klassen, sollte kein Konflikt sein. Aber: ohne Suche keine Sicherheit. Cease-and-Desist in Jahr 2 würde das ganze Projekt zerstören.
 
 ### Abuse + Trust + Safety
 
@@ -876,7 +876,7 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 - Niedrige Erwartungen, aber psychologisch wichtig (signal)
 
 **Option D: Sponsor-Programm für Streamer-Tools-Firmen**
-- Stream Deck (Elgato), GoXLR, Beacn, Boom — alle haben Marketing-Budget
+- Stream Deck (Elgato), GoXLR, Beacn, Boom - alle haben Marketing-Budget
 - "engelOS sponsored by [Brand]" Badges + Integration-Highlights
 - Phase 2-3 realistisch, ~€500-1000/Mo wenn 1-2 Sponsoren
 
@@ -891,7 +891,7 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 
 **Was wenn Anthropic API 10× teurer wird?**
 - Claude Haiku 4.5 heute: ~$0.30 / 1M input tokens
-- Worst-Case 10×: $3.00 / 1M input — Auto-Clipper-Margins kollabieren
+- Worst-Case 10×: $3.00 / 1M input - Auto-Clipper-Margins kollabieren
 - **Mitigation:**
   - BYOK-Modell für alle BYOK-fähigen Features → User bringt eigene API-Keys
   - Alternative-LLM-Adapter (GPT-4o-mini, Gemini Flash, Mistral, lokales Llama)
@@ -946,7 +946,7 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 **Self-Hoster:**
 - [ ] **Backup-Wizard im Web-UI:** "Schedule daily SQLite backup to Dropbox/Google Drive/S3/local-folder"
 - [ ] **Documentation:** Backup-Anleitung in Quick-Start
-- [ ] **Wir sind NICHT verantwortlich für Self-Hoster-Backups** — explizit dokumentiert in Terms
+- [ ] **Wir sind NICHT verantwortlich für Self-Hoster-Backups** - explizit dokumentiert in Terms
 
 ### Observability (Cloud-Tier)
 
@@ -970,14 +970,14 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 
 ---
 
-## 🛤️ ROADMAP — 5-7 Jahre Realistic Path
+## 🛤️ ROADMAP - 5-7 Jahre Realistic Path
 
-### PHASE 0: Bridge & Foundation (Mai 2026 — Juni 2026) ⚡
+### PHASE 0: Bridge & Foundation (Mai 2026 - Juni 2026) ⚡
 
 **Ziel:** EngelGuard wieder live, engelOS-Skelett aufsetzen, OSS-Repos initialisieren
 
 #### EngelGuard-Rescue (parallel)
-- [ ] **Bot-Service fixen** (Systemd-Hardening inkompatibel mit LXC — siehe `engelguard-bot-audit.md`)
+- [ ] **Bot-Service fixen** (Systemd-Hardening inkompatibel mit LXC - siehe `engelguard-bot-audit.md`)
 - [ ] **Git aufräumen** (4.857 Lines uncommitted in logische Commits packen)
 - [ ] **DB-Migration verifizieren** (`database.py` vs `database_new.py`)
 - [ ] **Backup-Strategie** (täglich nach `/root/.sisyphus/state/`)
@@ -988,17 +988,17 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 - [ ] **GitHub-Org:** `engelos` (oder `engelos-bot` falls vergeben)
 - [ ] **Twitter/X:** `@engelos`
 - [ ] **Repos initialisieren:**
-  - `engelos/engelos` — Core (AGPL-3.0)
-  - `engelos/web` — Frontend Monorepo
-  - `engelos/cloud` — Cloud-only Backend (private)
-  - `engelos/docs` — Docs-Site (hugo, später)
+  - `engelos/engelos` - Core (AGPL-3.0)
+  - `engelos/web` - Frontend Monorepo
+  - `engelos/cloud` - Cloud-only Backend (private)
+  - `engelos/docs` - Docs-Site (hugo, später)
 - [ ] **Initial-Commit:** Skeleton mit Go-Modul, Wails-Boilerplate, Svelte-Setup
 - [ ] **CI/CD:** GitHub Actions für Multi-OS-Builds
 - [ ] **License:** AGPL-3.0 in alle OSS-Repos
 
 **Output:** EngelGuard läuft, engelOS hat Repo + leeres Skelett, Distribution-Pipeline ready
 
-### PHASE 1: Core + 4 Killer-Features (Juni 2026 — Dezember 2026)
+### PHASE 1: Core + 4 Killer-Features (Juni 2026 - Dezember 2026)
 
 **Ziel:** Bot mit 4 Industry-First-Features den du täglich nutzt, OSS-Public
 
@@ -1006,15 +1006,15 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 
 #### Sub-Phase 1A: Core-Skelett (Juni-August, ~10 Wochen)
 
-**Multi-Platform-First — Day 1 Twitch UND Discord parallel:**
-- [ ] **Event-Sourcing-Engine** (Go) — PostgreSQL Append-Only-Log mit Snapshot-Strategie (~2 Wochen)
-- [ ] **Platform-Adapter-Interface** + **Twitch-Adapter** (IRC + Helix) (~3 Wochen — EventSub-WS-Custom-Code dauert)
-- [ ] **Discord-Adapter** (discordgo) — First-Class, nicht "auch dabei" (~2 Wochen)
+**Multi-Platform-First - Day 1 Twitch UND Discord parallel:**
+- [ ] **Event-Sourcing-Engine** (Go) - PostgreSQL Append-Only-Log mit Snapshot-Strategie (~2 Wochen)
+- [ ] **Platform-Adapter-Interface** + **Twitch-Adapter** (IRC + Helix) (~3 Wochen - EventSub-WS-Custom-Code dauert)
+- [ ] **Discord-Adapter** (discordgo) - First-Class, nicht "auch dabei" (~2 Wochen)
 - [ ] **Auth-System** (Owner/Admin/Mod/Viewer + API-Keys + Scopes + Argon2id) (~2 Wochen)
 - [ ] **Setup-Wizard** (Erststart-Flow im Web-UI) (~1 Woche)
-- [ ] **Web-Dashboard v1** (Svelte) — Chat-Viewer, Command-Editor, Status (~3 Wochen)
-- [ ] **GoReleaser Pipeline** — Linux .deb/.rpm/Docker built + released (~1 Woche)
-- [ ] **PWA-Manifest** für Local-Web-UI (für jetzt **statt** Native-GUI — siehe 1D)
+- [ ] **Web-Dashboard v1** (Svelte) - Chat-Viewer, Command-Editor, Status (~3 Wochen)
+- [ ] **GoReleaser Pipeline** - Linux .deb/.rpm/Docker built + released (~1 Woche)
+- [ ] **PWA-Manifest** für Local-Web-UI (für jetzt **statt** Native-GUI - siehe 1D)
 
 **Warum Twitch + Discord parallel:** Twitch ist Amazon-owned und kann jederzeit Konkurrenz integrieren. Multi-Platform ist unser einziger struktureller Schutz davor. Ein nur-Twitch-Bot in Phase 1 wäre strategisch fragil.
 
@@ -1024,30 +1024,30 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 - [ ] **Real-Time Translator** (BYOK Claude + Cloud-Optional) (~3 Wochen)
 
 #### Sub-Phase 1C: AI-Killer-Features (November, ~5 Wochen)
-- [ ] **AI Auto-Clipper** (Python-Sidecar, BYOK + Cloud) (~4 Wochen — Excitement-Detection nicht trivial)
+- [ ] **AI Auto-Clipper** (Python-Sidecar, BYOK + Cloud) (~4 Wochen - Excitement-Detection nicht trivial)
 - [ ] **Context-Aware AI-Mod** (BYOK Claude, Rolling-Window-Prompts) (~6 Wochen, läuft in 1D weiter)
 
 #### Sub-Phase 1D: Polish + Migration + OSS-Launch (Dezember, ~6 Wochen)
 
-**Migration-Tools (Pflicht für OSS-Launch — sonst kommt niemand):**
-- [ ] **Nightbot-Import** (Commands, Timer, Quotes) — ~1 Woche
-- [ ] **StreamElements-Import** (Commands, Loyalty-Best-Effort, Quotes) — ~1 Woche
-- [ ] **Moobot-Import** (Commands, Timer) — ~3 Tage
+**Migration-Tools (Pflicht für OSS-Launch - sonst kommt niemand):**
+- [ ] **Nightbot-Import** (Commands, Timer, Quotes) - ~1 Woche
+- [ ] **StreamElements-Import** (Commands, Loyalty-Best-Effort, Quotes) - ~1 Woche
+- [ ] **Moobot-Import** (Commands, Timer) - ~3 Tage
 - [ ] **One-Click "Switch Bot in My Channel"-Flow** im Onboarding
 
 **Polish + Launch:**
-- [ ] **Stream-Wrapped-Cards** (Year-End perfectly timed!) — ~4 Wochen
-- [ ] **TUI v1** (Bubble Tea) — Chat-Viewer, Status, Logs — ~2 Wochen
-- [ ] **AI Co-Host TTS** als Cloud-Preview (private Beta) — ~6 Wochen (läuft in Phase 2 weiter)
-- [ ] **Live-Ops-Calendar** — ~3 Wochen
-- [ ] **BeReal Moment-Alerts** — ~3 Wochen
+- [ ] **Stream-Wrapped-Cards** (Year-End perfectly timed!) - ~4 Wochen
+- [ ] **TUI v1** (Bubble Tea) - Chat-Viewer, Status, Logs - ~2 Wochen
+- [ ] **AI Co-Host TTS** als Cloud-Preview (private Beta) - ~6 Wochen (läuft in Phase 2 weiter)
+- [ ] **Live-Ops-Calendar** - ~3 Wochen
+- [ ] **BeReal Moment-Alerts** - ~3 Wochen
 - [ ] **OSS-Public-Launch:** GitHub-Repo öffentlich, README, Quick-Start
 - [ ] **Docs-Site** (engelos.org mit Hugo)
 - [ ] **Discord-Server** für engelOS-Community
-- [ ] **HackerNews-Post:** "Show HN: engelOS — Open-Source Streaming Bot"
+- [ ] **HackerNews-Post:** "Show HN: engelOS - Open-Source Streaming Bot"
 
 **Was BEWUSST NICHT in Phase 1 ist (verschoben):**
-- ❌ **Native-GUI mit Wails** (verschoben nach Phase 2) — siehe Begründung unten
+- ❌ **Native-GUI mit Wails** (verschoben nach Phase 2) - siehe Begründung unten
 - ❌ **macOS .dmg / Windows .msi mit Code-Signing** (verschoben nach Phase 2)
 - ❌ **YouTube-Live + Kick-Adapter** (Phase 2)
 
@@ -1058,39 +1058,39 @@ Open-Source + Selfhostable = Bad-Actor-Vektor:
 - Apple-Silicon vs Intel = 2× Build-Matrix für macOS
 - Webview-Verhalten unterschiedlich zwischen OS → CSS-Bugs only-on-one-OS
 
-In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `http://localhost:8080` im Browser, klickt "Install as App", kriegt Desktop-Icon, fühlt sich an wie native App — **kein Code-Signing nötig**. Phase 2 dann echte Native-GUI mit Wails wenn Cashflow Code-Signing finanziert.
+In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `http://localhost:8080` im Browser, klickt "Install as App", kriegt Desktop-Icon, fühlt sich an wie native App - **kein Code-Signing nötig**. Phase 2 dann echte Native-GUI mit Wails wenn Cashflow Code-Signing finanziert.
 
 **Output Phase 1:** Funktionierender Bot mit 8 Killer-Features, Linux-Binary + Docker + PWA-Web-UI, Migrations-Tools für Nightbot/StreamElements/Moobot, OSS-Public-Launch auf GitHub, du nutzt ihn live auf engelswtf
 
-### PHASE 2: Open Beta + Cloud-Launch + Native-GUI (Januar 2027 — Juni 2027)
+### PHASE 2: Open Beta + Cloud-Launch + Native-GUI (Januar 2027 - Juni 2027)
 
 **Ziel:** 100-1.000 Streamer, Cloud-Version live (kostenlos in Beta), Desktop-Native-Apps für Mac/Windows
 
 #### Cloud-Aufbau
-- [ ] **Cloud-Infrastruktur** (Hetzner CCX23, Postgres, Cloudflare) — Setup ~2 Wochen
+- [ ] **Cloud-Infrastruktur** (Hetzner CCX23, Postgres, Cloudflare) - Setup ~2 Wochen
 - [ ] **app.engelos.com** Web-Dashboard live
 - [ ] **OAuth-Onboarding** (Twitch/Discord/Google)
 - [ ] **Managed Hosting** für Cloud-User
 - [ ] **AI Auto-Clipper + Co-Host** als Cloud-Services (Production-ready)
-- [ ] **Stripe-Integration vorbereitet** (noch nicht aktiviert — Phase 3)
+- [ ] **Stripe-Integration vorbereitet** (noch nicht aktiviert - Phase 3)
 
 #### Native-GUI (jetzt mit Cashflow-Backup)
 - [ ] **Apple Developer Account** (€99/Jahr) + Code-Signing-Workflow
 - [ ] **Windows Code-Signing-Certificate** (~€300/Jahr DigiCert/Sectigo OV-Cert)
-- [ ] **Wails-Native-App v1** für macOS (.dmg) + Windows (.msi) — ~6 Wochen
-- [ ] **Auto-Update-Framework** (Sparkle macOS / MSIX Windows) — ~3 Wochen
+- [ ] **Wails-Native-App v1** für macOS (.dmg) + Windows (.msi) - ~6 Wochen
+- [ ] **Auto-Update-Framework** (Sparkle macOS / MSIX Windows) - ~3 Wochen
 - [ ] **Apple Silicon + Intel Universal Binary** für macOS
 
 #### Feature-Erweiterung
-- [ ] **Channel-Points-Trigger-Engine (#13)** (EventSub-WS + Reward-CRUD + Trigger-Mapping + Dashboard) — ~3-4 Wochen — **Foundation für Marketplace, Sticker, AI-Voice-Trigger; nach hinten priorisierbar aber strategisch früh wertvoll**
-- [ ] **AI-Voice/TTS-Persönlichkeiten (#15)** (ElevenLabs nativ, BYOK + Voice-Clone) — ~4-5 Wochen
-- [ ] **Kick-Adapter** (custom WebSocket) — ~3 Wochen
-- [ ] **YouTube-Live-Adapter** (google-api-go-client) — ~3 Wochen
-- [ ] **Spotify-Integration** (erste Plugin im Integration-Framework) — ~2 Wochen
-- [ ] **Overlay-System v1** (5 Overlays: Spotify, Alerts, Goal-Bar, Recent-Chat, Streak) — ~5 Wochen
-- [ ] **Overlay-System v2** (AI-News-Overlay + Sticker-Unlock-Animationen via Channel-Points) — ~4 Wochen
-- [ ] **VIP-Host-System** — ~4 Wochen
-- [ ] **Unified Chat** (Twitch + Discord + YouTube + Kick aggregiert) — ~6 Wochen
+- [ ] **Channel-Points-Trigger-Engine (#13)** (EventSub-WS + Reward-CRUD + Trigger-Mapping + Dashboard) - ~3-4 Wochen - **Foundation für Marketplace, Sticker, AI-Voice-Trigger; nach hinten priorisierbar aber strategisch früh wertvoll**
+- [ ] **AI-Voice/TTS-Persönlichkeiten (#15)** (ElevenLabs nativ, BYOK + Voice-Clone) - ~4-5 Wochen
+- [ ] **Kick-Adapter** (custom WebSocket) - ~3 Wochen
+- [ ] **YouTube-Live-Adapter** (google-api-go-client) - ~3 Wochen
+- [ ] **Spotify-Integration** (erste Plugin im Integration-Framework) - ~2 Wochen
+- [ ] **Overlay-System v1** (5 Overlays: Spotify, Alerts, Goal-Bar, Recent-Chat, Streak) - ~5 Wochen
+- [ ] **Overlay-System v2** (AI-News-Overlay + Sticker-Unlock-Animationen via Channel-Points) - ~4 Wochen
+- [ ] **VIP-Host-System** - ~4 Wochen
+- [ ] **Unified Chat** (Twitch + Discord + YouTube + Kick aggregiert) - ~6 Wochen
 
 #### Growth & Distribution
 - [ ] **Homebrew Formula** (brew install engelos)
@@ -1104,7 +1104,7 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 
 **Output:** 100-1.000 aktive Streamer, Cloud + Self-Hosted + Native-Desktop-Apps laufen, Discord-Community 200+ Member, 10+ OSS-Contributors
 
-### PHASE 3: Monetization + PMF (Juli 2027 — Juni 2028)
+### PHASE 3: Monetization + PMF (Juli 2027 - Juni 2028)
 
 **Ziel:** 5.000 Streamer, profitabel, Freemium aktiviert
 
@@ -1126,11 +1126,11 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 - [ ] **Cross-Streamer Ban List** (erstes Network-Feature)
 - [ ] **Workflow-Engine** ("Zapier for Streaming")
 - [ ] **TikTok-Live-Integration** (early-mover wenn API stable)
-- [ ] **Addon-/Skript-Marketplace (#14)** — kuratierter, signierter, sandboxed Store für Community-Addons (inkl. Trolling-Effekte: Bildschirm schwarz, Spiel minimieren, etc.). **Security-First: Permission-Sandbox + Code-Signing + Review-Team + lokaler Companion-Agent für OS-Effekte.** Über mehrere Phasen (~10-16 Wochen). DER eigentliche Moat (Autoren↔User-Netzwerkeffekt).
+- [ ] **Addon-/Skript-Marketplace (#14)** - kuratierter, signierter, sandboxed Store für Community-Addons (inkl. Trolling-Effekte: Bildschirm schwarz, Spiel minimieren, etc.). **Security-First: Permission-Sandbox + Code-Signing + Review-Team + lokaler Companion-Agent für OS-Effekte.** Über mehrere Phasen (~10-16 Wochen). DER eigentliche Moat (Autoren↔User-Netzwerkeffekt).
   - Sub-Schritt 1 (Phase 3): Addon-Manifest + Permission-Modell + Sandbox-Runtime (WASM/Prozess-Isolation) + Signing-Pipeline
   - Sub-Schritt 2 (Phase 3-4): Store-Backend + Review-Workflow + 1-Klick-Install
   - Sub-Schritt 3 (Phase 4): Lokaler Companion-Agent für OS-Level-Effekte (höchste Risikoklasse, eng begrenzte Capabilities) + Premium-Addon-Revenue-Share
-- [ ] **Plugin-Marketplace v1** (Community kann Integrations einreichen) — geht im Addon-Marketplace #14 auf
+- [ ] **Plugin-Marketplace v1** (Community kann Integrations einreichen) - geht im Addon-Marketplace #14 auf
 - [ ] **Analytics-Dashboard** (Daten-Lock-in)
 
 #### Growth-Acceleration
@@ -1143,17 +1143,17 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 
 **Output:** €30-50k ARR, Bot trägt sich selbst, OSS-Community 50+ Contributors
 
-### PHASE 4: Network Effects (Juli 2028 — Juni 2030)
+### PHASE 4: Network Effects (Juli 2028 - Juni 2030)
 
 **Ziel:** 50.000 Streamer, €15-50k/Mo ARR, "Industry-Standard"-Wahrnehmung
 
 #### Experimentelle Network-Features (NICHT als "großer Moat" verkaufen)
 
-> **Wichtige Einschränkung:** Cross-Streamer-Features sind **experimentell** und werden teilweise von Streamern aktiv abgelehnt werden ("ich will MEINE Viewer nicht teilen"). Wir testen Phase 4 ob Mutual-Benefit beweisbar ist. Wenn nicht — Feature wird verworfen, kein "großer Moat" verloren.
+> **Wichtige Einschränkung:** Cross-Streamer-Features sind **experimentell** und werden teilweise von Streamern aktiv abgelehnt werden ("ich will MEINE Viewer nicht teilen"). Wir testen Phase 4 ob Mutual-Benefit beweisbar ist. Wenn nicht - Feature wird verworfen, kein "großer Moat" verloren.
 
-- [ ] **Shared-Community-Discovery** ("Viewers wie du sehen auch...") — **akzeptierter Weg**, bringt neue Viewer (nicht teilen bestehende)
+- [ ] **Shared-Community-Discovery** ("Viewers wie du sehen auch...") - **akzeptierter Weg**, bringt neue Viewer (nicht teilen bestehende)
 - [ ] **Multi-Streamer-Raid-Coordination** (Raid-Schedule, Mutual-Promotion)
-- [ ] **Cross-Streamer Ban-List 2.0** (mit Reason-Field + Appeal-System) — explicit consent pro Streamer
+- [ ] **Cross-Streamer Ban-List 2.0** (mit Reason-Field + Appeal-System) - explicit consent pro Streamer
 - [ ] **Cross-Streamer Loyalty-Network** (EXPERIMENTELL):
   - Viewer-Points portable zwischen opt-in Streamern
   - "Loyalty-Passport" für Viewer
@@ -1179,11 +1179,11 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 
 **Output:** €180-500k ARR, real Business, du bezahlst dich selbst Vollzeit
 
-### PHASE 5: Commercial Inflection (Juli 2030 — 2031+)
+### PHASE 5: Commercial Inflection (Juli 2030 - 2031+)
 
 **Ziel:** 100.000+ Streamer, €500k-2M ARR
 
-**Decision-Point — Du wählst:**
+**Decision-Point - Du wählst:**
 - **A) Lifestyle-Business behalten** (du + 3-5 Leute, gemütlich profitable, €500k-1M/Jahr)
 - **B) VC-Money raisen** ($2-5M Series-A, accelerate, exit-driven)
 - **C) Strategic Acquisition** durch Logitech/Amazon/Twitch/Discord ($5-20M)
@@ -1191,7 +1191,7 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 **Bezugspunkte:**
 - Streamlabs wurde 2019 für $89M an Logitech verkauft
 - StreamElements raised $100M in 2022
-- Du wirst Inbound-Gespräche haben — entscheide bewusst
+- Du wirst Inbound-Gespräche haben - entscheide bewusst
 
 ---
 
@@ -1206,7 +1206,7 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 | 5: Industry-Standard | 50k-100k+ | + White-Label + API-Tier | €50k-200k |
 | 6: Real Business | 100k+ | Full SaaS-Stack | €200k+ |
 
-**Goldene Regel:** Monetize-Flip bei **5.000 aktiven Streamern**. Davor: zu wenige Daten für validierte Pricing. Self-Hoster zahlen niemals (das ist Feature, nicht Bug — sie sind Marketing und Trust-Beweis).
+**Goldene Regel:** Monetize-Flip bei **5.000 aktiven Streamern**. Davor: zu wenige Daten für validierte Pricing. Self-Hoster zahlen niemals (das ist Feature, nicht Bug - sie sind Marketing und Trust-Beweis).
 
 **Per-Tier-Margin-Erwartung:**
 - Self-Hosted: 0% Revenue, ~0% Cost (Marketing-Funktion)
@@ -1216,24 +1216,24 @@ In Phase 1 nehmen wir stattdessen **PWA (Progressive Web App)**: User öffnet `h
 
 ---
 
-## 🌍 DISTRIBUTION-STRATEGY — Wie der Bot "der Standard" wird
+## 🌍 DISTRIBUTION-STRATEGY - Wie der Bot "der Standard" wird
 
 ### Das Netdata-Playbook (was wir kopieren)
 
 | Netdata-Tactic | engelOS-Übersetzung |
 |---|---|
-| `curl install.sh \| bash` Universal-Installer | Identisch — ein Befehl, läuft überall |
+| `curl install.sh \| bash` Universal-Installer | Identisch - ein Befehl, läuft überall |
 | Sofort beeindruckendes UI (kein Setup-Pain) | Setup-Wizard in <3 Min, UI sofort funktional |
 | Docker als First-Class-Citizen | Multi-Arch-Image (amd64/arm64/armv7), `docker run engelos/engelos` |
-| Cloud-Tier als optionaler Upgrade-Pfad | Identisch — Cloud nie nötig, aber leicht zu wechseln |
-| Aggressive Cross-OS-Distribution | apt/rpm/brew/winget/Docker/Pi-Image — alles |
+| Cloud-Tier als optionaler Upgrade-Pfad | Identisch - Cloud nie nötig, aber leicht zu wechseln |
+| Aggressive Cross-OS-Distribution | apt/rpm/brew/winget/Docker/Pi-Image - alles |
 | Open-Source-Core mit klarer Cloud-Differenzierung | AGPL-Core + Cloud-Features, klar getrennt |
 | Massive GitHub-Presence | Ziel: 5k Stars Jahr 1, 20k Jahr 2, 50k Jahr 3 |
 
 ### Tactical Playbook (eigene Adaptierungen)
 
-1. **Build in Public** — Twitter/X, TikTok, GitHub-Aktivität
-2. **Reddit-Engagement** (r/Twitch, r/streaming, r/discordapp) — genuine Hilfe
+1. **Build in Public** - Twitter/X, TikTok, GitHub-Aktivität
+2. **Reddit-Engagement** (r/Twitch, r/streaming, r/discordapp) - genuine Hilfe
 3. **5 Mid-Tier-Streamer einsammeln** (5k-50k Follower Sweet-Spot)
 4. **"Switching from X to engelOS"-Guides** (Migrations-Tools mitliefern!)
 5. **Discord-Server** für engelOS-Community von Tag 1
@@ -1256,7 +1256,7 @@ Ein Streamer mit 200 Custom-Commands wechselt nicht freiwillig. Wenn der Switch 
 
 ---
 
-## 🛡️ DEFENSIBILITY — Was macht uns unkopierbar?
+## 🛡️ DEFENSIBILITY - Was macht uns unkopierbar?
 
 ### Schwache Moats (jeder kann)
 - ❌ Feature-Parity (Konkurrenz kopiert Features)
@@ -1265,14 +1265,14 @@ Ein Streamer mit 200 Custom-Commands wechselt nicht freiwillig. Wenn der Switch 
 
 ### Starke Moats (was wir bauen)
 
-1. **Open-Source-Trust** — Closed-Source-Konkurrenz kann das nicht ohne komplettes Rewrite
-2. **Data-History** — 2 Jahre Loyalty-Daten = ungerne weg
-3. **Custom-Commands-Portability** — 200+ Commands schwer migrieren
-4. **Cross-Streamer-Network-Effects** — funktioniert nur wenn andere drauf sind
-5. **Plugin-Marketplace-Ecosystem** — Community-Built, Lock-in via Plugin-Investments
-6. **GitHub-Community** — Stars, Contributors, Issues = Brand-Equity die nicht kaufbar ist
-7. **Multi-UI-Choice** — wir sind die einzigen die alle 4 Modi anbieten
-8. **Cross-OS-Native** — Win/Mac-Streamer haben heute Cloud-only Bots, wir bieten Desktop-App
+1. **Open-Source-Trust** - Closed-Source-Konkurrenz kann das nicht ohne komplettes Rewrite
+2. **Data-History** - 2 Jahre Loyalty-Daten = ungerne weg
+3. **Custom-Commands-Portability** - 200+ Commands schwer migrieren
+4. **Cross-Streamer-Network-Effects** - funktioniert nur wenn andere drauf sind
+5. **Plugin-Marketplace-Ecosystem** - Community-Built, Lock-in via Plugin-Investments
+6. **GitHub-Community** - Stars, Contributors, Issues = Brand-Equity die nicht kaufbar ist
+7. **Multi-UI-Choice** - wir sind die einzigen die alle 4 Modi anbieten
+8. **Cross-OS-Native** - Win/Mac-Streamer haben heute Cloud-only Bots, wir bieten Desktop-App
 
 ### Day-1-Investitionen die in 5 Jahren zahlen
 
@@ -1296,7 +1296,7 @@ Ein Streamer mit 200 Custom-Commands wechselt nicht freiwillig. Wenn der Switch 
 | AI-native Bot disruptet uns | Mittel (2-4 Jahre) | Hoch | Wir SIND der AI-native Bot |
 | Streamlabs kopiert Killer-Feature | Mittel | Mittel | Network-Effects + OSS-Trust schwer kopierbar |
 | Twitch/Discord-Ban des Bots | Niedrig | Catastrophic | ToS-Compliance, Platform-Relationships, Multi-Platform |
-| Big-Cloud kopiert OSS-Code | Mittel | Mittel | AGPL-3.0 schützt — sie müssten Source releasen |
+| Big-Cloud kopiert OSS-Code | Mittel | Mittel | AGPL-3.0 schützt - sie müssten Source releasen |
 | **Amazon (Twitch-Owner) sieht uns als Bedrohung** | Mittel (ab 10k User) | Hoch | Multi-Platform-Strategy, OSS-Reputation, Cross-Platform-Streamer (die nicht nur Twitch sind) |
 | **AGPL blockiert Tool-Hersteller-Integrationen** | Hoch | Mittel | Dual-License: Plugin-SDK Apache-2.0, Core AGPL |
 | **Code-Signing-Probleme blockieren Win/Mac-Release** | Mittel | Mittel | Phase-1 nur PWA, Native erst Phase 2 mit Budget |
@@ -1318,30 +1318,30 @@ Ein Streamer mit 200 Custom-Commands wechselt nicht freiwillig. Wenn der Switch 
 
 ---
 
-## 🎯 ANTI-PATTERNS — Was wir NICHT machen
+## 🎯 ANTI-PATTERNS - Was wir NICHT machen
 
-1. ❌ **NFTs / Crypto-Tokens** — regulatorisches Risiko, Community-Backlash, kein User-Value
-2. ❌ **Loot-Boxes mit Echtgeld** — Belgien/Niederlande verboten, Image-Schaden
-3. ❌ **Aggressive Push-Notifications** — kopiert BeReal schlecht = Churn
-4. ❌ **Mood-Tracking ohne Consent** — DSGVO-Minenfeld
-5. ❌ **Toxische Clan-PvP** — braucht careful Tuning gegen Harassment
-6. ❌ **Premium-Walls für Basics** (wie Moobot) — Free Tier hat alles Wichtige
-7. ❌ **Too-Early-Monetization** — vor 5.000 User keine Paywall
-8. ❌ **Closed-Source-Pivot** — wäre Vertrauensbruch mit OSS-Community, Reputations-Tod
-9. ❌ **Cloud-only-Lock-in** — würde unser eigenes Differential zerstören
-10. ❌ **Type-Suppression** (`as any`, `interface{}`-Spam) — wir bauen es richtig
-11. ❌ **Self-hosted "downgraded"** — Free-Tier-Self-Hoster bekommt vollständige Features (nur Cloud-AI-Sachen fehlen, das ist verständlich)
-12. ❌ **Telemetrie ohne Opt-In** — anonymes Crash-Reporting opt-in, keine User-Tracking
-13. ❌ **Audience-Growth-Versprechen** — wir verkaufen Tools, nicht Wachstums-Garantien. Niemals "Streamer wachsen schneller mit engelOS" in Marketing — kausal nicht beweisbar, würde zur Reklamation
-14. ❌ **"First-Mover X/10"-Rating-Notation** — nicht messbar, klingt confidence-stark aber ist subjektiv. Ersetzen durch: konkrete Competitor-Verified-References ("Streamlabs hat manuellen Clip-Button, verified 2026-04, kein Auto-Detect")
-15. ❌ **Cross-Platform-Datenteilung ohne explicit Consent** — DSGVO-Risiko + Streamer-Backlash
-16. ❌ **Cloud-AI als Lock-in-Mechanik** — User kann jederzeit zu BYOK self-hosted wechseln, das ist Feature nicht Bug
+1. ❌ **NFTs / Crypto-Tokens** - regulatorisches Risiko, Community-Backlash, kein User-Value
+2. ❌ **Loot-Boxes mit Echtgeld** - Belgien/Niederlande verboten, Image-Schaden
+3. ❌ **Aggressive Push-Notifications** - kopiert BeReal schlecht = Churn
+4. ❌ **Mood-Tracking ohne Consent** - DSGVO-Minenfeld
+5. ❌ **Toxische Clan-PvP** - braucht careful Tuning gegen Harassment
+6. ❌ **Premium-Walls für Basics** (wie Moobot) - Free Tier hat alles Wichtige
+7. ❌ **Too-Early-Monetization** - vor 5.000 User keine Paywall
+8. ❌ **Closed-Source-Pivot** - wäre Vertrauensbruch mit OSS-Community, Reputations-Tod
+9. ❌ **Cloud-only-Lock-in** - würde unser eigenes Differential zerstören
+10. ❌ **Type-Suppression** (`as any`, `interface{}`-Spam) - wir bauen es richtig
+11. ❌ **Self-hosted "downgraded"** - Free-Tier-Self-Hoster bekommt vollständige Features (nur Cloud-AI-Sachen fehlen, das ist verständlich)
+12. ❌ **Telemetrie ohne Opt-In** - anonymes Crash-Reporting opt-in, keine User-Tracking
+13. ❌ **Audience-Growth-Versprechen** - wir verkaufen Tools, nicht Wachstums-Garantien. Niemals "Streamer wachsen schneller mit engelOS" in Marketing - kausal nicht beweisbar, würde zur Reklamation
+14. ❌ **"First-Mover X/10"-Rating-Notation** - nicht messbar, klingt confidence-stark aber ist subjektiv. Ersetzen durch: konkrete Competitor-Verified-References ("Streamlabs hat manuellen Clip-Button, verified 2026-04, kein Auto-Detect")
+15. ❌ **Cross-Platform-Datenteilung ohne explicit Consent** - DSGVO-Risiko + Streamer-Backlash
+16. ❌ **Cloud-AI als Lock-in-Mechanik** - User kann jederzeit zu BYOK self-hosted wechseln, das ist Feature nicht Bug
 
 ---
 
 ## 📊 SUCCESS-METRICS (was wir messen)
 
-**Mess-Methodik:** Alle "User-Count"-Metriken werden via **anonymous opt-in heartbeats** gemessen (siehe Operational-Readiness-Kapitel). GitHub-Stars ergänzend, aber wir wissen dass sie kaufbar/gameable sind — Forks + Issues + PRs sind die echteren Signale.
+**Mess-Methodik:** Alle "User-Count"-Metriken werden via **anonymous opt-in heartbeats** gemessen (siehe Operational-Readiness-Kapitel). GitHub-Stars ergänzend, aber wir wissen dass sie kaufbar/gameable sind - Forks + Issues + PRs sind die echteren Signale.
 
 ### Phase 1 Success (Dec 2026)
 - [ ] Bot läuft 30+ Tage ohne Crash auf engelswtf
@@ -1383,16 +1383,16 @@ Ein Streamer mit 200 Custom-Commands wechselt nicht freiwillig. Wenn der Switch 
 
 ## 📚 RELATED-DOCS
 
-- `engelguard-bot-audit.md` — EngelGuard Tech-Status + Fix-Plan
-- `engelswtf-community-masterplan.md` — Discord-Server-Strategy (engelswtf-Server, nicht engelOS!)
-- `engelssongg-audio-setup.md` — Audio-Setup (engelswtf-Streaming)
-- `engelssongg-streaming-launch.md` — Streaming-Launch-Plan
+- `engelguard-bot-audit.md` - EngelGuard Tech-Status + Fix-Plan
+- `engelswtf-community-masterplan.md` - Discord-Server-Strategy (engelswtf-Server, nicht engelOS!)
+- `engelssongg-audio-setup.md` - Audio-Setup (engelswtf-Streaming)
+- `engelssongg-streaming-launch.md` - Streaming-Launch-Plan
 
 ---
 
-## 🎬 ACTION-ITEMS — Was als nächstes
+## 🎬 ACTION-ITEMS - Was als nächstes
 
-### Sofort (diese Woche) — Trademark-First!
+### Sofort (diese Woche) - Trademark-First!
 1. **Trademark-Suche (KRITISCH, vor allem anderen):**
    - DPMA (Deutschland) online-Suche für "engelos" + "engel os" in Klasse 9 + 42
    - EUIPO (EU) online-Suche
@@ -1439,14 +1439,14 @@ Ein Streamer mit 200 Custom-Commands wechselt nicht freiwillig. Wenn der Switch 
 
 **Die Chance:** Markt ist groß genug für ein €5-50M-Business, aber zu "boring" für VCs und zu spezialisiert für Big-Tech. Indie-Dev mit langem Atem und OSS-Strategie kann gewinnen.
 
-**Der Plan:** 5-7 Jahre. Side-Hustle-Tempo (15-20h/Woche). Dogfooding (du nutzt es täglich). Dual-License (AGPL-3.0 Core + Apache-2.0 SDK + Proprietary Cloud). Cloud-Premium für Wow-Features (Co-Host als Cloud-Anchor). Vier UI-Modi für vier User-Typen. Alle drei OS gleichwertig (Win/Mac Native erst Phase 2 wenn Code-Signing finanziert). Multi-Platform Day-1 (Twitch+Discord). Privacy by Design (DSGVO Workflows). Cross-Streamer-Network-Effects experimentell — Hauptmoat ist OSS-Trust + Daten-History + Multi-Platform.
+**Der Plan:** 5-7 Jahre. Side-Hustle-Tempo (15-20h/Woche). Dogfooding (du nutzt es täglich). Dual-License (AGPL-3.0 Core + Apache-2.0 SDK + Proprietary Cloud). Cloud-Premium für Wow-Features (Co-Host als Cloud-Anchor). Vier UI-Modi für vier User-Typen. Alle drei OS gleichwertig (Win/Mac Native erst Phase 2 wenn Code-Signing finanziert). Multi-Platform Day-1 (Twitch+Discord). Privacy by Design (DSGVO Workflows). Cross-Streamer-Network-Effects experimentell - Hauptmoat ist OSS-Trust + Daten-History + Multi-Platform.
 
 **Das Risiko:** Du. 5 Jahre Marathon ist hart. Lösung: bau was du SELBST jeden Tag nutzen willst, lass OSS-Community helfen ab Jahr 2, monetarisiere ab Jahr 3 um Part-Time-Hire zu finanzieren.
 
-**Die Vision:** In 5 Jahren ist engelOS der Bot über den Tutorials geschrieben werden, der Default-Choice für neue Streamer, der Standard den Konkurrenten kopieren wollen — *und an dem sie scheitern weil OSS-Trust und Network-Effects nicht kaufbar sind*.
+**Die Vision:** In 5 Jahren ist engelOS der Bot über den Tutorials geschrieben werden, der Default-Choice für neue Streamer, der Standard den Konkurrenten kopieren wollen - *und an dem sie scheitern weil OSS-Trust und Network-Effects nicht kaufbar sind*.
 
 **Der erste Schritt:** EngelGuard wieder live kriegen (Phase 0). Dann engelOS-Skelett aufsetzen. Dann jeden Monat ein Feature mehr. Dann in 6 Monaten OSS-Public-Launch.
 
 ---
 
-**Codename:** engelOS — *The streaming bot that remembers you. Open source. Run it anywhere.*
+**Codename:** engelOS - *The streaming bot that remembers you. Open source. Run it anywhere.*

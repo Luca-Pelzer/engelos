@@ -55,7 +55,7 @@ type Auth struct {
 // store may be nil; in that case every handler returns 501 (this lets
 // the router be built before the auth store is ready, and lets the
 // router_test exercise the route table without a database). tenantID
-// is the single-tenant identifier the daemon was started with — every
+// is the single-tenant identifier the daemon was started with - every
 // authenticated request is scoped to it. A nil logger falls back to
 // slog.Default.
 //
@@ -76,7 +76,7 @@ func NewAuth(store auth.Store, tenantID string, logger *slog.Logger) *Auth {
 	// Pre-compute a dummy hash so the unknown-email branch of Login can
 	// still run the (expensive) VerifyPassword and thereby take the same
 	// wall-clock time as the wrong-password branch. Failures here are
-	// not fatal — if Argon2id cannot run at startup, login is already
+	// not fatal - if Argon2id cannot run at startup, login is already
 	// broken in deeper ways.
 	if h, err := auth.HashPassword(dummyTimingPassword); err == nil {
 		a.dummyHash = h
@@ -155,8 +155,8 @@ func sanitize(u auth.User) sanitizedUser {
 // session cookie (HttpOnly, Secure when cookieSecure=true, SameSite=Strict,
 // Path=/, Max-Age=sessionTTL).
 //
-// On any authentication failure — unknown email, wrong password, or a
-// disabled account — it returns 401 with body {"error":"invalid_credentials"}.
+// On any authentication failure - unknown email, wrong password, or a
+// disabled account - it returns 401 with body {"error":"invalid_credentials"}.
 // Timing is equalized between the unknown-email and wrong-password paths
 // so an attacker cannot enumerate accounts via response latency.
 //
@@ -233,7 +233,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Bump LastLoginAt. A failure here is non-fatal — the user is
+	// Bump LastLoginAt. A failure here is non-fatal - the user is
 	// already authenticated; we just lose an audit trail entry.
 	user.LastLoginAt = time.Now().UTC()
 	if err := a.store.UpdateUser(ctx, user); err != nil {

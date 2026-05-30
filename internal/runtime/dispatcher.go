@@ -554,7 +554,7 @@ func moderationActions(channel string, m *adapters.MessageEvent, dec ModDecision
 
 // routeCommand offers the message to the command router (when configured)
 // and sends any non-empty reply back to chat on the originating platform.
-// Send failures are logged but never propagated — a failed reply must not
+// Send failures are logged but never propagated - a failed reply must not
 // disrupt event consumption.
 func (d *Dispatcher) routeCommand(ctx context.Context, p adapters.Platform, ev adapters.Event) {
 	if d.cfg.Commands == nil || p == nil {

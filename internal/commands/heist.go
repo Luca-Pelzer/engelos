@@ -159,7 +159,7 @@ func (m *heistManager) join(ctx context.Context, channel, viewerID, username str
 }
 
 // resolve runs the heist for channel once the join window elapses. It snapshots
-// the crew, marks the lobby resolved, and removes it — all under the lock —
+// the crew, marks the lobby resolved, and removes it - all under the lock -
 // then releases the lock BEFORE any Payout/Send I/O so the mutex is never held
 // across a blocking call. Each player independently survives on a 50% roll;
 // survivors get their stake doubled (Payout = stake*2).
@@ -238,7 +238,7 @@ func NewHeistGame(bank HeistBank, sender HeistSender) Command {
 func newHeistCommand(m *heistManager) Command {
 	return Command{
 		Name:         "heist",
-		Help:         "Start or join a group heist — !heist <amount|all|50%>.",
+		Help:         "Start or join a group heist - !heist <amount|all|50%>.",
 		MinRole:      RoleEveryone,
 		UserCooldown: heistUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {

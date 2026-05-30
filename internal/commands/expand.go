@@ -43,10 +43,10 @@ import (
 //
 // Expansion is NON-RECURSIVE: $(...) variables are expanded in a single
 // left-to-right pass and the output of one variable is never re-scanned for
-// further variables. This is a deliberate security choice — it prevents a
+// further variables. This is a deliberate security choice - it prevents a
 // user from typing a $(...) whose expansion injects another $(...).
 //
-// Escaping: a literal "$(" can be written as "\$(" — a backslash before a
+// Escaping: a literal "$(" can be written as "\$(" - a backslash before a
 // "$" both suppresses variable expansion at that position and is itself
 // removed, so "\$(user)" renders as the literal "$(user)".
 //
@@ -107,7 +107,7 @@ func expandFuncVars(s string, msg Message, args []string, deps expandDeps) strin
 		if s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {
 			closeIdx := matchParen(s, i+1)
 			if closeIdx < 0 {
-				// Unmatched "$(" — emit best-effort and keep scanning.
+				// Unmatched "$(" - emit best-effort and keep scanning.
 				b.WriteByte(s[i])
 				i++
 				continue
@@ -144,7 +144,7 @@ func matchParen(s string, open int) int {
 // resolveVar maps one captured $(...) inner string to its value. The name is
 // the token up to the first whitespace (dotted suffixes like random.number
 // are part of the name); the remainder is the raw argument string. Unknown
-// names — including the out-of-scope eval/urlfetch/uptime — return "".
+// names - including the out-of-scope eval/urlfetch/uptime - return "".
 func (d expandDeps) resolveVar(inner string, msg Message, args []string) string {
 	inner = strings.TrimSpace(inner)
 	if inner == "" {

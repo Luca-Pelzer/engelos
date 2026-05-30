@@ -11,7 +11,7 @@ individual commits.
 
 ## [Unreleased]
 
-## [0.0.7-alpha.1] — 2026-05-29
+## [0.0.7-alpha.1] - 2026-05-29
 
 ### Added
 - **Live streak feature-events over WebSocket**: the runtime dispatcher now
@@ -19,7 +19,7 @@ individual commits.
   `feature.streak.milestone` (when a viewer crosses 7/30/100/365 days) and
   `feature.streak.broken` (when a streak ends) to all connected WS clients, so
   dashboards can render live milestone moments. Decoupled via a new
-  `runtime.StreakOutcome` type — the runtime package retains zero dependency on
+  `runtime.StreakOutcome` type - the runtime package retains zero dependency on
   `internal/features/*` (verified with `go list -deps`).
 
 ### Fixed
@@ -28,9 +28,9 @@ individual commits.
   paths without implementing `http.Hijacker`, so `/api/v1/ws` could never be
   upgraded. Added a `Hijack` passthrough; the upgrade now returns
   `101 Switching Protocols` (verified live). This latent bug would have made the
-  new feature-event broadcasts — and any browser/TUI live feed — undeliverable.
+  new feature-event broadcasts - and any browser/TUI live feed - undeliverable.
 
-## [0.0.6-alpha.1] — 2026-05-29
+## [0.0.6-alpha.1] - 2026-05-29
 
 ### Added
 - **Pity-Leaderboard** at `GET /api/v1/pity/leaderboard?channel=&limit=`:
@@ -41,7 +41,7 @@ individual commits.
   `handlers.Pity.Leaderboard` → router route → TUI `Client.PityLeaderboard`
   (previously a stub). Verified live against a running daemon.
 
-## [0.0.3-alpha.1] — 2026-05-29
+## [0.0.3-alpha.1] - 2026-05-29
 
 ### Added
 - **Runtime dispatcher** (`internal/runtime`): fan-in goroutine that consumes
@@ -60,14 +60,14 @@ individual commits.
   `ENGELOS_TWITCH_OAUTH`, `ENGELOS_TWITCH_CLIENT_ID`. All optional; unset =
   Twitch adapter disabled.
 
-## [0.0.2-alpha.2] — 2026-05-29
+## [0.0.2-alpha.2] - 2026-05-29
 
 ### Added
 - **Pity-System HTTP API** at `/api/v1/pity/*`:
-  - `POST /grant` — credit points to a viewer
-  - `POST /roll` — evaluate the dice, lose or win (natural or guaranteed)
-  - `GET /status` — current points / soft-pity flag / effective chance
-  - `POST /reset` — admin clears a viewer's bucket
+  - `POST /grant` - credit points to a viewer
+  - `POST /roll` - evaluate the dice, lose or win (natural or guaranteed)
+  - `GET /status` - current points / soft-pity flag / effective chance
+  - `POST /reset` - admin clears a viewer's bucket
 - Daemon opens a second SQLite file (`$ENGELOS_DATA_DIR/events.db`) for the
   event store, constructs the Pity system on boot, and calls `Recover()` to
   rebuild the read model from persisted events.
@@ -77,7 +77,7 @@ individual commits.
   points/soft-pity/effective-chance, roll respects `MaxPointsPerWindow` rate
   limit (saw a 100-point grant capped at 57 due to the 60/h cap).
 
-## [0.0.2-alpha.1] — 2026-05-29
+## [0.0.2-alpha.1] - 2026-05-29
 
 ### Added
 - **Twitch adapter** (`internal/adapters/twitch`): IRC via
@@ -120,7 +120,7 @@ individual commits.
   sanitized JSON (no PasswordHash, no TOTPSecret), logout → 204 + cookie
   cleared, me-after-logout → 401.
 
-## [0.0.1-alpha.1] — 2026-05-28
+## [0.0.1-alpha.1] - 2026-05-28
 
 ### Added
 - Initial repository skeleton with Go 1.25 daemon and `go build` producing a
@@ -142,21 +142,21 @@ individual commits.
   `coder/websocket`, SSE event stream.
 - **SvelteKit dashboard skeleton** (`web/`): Svelte 5 + SvelteKit 2 +
   Tailwind 4. Login, setup wizard, dashboard, chat viewer, commands,
-  integrations, settings, upgrade-to-Cloud pages — all prerendered.
+  integrations, settings, upgrade-to-Cloud pages - all prerendered.
 - OSS hygiene: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
   `.gitignore`, GoReleaser config for Linux/macOS/Windows, GitHub Actions CI
   + release workflows, distroless Dockerfile.
 
 ### Infrastructure
 - `EngelGuard` (legacy Python bot, predecessor) restored to service after 11
-  days of downtime — systemd hardenings incompatible with unprivileged LXC
+  days of downtime - systemd hardenings incompatible with unprivileged LXC
   were removed; bot resumed on `#engelswtf`.
 
 ---
 
 ## Phase milestones (forward-looking)
 
-These are not releases yet — they are the roadmap from
+These are not releases yet - they are the roadmap from
 `docs/MASTER-VISION.md`:
 
 ### Phase 1 (June 2026 – December 2026)
@@ -173,7 +173,7 @@ Monetisation flip, 5.000 streamers, profitable.
 Network effects, 50.000 streamers, "industry standard" perception.
 
 ### Phase 5 (2030+)
-Strategic inflection point — lifestyle business, VC raise, or strategic
+Strategic inflection point - lifestyle business, VC raise, or strategic
 acquisition.
 
 [Unreleased]: https://github.com/Luca-Pelzer/engelos/compare/v0.0.3-alpha.1...HEAD

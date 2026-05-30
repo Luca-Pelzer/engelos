@@ -148,7 +148,7 @@ func NewRewardsCommand(catalog RewardCatalog) Command {
 			for _, it := range items {
 				parts = append(parts, fmt.Sprintf("%s (%s)", it.Name, formatPoints(it.Cost)))
 			}
-			return Reply{Text: "🎁 Rewards: " + strings.Join(parts, " · ") + " — redeem with !redeem <name>"}
+			return Reply{Text: "🎁 Rewards: " + strings.Join(parts, " · ") + " - redeem with !redeem <name>"}
 		},
 	}
 }

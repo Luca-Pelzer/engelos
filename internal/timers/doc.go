@@ -1,4 +1,4 @@
-// Package timers persists and fires periodic auto-announcements — the
+// Package timers persists and fires periodic auto-announcements - the
 // "!addtimer rules 600 Follow the rules!" feature familiar from Nightbot
 // and StreamElements.
 //
@@ -20,7 +20,7 @@
 // This package imports nothing under engelos/internal: the wiring layer in
 // main adapts the platform adapters to the [Sender] interface, and the
 // commands engine talks to a narrow management interface declared in
-// internal/commands — not to [Store] directly. Keeping the dependency
+// internal/commands - not to [Store] directly. Keeping the dependency
 // one-way avoids import cycles and lets the persistence and scheduling
 // layers evolve independently.
 package timers

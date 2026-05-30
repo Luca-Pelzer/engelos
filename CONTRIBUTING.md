@@ -11,12 +11,12 @@ Thanks for your interest in engelOS. This document explains how to contribute.
 
 Read these first:
 
-1. [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) — the 5-7 year plan and
+1. [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) - the 5-7 year plan and
    architecture principles. Most contributions that conflict with the plan
    will be politely declined; we'd rather miss good ideas than dilute the
    focus.
-2. [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1.
-3. This file — the rest.
+2. [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) - Contributor Covenant 2.1.
+3. This file - the rest.
 
 ## License
 

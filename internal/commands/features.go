@@ -30,7 +30,7 @@ type FeatureToggleStore interface {
 func NewEconomyToggleCommand(store FeatureToggleStore) Command {
 	return Command{
 		Name:         "economy",
-		Help:         "Turn the points economy on or off — !economy on|off|status.",
+		Help:         "Turn the points economy on or off - !economy on|off|status.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {

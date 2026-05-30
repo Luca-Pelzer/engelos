@@ -316,7 +316,7 @@ func TestPityCommand_NormalChance(t *testing.T) {
 	cmd := commands.NewPityCommand(testTenant, q)
 	reply := cmd.Handler(context.Background(), msgText("!pity"), nil)
 
-	assert.Equal(t, "@alice you have 47 pity points — 23% win chance", reply.Text)
+	assert.Equal(t, "@alice you have 47 pity points - 23% win chance", reply.Text)
 }
 
 func TestPityCommand_SoftPityHit(t *testing.T) {
@@ -324,7 +324,7 @@ func TestPityCommand_SoftPityHit(t *testing.T) {
 	cmd := commands.NewPityCommand(testTenant, q)
 	reply := cmd.Handler(context.Background(), msgText("!pity"), nil)
 
-	assert.Equal(t, "@alice you have 60 pity points — 42% win chance (soft pity hit!)", reply.Text)
+	assert.Equal(t, "@alice you have 60 pity points - 42% win chance (soft pity hit!)", reply.Text)
 }
 
 func TestPityCommand_NearGuaranteed(t *testing.T) {
@@ -334,7 +334,7 @@ func TestPityCommand_NearGuaranteed(t *testing.T) {
 	cmd := commands.NewPityCommand(testTenant, q)
 	reply := cmd.Handler(context.Background(), msgText("!pity"), nil)
 
-	assert.Equal(t, "@alice you have 90 pity points — guaranteed win incoming!", reply.Text)
+	assert.Equal(t, "@alice you have 90 pity points - guaranteed win incoming!", reply.Text)
 }
 
 func TestPityCommand_FallbackUsernameWhenMissing(t *testing.T) {
@@ -362,7 +362,7 @@ func TestStreakCommand_ActiveStreak(t *testing.T) {
 	cmd := commands.NewStreakCommand(testTenant, q)
 	reply := cmd.Handler(context.Background(), msgText("!streak"), nil)
 
-	assert.Equal(t, "@alice 🔥 12-day streak (longest 30) — 3 freezes — next milestone: 30", reply.Text)
+	assert.Equal(t, "@alice 🔥 12-day streak (longest 30) - 3 freezes - next milestone: 30", reply.Text)
 }
 
 func TestStreakCommand_SingularFreeze(t *testing.T) {
@@ -380,7 +380,7 @@ func TestStreakCommand_ZeroStreak(t *testing.T) {
 	cmd := commands.NewStreakCommand(testTenant, q)
 	reply := cmd.Handler(context.Background(), msgText("!streak"), nil)
 
-	assert.Equal(t, "@alice you have no active streak — chat today to start one!", reply.Text)
+	assert.Equal(t, "@alice you have no active streak - chat today to start one!", reply.Text)
 }
 
 func TestStreakCommand_NoMilestoneConfigured(t *testing.T) {
@@ -828,7 +828,7 @@ func TestLeaderboardCommand_EmptyBoard(t *testing.T) {
 	q := &fakeLeaderboard{}
 	cmd := commands.NewLeaderboardCommand(testTenant, q)
 	reply := cmd.Handler(context.Background(), msgText("!leaderboard"), nil)
-	assert.Equal(t, "No leaderboard data yet — start chatting!", reply.Text)
+	assert.Equal(t, "No leaderboard data yet - start chatting!", reply.Text)
 }
 
 func TestLeaderboardCommand_NilQuerier(t *testing.T) {

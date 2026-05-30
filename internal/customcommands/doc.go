@@ -1,4 +1,4 @@
-// Package customcommands persists streamer-defined chat commands —
+// Package customcommands persists streamer-defined chat commands -
 // the "!addcom !hello Welcome $user!" feature familiar from Nightbot
 // and StreamElements.
 //

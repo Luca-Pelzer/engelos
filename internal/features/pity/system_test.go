@@ -53,7 +53,7 @@ func (c *fakeClock) now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// Advance by a full millisecond so each emitted event lands in its own
-	// ULID timestamp bucket — this keeps replay order deterministic
+	// ULID timestamp bucket - this keeps replay order deterministic
 	// regardless of the random entropy embedded in each ULID.
 	c.t = c.t.Add(time.Millisecond)
 	return c.t

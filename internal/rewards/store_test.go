@@ -214,10 +214,10 @@ func TestList_OrderedByCostThenName(t *testing.T) {
 	_, err = s.Create(ctx, sampleReward("local", "chan-a", "pricey", 900, "p"))
 	require.NoError(t, err)
 
-	// different channel — must NOT appear in chan-a list
+	// different channel - must NOT appear in chan-a list
 	_, err = s.Create(ctx, sampleReward("local", "chan-b", "coffee", 10, "other"))
 	require.NoError(t, err)
-	// different tenant — must NOT appear
+	// different tenant - must NOT appear
 	_, err = s.Create(ctx, sampleReward("other-tenant", "chan-a", "coffee", 10, "x"))
 	require.NoError(t, err)
 

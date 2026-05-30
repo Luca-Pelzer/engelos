@@ -10,7 +10,7 @@ import (
 // Config controls the behaviour of a [System].
 //
 // Defaults are provided by [DefaultConfig]. Always call [Config.Validate]
-// before passing a Config to [New] — invalid values are rejected with
+// before passing a Config to [New] - invalid values are rejected with
 // descriptive errors rather than panicking.
 type Config struct {
 	// FreezeMilestones maps streak length to the number of freeze credits

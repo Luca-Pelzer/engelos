@@ -18,7 +18,7 @@ const (
 // slice ordering is the display order; keep it readable, not alphabetical.
 func HelpLines() []string {
 	return []string{
-		"engelos-tui — keyboard reference",
+		"engelos-tui - keyboard reference",
 		"",
 		"  ?            toggle this help overlay",
 		"  q / ctrl+c   quit (logs out first)",

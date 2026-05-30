@@ -9,7 +9,7 @@ import (
 // defaultPredictionWindow is the betting window, in seconds, opened by
 // !prediction. Twitch allows 30–1800s; 120s is a sensible default that keeps
 // a round snappy. The chat command does not expose a configurable window for
-// v1 — a fixed 120s keeps parsing unambiguous (every pipe-section is an
+// v1 - a fixed 120s keeps parsing unambiguous (every pipe-section is an
 // outcome, never a stray number).
 const defaultPredictionWindow = 120
 
@@ -42,7 +42,7 @@ const (
 	PredictionOK PredictionOutcome = iota
 	// PredictionUnavailable means the controller was nil or the Helix call failed.
 	PredictionUnavailable
-	// PredictionNotAffiliate means the channel is not affiliate/partner —
+	// PredictionNotAffiliate means the channel is not affiliate/partner -
 	// predictions are an affiliate-only feature.
 	PredictionNotAffiliate
 	// PredictionActiveExists means a prediction is already running, so a new
@@ -68,7 +68,7 @@ type PredictionInfo struct {
 // PredictionController is the narrow surface the prediction commands need.
 // main wires a Twitch adapter over internal/adapters/twitch onto it. The
 // interface lives HERE (not imported from the twitch package) so
-// internal/commands never depends on the twitch/helix SDK — mirroring
+// internal/commands never depends on the twitch/helix SDK - mirroring
 // [LoyaltyProvider] and the *Store interfaces in this package.
 //
 // channel is passed through from msg.Channel; the adapter is responsible for
@@ -85,7 +85,7 @@ type PredictionController interface {
 // trims each section. The first section is the title; the rest are outcome
 // titles. It returns ok=false when there is no non-empty title or fewer than
 // [minPredictionOutcomes] outcomes, or when the title exceeds
-// [maxPredictionTitle] — every such case maps to a usage reply. Over-long
+// [maxPredictionTitle] - every such case maps to a usage reply. Over-long
 // outcomes are capped to [maxPredictionOutcome] rather than rejected, and at
 // most [maxPredictionOutcomes] outcomes are kept.
 func parsePredictionArgs(args []string) (title string, outcomes []string, ok bool) {
@@ -123,13 +123,13 @@ func parsePredictionArgs(args []string) (title string, outcomes []string, ok boo
 // The full argument string is split on "|": the first section is the title
 // (required, ≤45 chars) and the rest are outcomes (2–10; each capped to 25
 // chars). The betting window is a fixed [defaultPredictionWindow] seconds. On
-// success replies "@mod prediction opened: <title> — options: a / b (120s to
+// success replies "@mod prediction opened: <title> - options: a / b (120s to
 // bet)". A nil controller yields a one-line "predictions are unavailable"
 // reply (mirroring the nil-store guards in builtins.go).
 func NewPredictionCommand(ctrl PredictionController) Command {
 	return Command{
 		Name:         "prediction",
-		Help:         "Open a prediction — !prediction <title> | <outcome1> | <outcome2>.",
+		Help:         "Open a prediction - !prediction <title> | <outcome1> | <outcome2>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -146,14 +146,14 @@ func NewPredictionCommand(ctrl PredictionController) Command {
 			info, status := ctrl.Create(ctx, msg.Channel, title, outcomes, defaultPredictionWindow)
 			switch status {
 			case PredictionOK:
-				return Reply{Text: fmt.Sprintf("%sprediction opened: %s — options: %s (%ds to bet)",
+				return Reply{Text: fmt.Sprintf("%sprediction opened: %s - options: %s (%ds to bet)",
 					mentionPrefix(msg),
 					predictionTitle(info, title),
 					strings.Join(predictionOutcomes(info, outcomes), " / "),
 					defaultPredictionWindow)}
 			case PredictionActiveExists:
 				return Reply{Text: fmt.Sprintf(
-					"%sa prediction is already running — resolve or cancel it first",
+					"%sa prediction is already running - resolve or cancel it first",
 					mentionPrefix(msg))}
 			case PredictionNotAffiliate:
 				return Reply{Text: fmt.Sprintf(
@@ -207,17 +207,17 @@ func NewLockPredictionCommand(ctrl PredictionController) Command {
 // NewResolvePredictionCommand returns "!endprediction" (alias
 // "!resolveprediction"). Mods-only.
 //
-// Usage: "!endprediction <winning outcome>" — the winning outcome is the full
+// Usage: "!endprediction <winning outcome>" - the winning outcome is the full
 // remaining text (trimmed). Empty yields a usage reply. On success replies
 // "@mod prediction resolved: '<winningOutcome>' wins! 🎉"; an unknown outcome
-// replies "@mod couldn't find that outcome — check the spelling"; no active
+// replies "@mod couldn't find that outcome - check the spelling"; no active
 // prediction replies "@mod no active prediction". A nil controller yields
 // "predictions are unavailable".
 func NewResolvePredictionCommand(ctrl PredictionController) Command {
 	return Command{
 		Name:         "endprediction",
 		Aliases:      []string{"resolveprediction"},
-		Help:         "Resolve the active prediction — !endprediction <winning outcome>.",
+		Help:         "Resolve the active prediction - !endprediction <winning outcome>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -239,7 +239,7 @@ func NewResolvePredictionCommand(ctrl PredictionController) Command {
 				return Reply{Text: fmt.Sprintf("%sno active prediction", mentionPrefix(msg))}
 			case PredictionInvalid:
 				return Reply{Text: fmt.Sprintf(
-					"%scouldn't find that outcome — check the spelling", mentionPrefix(msg))}
+					"%scouldn't find that outcome - check the spelling", mentionPrefix(msg))}
 			default:
 				return Reply{Text: fmt.Sprintf(
 					"%scouldn't resolve it right now", mentionPrefix(msg))}

@@ -4,7 +4,7 @@ Diese Anleitung führt durch das einmalige Anlegen der Bot-Identität für engel
 Bot-Handle: **`engelosbot`** (Twitch), Display-Name "engelOS".
 
 > Reihenfolge spielt keine Rolle. Alle drei Schritte sind unabhängig.
-> Sammle am Ende die fett markierten Werte — die brauchst du beim Start des
+> Sammle am Ende die fett markierten Werte - die brauchst du beim Start des
 > Daemons (bzw. später im OAuth-Onboarding).
 
 ---
@@ -31,15 +31,15 @@ Bot im Chat schreibt. Das eigentliche Schreib-Token kommt aus Schritt 2.
 ## 2. Twitch Developer App (für OAuth + Helix)
 
 Wird gebraucht, sobald der Bot **schreiben/moderieren** soll und für den
-"Login mit Twitch"-Flow. (Reines Mitlesen geht auch ohne — anonym.)
+"Login mit Twitch"-Flow. (Reines Mitlesen geht auch ohne - anonym.)
 
 1. Auf <https://dev.twitch.tv/console> einloggen (mit dem `engelosbot`-Account
-   **oder** deinem Hauptaccount — egal, die App gehört zu wem auch immer
+   **oder** deinem Hauptaccount - egal, die App gehört zu wem auch immer
    eingeloggt ist).
 2. "Applications" → **Register Your Application**:
    - **Name:** `engelOS`
    - **OAuth Redirect URLs:** vorerst `http://localhost:8080/api/v1/auth/twitch/callback`
-     (für lokale Entwicklung). Produktiv kommt später die echte Domain dazu —
+     (für lokale Entwicklung). Produktiv kommt später die echte Domain dazu -
      mehrere URLs sind erlaubt.
    - **Category:** `Chat Bot`
    - **Client Type:** `Confidential`
@@ -55,14 +55,14 @@ Wird gebraucht, sobald der Bot **schreiben/moderieren** soll und für den
 
 > Das eigentliche OAuth-Token (`ENGELOS_TWITCH_OAUTH`) wird später über den
 > "Login mit Twitch"-Flow erzeugt. Für einen schnellen manuellen Test kannst du
-> übergangsweise ein Chat-OAuth-Token über einen Token-Generator erzeugen — das
+> übergangsweise ein Chat-OAuth-Token über einen Token-Generator erzeugen - das
 > ist aber nur ein Workaround bis das OAuth-Backend steht.
 
 ---
 
 ## 3. Discord Application + Bot
 
-Discord hat **keinen Anonym-Modus** — ohne Token verbindet sich nichts. Der
+Discord hat **keinen Anonym-Modus** - ohne Token verbindet sich nichts. Der
 Bot-Username muss NICHT eindeutig sein, "engelOS" ist also frei verwendbar.
 
 1. Auf <https://discord.com/developers/applications> einloggen.
@@ -95,11 +95,11 @@ Aktueller Stand der Verkabelung im Daemon (`cmd/engelos`):
 
 | ENV-Var | Pflicht? | Wirkung |
 |---|---|---|
-| `ENGELOS_TWITCH_CHANNELS` | — | Komma-Liste der Channels zum Mitlesen (z. B. `engelswtf`). Leer = Twitch aus. |
+| `ENGELOS_TWITCH_CHANNELS` | - | Komma-Liste der Channels zum Mitlesen (z. B. `engelswtf`). Leer = Twitch aus. |
 | `ENGELOS_TWITCH_USERNAME` | optional | Bot-Login (`engelosbot`) für authentifizierten Modus. Leer = anonym (nur lesen). |
 | `ENGELOS_TWITCH_OAUTH` | optional | Chat-/Helix-Token. Leer = anonym. |
 | `ENGELOS_TWITCH_CLIENT_ID` | mit OAUTH | Client ID der Dev-App (Schritt 2). |
-| `ENGELOS_DISCORD_TOKEN` | — | Discord-Bot-Token (Schritt 3). Leer = Discord aus. |
+| `ENGELOS_DISCORD_TOKEN` | - | Discord-Bot-Token (Schritt 3). Leer = Discord aus. |
 | `ENGELOS_DISCORD_CHANNELS` | optional | Komma-Liste erlaubter Channel-IDs. Leer = alle sichtbaren Channels. |
 | `ENGELOS_ADDR` | optional | Listen-Adresse (host:port). Default `127.0.0.1:8080`. |
 | `ENGELOS_ALLOW_LAN` | optional | `true`/`1` = an Nicht-Loopback binden (für Container/LAN/Tailnet). Default `false` (nur loopback). |
@@ -117,7 +117,7 @@ Setze `ENGELOS_SECRETS_KEY` + `ENGELOS_TWITCH_CLIENT_ID` + `ENGELOS_TWITCH_CLIEN
 verschlüsselt in der DB abgelegt.
 
 > **Discord ist jetzt im Daemon verkabelt.** Setze `ENGELOS_DISCORD_TOKEN`, und
-> der Bot verbindet sich beim Start. (Discord hat keinen Anonym-Modus — ohne
+> der Bot verbindet sich beim Start. (Discord hat keinen Anonym-Modus - ohne
 > Token bleibt es aus.) Twitch-Mitlesen funktioniert weiterhin anonym, ganz ohne
 > die obigen Accounts.
 
@@ -128,5 +128,5 @@ ENGELOS_TWITCH_CHANNELS=engelswtf ./engelos
 ```
 
 Der Bot verbindet sich anonym mit deinem Chat; jede Nachricht vergibt
-Pity-Punkte und tickt Streaks — sichtbar über `/api/v1/stats` und die
+Pity-Punkte und tickt Streaks - sichtbar über `/api/v1/stats` und die
 Leaderboards.

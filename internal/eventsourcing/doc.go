@@ -3,8 +3,8 @@
 //
 // # Model
 //
-// Every interesting fact that happens in a streaming community — a chat
-// message, a subscription, a moderation action, an integration callback — is
+// Every interesting fact that happens in a streaming community - a chat
+// message, a subscription, a moderation action, an integration callback - is
 // recorded as an Event. Events are immutable: once written, they are never
 // updated or deleted. Read-models (user profiles, loyalty ledgers, analytics,
 // yearly Wrapped-cards) are derived by replaying events. Replays also enable
@@ -21,14 +21,14 @@
 //
 // Every Event carries a TenantID. Reads MUST always filter by tenant; the
 // SQLite implementation enforces this at query time and via indexes. There is
-// no API to read across tenants — this property keeps engelOS commercial-ready
+// no API to read across tenants - this property keeps engelOS commercial-ready
 // from day 1 without any later schema refactor.
 //
 // # Schema evolution
 //
 // Each Event has a Version field on its payload schema. New consumers must
 // tolerate older versions; producers MUST bump Version when the payload shape
-// changes incompatibly. The Payload itself is a [encoding/json.RawMessage] —
+// changes incompatibly. The Payload itself is a [encoding/json.RawMessage] -
 // the event log is intentionally agnostic of the concrete payload Go type.
 //
 // # Causation

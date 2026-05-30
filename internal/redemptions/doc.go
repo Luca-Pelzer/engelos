@@ -1,5 +1,5 @@
 // Package redemptions provides a pure-Go SQLite store that maps a Twitch
-// Channel-Points Custom-Reward to a bot action — the Firebot-style
+// Channel-Points Custom-Reward to a bot action - the Firebot-style
 // "when reward X is redeemed, do Y" binding table.
 //
 // A [Store] persists [Binding] rows in pure-Go SQLite (modernc.org/sqlite,

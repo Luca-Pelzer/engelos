@@ -9,7 +9,7 @@ table will be updated:
 |---|---|
 | `main` (HEAD) | Receives security fixes |
 | Latest release | Receives security fixes |
-| Older releases | No support — please upgrade |
+| Older releases | No support - please upgrade |
 
 ## Reporting a Vulnerability
 
@@ -18,11 +18,11 @@ discussions, or pull requests.**
 
 Instead, please use one of:
 
-1. **GitHub Security Advisories** — preferred, end-to-end encrypted, integrates
+1. **GitHub Security Advisories** - preferred, end-to-end encrypted, integrates
    with our patch workflow. Once the repo is public:
    <https://github.com/Luca-Pelzer/engelos/security/advisories/new>
 
-2. **Email** — `security@engelos.org` (not yet active in Phase 0; until then,
+2. **Email** - `security@engelos.org` (not yet active in Phase 0; until then,
    reach Luca via Twitch DMs at twitch.tv/engelswtf).
 
 When reporting, please include:

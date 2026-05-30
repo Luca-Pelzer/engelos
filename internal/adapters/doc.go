@@ -10,16 +10,16 @@
 //
 // The adapter layer pins down two things:
 //
-//   - [Event] — a normalized, platform-neutral representation of *something
+//   - [Event] - a normalized, platform-neutral representation of *something
 //     that happened* on a connected platform (a message, a sub, a ban, a
 //     raid, a connection state change).
-//   - [Action] — a normalized representation of *something the bot wants to
+//   - [Action] - a normalized representation of *something the bot wants to
 //     do* on a platform (send a message, ban a user, delete a message).
 //
 // Both are stable contracts. Concrete adapters under
 // internal/adapters/<platform>/ translate between these contracts and the
 // real platform protocol. When Twitch ships EventSub-v3 in 2027, exactly one
-// adapter needs rewriting — automod rules, loyalty systems, command engines
+// adapter needs rewriting - automod rules, loyalty systems, command engines
 // and the web UI never touch platform-specific code.
 //
 // # Interface

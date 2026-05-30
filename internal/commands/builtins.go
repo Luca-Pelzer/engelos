@@ -63,8 +63,8 @@ type StreakQuerier interface {
 // viewer's status via q and renders a single-line, chat-friendly reply
 // addressing the user by @username, e.g.:
 //
-//	"@alice you have 47 pity points — 23% win chance (soft pity hit!)"
-//	"@alice you have 89 pity points — guaranteed win incoming!"
+//	"@alice you have 47 pity points - 23% win chance (soft pity hit!)"
+//	"@alice you have 89 pity points - guaranteed win incoming!"
 //
 // EffectiveChance is rounded to an integer percentage. The constructor
 // requires a non-nil q; the wiring layer is responsible for only
@@ -91,7 +91,7 @@ func NewPityCommand(tenantID string, q PityQuerier) Command {
 			default:
 				tail = fmt.Sprintf("%d%% win chance", pct)
 			}
-			return Reply{Text: fmt.Sprintf("%s you have %d pity points — %s",
+			return Reply{Text: fmt.Sprintf("%s you have %d pity points - %s",
 				mention, status.Points, tail)}
 		},
 	}
@@ -101,8 +101,8 @@ func NewPityCommand(tenantID string, q PityQuerier) Command {
 // viewer's status via q and renders a single-line, chat-friendly reply,
 // e.g.:
 //
-//	"@alice 🔥 12-day streak (longest 30) — 3 freezes — next milestone: 30"
-//	"@alice you have no active streak — chat today to start one!"
+//	"@alice 🔥 12-day streak (longest 30) - 3 freezes - next milestone: 30"
+//	"@alice you have no active streak - chat today to start one!"
 //
 // The constructor requires a non-nil q; the wiring layer is responsible
 // for only registering the command when the streak feature is available.
@@ -121,18 +121,18 @@ func NewStreakCommand(tenantID string, q StreakQuerier) Command {
 			mention := mentionOf(msg)
 			if status.DaysCurrent <= 0 {
 				return Reply{Text: fmt.Sprintf(
-					"%s you have no active streak — chat today to start one!", mention)}
+					"%s you have no active streak - chat today to start one!", mention)}
 			}
 			freezeWord := "freezes"
 			if status.FreezesAvailable == 1 {
 				freezeWord = "freeze"
 			}
-			milestone := "—"
+			milestone := "-"
 			if status.NextMilestone > 0 {
 				milestone = fmt.Sprintf("next milestone: %d", status.NextMilestone)
 			}
 			return Reply{Text: fmt.Sprintf(
-				"%s 🔥 %d-day streak (longest %d) — %d %s — %s",
+				"%s 🔥 %d-day streak (longest %d) - %d %s - %s",
 				mention,
 				status.DaysCurrent,
 				status.DaysLongest,
@@ -173,7 +173,7 @@ func NewHelpCommand(e *Engine) Command {
 }
 
 // LeaderboardEntry is one row on a leaderboard. Score is the ranking
-// metric — pity points or current streak days, depending on which board
+// metric - pity points or current streak days, depending on which board
 // produced the entry. The renderer formats Score per board (bare integer
 // for pity, "Nd" for streak).
 type LeaderboardEntry struct {
@@ -207,7 +207,7 @@ func NewLeaderboardCommand(tenantID string, q LeaderboardQuerier) Command {
 	return Command{
 		Name:     "leaderboard",
 		Aliases:  []string{"top"},
-		Help:     "Show the top viewers — !leaderboard [pity|streak].",
+		Help:     "Show the top viewers - !leaderboard [pity|streak].",
 		Cooldown: defaultLeaderboardCooldown,
 		Handler: func(_ context.Context, msg Message, args []string) Reply {
 			if q == nil {
@@ -234,7 +234,7 @@ func NewLeaderboardCommand(tenantID string, q LeaderboardQuerier) Command {
 			}
 
 			if len(entries) == 0 {
-				return Reply{Text: "No leaderboard data yet — start chatting!"}
+				return Reply{Text: "No leaderboard data yet - start chatting!"}
 			}
 
 			parts := make([]string, 0, len(entries))
@@ -296,7 +296,7 @@ func parseAdminTarget(args []string) string {
 // is everything after the first whitespace-separated token; multiple
 // spaces between args are collapsed to single spaces (the engine has
 // already strings.Fields-split the input). MinRole on the created
-// custom command is always "everyone" — per-command role for custom
+// custom command is always "everyone" - per-command role for custom
 // commands is future work.
 //
 // A nil store yields a one-line "custom commands are unavailable"
@@ -306,7 +306,7 @@ func NewAddCommand(store CustomCommandStore) Command {
 	return Command{
 		Name:         "addcom",
 		Aliases:      []string{"addcmd"},
-		Help:         "Add a custom command — !addcom !name response with $user.",
+		Help:         "Add a custom command - !addcom !name response with $user.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -338,7 +338,7 @@ func NewEditCommand(store CustomCommandStore) Command {
 	return Command{
 		Name:         "editcom",
 		Aliases:      []string{"editcmd"},
-		Help:         "Edit a custom command — !editcom !name new response.",
+		Help:         "Edit a custom command - !editcom !name new response.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -370,7 +370,7 @@ func NewDeleteCommand(store CustomCommandStore) Command {
 	return Command{
 		Name:         "delcom",
 		Aliases:      []string{"delcmd"},
-		Help:         "Delete a custom command — !delcom !name.",
+		Help:         "Delete a custom command - !delcom !name.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -394,7 +394,7 @@ func NewDeleteCommand(store CustomCommandStore) Command {
 }
 
 // defaultTimerMinChatLines is the activity-gate value passed to the store
-// by !addtimer. It is 0 — the chat command does NOT expose the activity
+// by !addtimer. It is 0 - the chat command does NOT expose the activity
 // gate, so a timer added from chat fires purely on its interval. Gating a
 // timer behind chat activity is configured out-of-band (admin/config),
 // because defaulting to a non-zero gate here would silently prevent a mod
@@ -432,7 +432,7 @@ type TimerStore interface {
 func NewAddTimerCommand(store TimerStore) Command {
 	return Command{
 		Name:         "addtimer",
-		Help:         "Add an auto-announcement — !addtimer name seconds message.",
+		Help:         "Add an auto-announcement - !addtimer name seconds message.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -470,7 +470,7 @@ func NewAddTimerCommand(store TimerStore) Command {
 func NewDeleteTimerCommand(store TimerStore) Command {
 	return Command{
 		Name:         "deltimer",
-		Help:         "Delete an auto-announcement — !deltimer name.",
+		Help:         "Delete an auto-announcement - !deltimer name.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -563,7 +563,7 @@ type QuoteStore interface {
 func NewAddQuoteCommand(store QuoteStore) Command {
 	return Command{
 		Name:         "addquote",
-		Help:         "Save a memorable line — !addquote <text>.",
+		Help:         "Save a memorable line - !addquote <text>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -596,7 +596,7 @@ func NewAddQuoteCommand(store QuoteStore) Command {
 func NewQuoteCommand(store QuoteStore) Command {
 	return Command{
 		Name:     "quote",
-		Help:     "Show a saved quote — !quote [number] (random if omitted).",
+		Help:     "Show a saved quote - !quote [number] (random if omitted).",
 		Cooldown: defaultQuoteCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
 			if store == nil {
@@ -632,7 +632,7 @@ func NewQuoteCommand(store QuoteStore) Command {
 func NewDeleteQuoteCommand(store QuoteStore) Command {
 	return Command{
 		Name:         "delquote",
-		Help:         "Delete a saved quote — !delquote <number>.",
+		Help:         "Delete a saved quote - !delquote <number>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -699,7 +699,7 @@ func parseCounterAmount(args []string, def int64) (amount int64, ok bool) {
 func NewCounterCommand(store CounterStore) Command {
 	return Command{
 		Name:     "counter",
-		Help:     "Show a counter's value — !counter <name>.",
+		Help:     "Show a counter's value - !counter <name>.",
 		Cooldown: defaultCounterCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
 			if store == nil {
@@ -726,7 +726,7 @@ func NewCounterCommand(store CounterStore) Command {
 func NewCounterAddCommand(store CounterStore) Command {
 	return Command{
 		Name:         "counter+",
-		Help:         "Increment a counter — !counter+ <name> [amount].",
+		Help:         "Increment a counter - !counter+ <name> [amount].",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -755,7 +755,7 @@ func NewCounterAddCommand(store CounterStore) Command {
 func NewCounterSubCommand(store CounterStore) Command {
 	return Command{
 		Name:         "counter-",
-		Help:         "Decrement a counter — !counter- <name> [amount].",
+		Help:         "Decrement a counter - !counter- <name> [amount].",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -784,7 +784,7 @@ func NewCounterSubCommand(store CounterStore) Command {
 func NewSetCounterCommand(store CounterStore) Command {
 	return Command{
 		Name:         "setcounter",
-		Help:         "Set a counter's value — !setcounter <name> <value>.",
+		Help:         "Set a counter's value - !setcounter <name> <value>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -815,7 +815,7 @@ func NewSetCounterCommand(store CounterStore) Command {
 func NewResetCounterCommand(store CounterStore) Command {
 	return Command{
 		Name:         "resetcounter",
-		Help:         "Reset a counter to 0 — !resetcounter <name>.",
+		Help:         "Reset a counter to 0 - !resetcounter <name>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -990,7 +990,7 @@ func mentionOf(msg Message) string {
 }
 
 // mentionPrefix returns "@username " (with trailing space) when a username
-// is available and the empty string otherwise — so the help text reads
+// is available and the empty string otherwise - so the help text reads
 // naturally either way.
 func mentionPrefix(msg Message) string {
 	name := strings.TrimSpace(msg.Username)
@@ -1173,14 +1173,14 @@ func NewScheduleCommand(store EventStore) Command {
 func NewAddEventCommand(store EventStore) Command {
 	return Command{
 		Name:         "addevent",
-		Help:         "Schedule an event — !addevent <when> <name>.",
+		Help:         "Schedule an event - !addevent <when> <name>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
 			if store == nil {
 				return Reply{Text: fmt.Sprintf("%sevents unavailable", mentionPrefix(msg))}
 			}
-			usage := fmt.Sprintf("%susage: !addevent <when> <name> — when = 2d / 4h / 90m / 1d12h / 2026-06-15",
+			usage := fmt.Sprintf("%susage: !addevent <when> <name> - when = 2d / 4h / 90m / 1d12h / 2026-06-15",
 				mentionPrefix(msg))
 			if len(args) < 2 {
 				return Reply{Text: usage}
@@ -1211,7 +1211,7 @@ func NewAddEventCommand(store EventStore) Command {
 func NewDelEventCommand(store EventStore) Command {
 	return Command{
 		Name:         "delevent",
-		Help:         "Remove a scheduled event — !delevent <number>.",
+		Help:         "Remove a scheduled event - !delevent <number>.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {

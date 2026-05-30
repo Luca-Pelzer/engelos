@@ -1,4 +1,4 @@
-# engelOS — Web
+# engelOS - Web
 
 > *The streaming bot that remembers you. Open source. Run it anywhere.*
 
@@ -8,8 +8,8 @@ sharing one component library:
 | Package | Purpose | Adapter |
 |---|---|---|
 | `@engelos/shared` | UI components, API client, WebSocket client, design tokens | (library) |
-| `@engelos/local` | Self-hosted variant — embedded as static files in the Go binary | `adapter-static` |
-| `@engelos/cloud` | SaaS variant for `app.engelos.com` (skeleton only — Phase 2) | TBD |
+| `@engelos/local` | Self-hosted variant - embedded as static files in the Go binary | `adapter-static` |
+| `@engelos/cloud` | SaaS variant for `app.engelos.com` (skeleton only - Phase 2) | TBD |
 
 ## Stack
 

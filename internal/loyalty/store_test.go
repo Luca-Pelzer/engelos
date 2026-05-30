@@ -309,7 +309,7 @@ func TestConcurrent_EarnNoLostUpdates(t *testing.T) {
 
 // TestConcurrent_SpendNeverOverdraws funds an account with 50 points then
 // fires 100 goroutines each trying to spend 1. Exactly 50 must succeed and
-// the balance must bottom out at 0 — never negative.
+// the balance must bottom out at 0 - never negative.
 func TestConcurrent_SpendNeverOverdraws(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

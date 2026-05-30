@@ -97,8 +97,8 @@ func escalKey(channel, user, filter string) string {
 
 // Record registers a new violation for (channel, user, filter) and returns the
 // Action and (for timeouts) duration to apply now. It increments the per-key
-// counter — first resetting it to zero if the previous offense is older than the
-// decay window — then maps the resulting 1-based count onto the tier ladder.
+// counter - first resetting it to zero if the previous offense is older than the
+// decay window - then maps the resulting 1-based count onto the tier ladder.
 // Counts beyond the final rung clamp to the last tier (a ban under DefaultTiers).
 func (e *Escalator) Record(channel, user, filter string) (Action, time.Duration) {
 	e.mu.Lock()

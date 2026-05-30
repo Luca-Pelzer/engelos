@@ -37,7 +37,7 @@ var eightBallAnswers = []string{
 }
 
 // NewEightBallCommand returns "!8ball" (MinRole RoleEveryone, 3s per-user
-// cooldown). It answers any question — even an empty one — with a random
+// cooldown). It answers any question - even an empty one - with a random
 // classic Magic-8-Ball reply, e.g. "🎱 @user Most likely.".
 func NewEightBallCommand() Command { return newEightBallCommand(rand.Int63) }
 
@@ -239,7 +239,7 @@ func parseSides(args []string, def, lo, hi int) int {
 // compatibility maps a set of participant names to a stable 0-100
 // percentage. Names are lower-cased and sorted before hashing so the
 // result is order-independent (love(a,b) == love(b,a)), and an FNV-32a
-// hash mod 101 makes the value deterministic per pair — the % never
+// hash mod 101 makes the value deterministic per pair - the % never
 // changes between calls, which is both nicer UX and trivially testable.
 func compatibility(names ...string) int {
 	lowered := make([]string, len(names))

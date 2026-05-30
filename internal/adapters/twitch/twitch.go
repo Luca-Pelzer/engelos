@@ -35,13 +35,13 @@ var (
 	ErrEmptyToken = errors.New("twitch: empty access token")
 
 	// ErrAnonymousRotation is returned by [Adapter.SetToken] when invoked
-	// on an adapter running in anonymous mode — there is no user token to
+	// on an adapter running in anonymous mode - there is no user token to
 	// rotate.
 	ErrAnonymousRotation = errors.New("twitch: cannot rotate token on anonymous adapter")
 )
 
 // Config controls construction of a Twitch [Adapter]. The zero value is a
-// valid (anonymous) configuration that joins no channels — set at least
+// valid (anonymous) configuration that joins no channels - set at least
 // Channels before calling [New].
 type Config struct {
 	// Channels lists the Twitch channel logins to JOIN once connected.
@@ -62,7 +62,7 @@ type Config struct {
 	// Logger receives structured log output. nil falls back to slog.Default.
 	Logger *slog.Logger
 
-	// HelixBaseURL overrides the Helix API base URL — used by tests to
+	// HelixBaseURL overrides the Helix API base URL - used by tests to
 	// point the helix client at an httptest server. Empty means the real
 	// Twitch endpoint.
 	HelixBaseURL string
@@ -350,9 +350,9 @@ func (a *Adapter) Health() error {
 
 // SetToken applies a freshly refreshed OAuth user-access token to the
 // live adapter WITHOUT reconnecting. The IRC token is staged for the next
-// (re)connect via SetIRCToken — the running IRC session is unaffected
+// (re)connect via SetIRCToken - the running IRC session is unaffected
 // because Twitch only validates the token at the PASS/NICK handshake,
-// never mid-session — and the Helix client's bearer is updated in place
+// never mid-session - and the Helix client's bearer is updated in place
 // via SetUserAccessToken so the next REST call uses the new token
 // immediately. cfg.OAuthToken is also updated so a future Connect uses
 // the new token. This method is adapter-specific and intentionally not

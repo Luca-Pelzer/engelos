@@ -385,7 +385,7 @@ func TestAPIKeyRevoke(t *testing.T) {
 
 // PermChatTokenSafe returns a Permission that is guaranteed not to be
 // validated against the AllPermissions list (the Store does not
-// validate scopes — that's the api layer's job), so this lets us
+// validate scopes - that's the api layer's job), so this lets us
 // exercise a free-form scope in tests.
 func PermChatTokenSafe() Permission { return Permission("chat:write") }
 

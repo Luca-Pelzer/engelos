@@ -163,7 +163,7 @@ var errReconnect = errors.New("eventsub: session reconnect requested")
 
 // Run connects and processes messages until ctx is cancelled, reconnecting on
 // transient failures. Returns ctx.Err() on cancellation. It NEVER returns on a
-// normal reconnect — only ctx cancellation stops it.
+// normal reconnect - only ctx cancellation stops it.
 func (c *Client) Run(ctx context.Context) error {
 	backoff := c.minBackoff
 	for {

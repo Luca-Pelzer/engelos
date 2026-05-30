@@ -20,7 +20,7 @@ include:
 - Gracefully accepting constructive criticism
 - Focusing on what is best for the community
 - Showing empathy towards other community members
-- Assuming good faith — people are usually trying to help, not attack
+- Assuming good faith - people are usually trying to help, not attack
 
 Examples of unacceptable behavior include:
 
@@ -38,7 +38,7 @@ Examples of unacceptable behavior include:
 Because engelOS exists in the streaming-bot space, some things are worth
 spelling out:
 
-- **No platform tribalism.** Twitch, YouTube, Kick, Discord, TikTok — they all
+- **No platform tribalism.** Twitch, YouTube, Kick, Discord, TikTok - they all
   have streamers we serve. Trash-talking other platforms is not productive
   technical discussion.
 - **No gatekeeping by stream size.** Someone with 5 viewers and someone with

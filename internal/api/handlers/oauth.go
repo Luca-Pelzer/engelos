@@ -19,7 +19,7 @@ import (
 
 // OAuthStateCookieName is the cookie that carries the CSRF state value
 // between the Login redirect and the Callback handler. It is short-lived
-// (10 minutes) and SameSite=Lax — Lax (not Strict) is required because
+// (10 minutes) and SameSite=Lax - Lax (not Strict) is required because
 // the user returns to the callback URL from id.twitch.tv via a top-level
 // navigation, which Strict would treat as cross-site and drop the cookie.
 // Lax still protects against the relevant CSRF surfaces (forged
@@ -80,7 +80,7 @@ type OAuth struct {
 //
 // store may be nil; in that case every handler returns 501 (this lets
 // the router be built before OAuth is configured). cfg may also be nil
-// with the same effect — together they let the OAuth feature be turned
+// with the same effect - together they let the OAuth feature be turned
 // off entirely without compile-time changes.
 //
 // tenantID is the single-tenant identifier this daemon serves. A nil
@@ -125,7 +125,7 @@ func (o *OAuth) WithCookieSecure(secure bool) *OAuth {
 	return o
 }
 
-// disabled reports whether the OAuth feature is turned off — either
+// disabled reports whether the OAuth feature is turned off - either
 // because no Store was supplied or because no oauth2.Config was wired.
 // In both cases handlers respond 501.
 func (o *OAuth) disabled() bool {
@@ -145,13 +145,13 @@ func generateState() (string, error) {
 // purposeDelim separates the random CSRF nonce from the OAuth flow
 // purpose ("user" vs "bot") inside the state cookie value. Base64-URL
 // uses only [A-Za-z0-9_-], so "|" is guaranteed not to collide with
-// any byte produced by generateState — keeping the split unambiguous.
+// any byte produced by generateState - keeping the split unambiguous.
 const purposeDelim = "|"
 
 // normalizePurpose coerces an untrusted purpose string (query param or
 // recovered from a tampered cookie) into one of the two allowed values.
 // Anything other than the literal "bot" collapses to the safe default
-// "user" — we never error here because the callsite has already either
+// "user" - we never error here because the callsite has already either
 // satisfied CSRF (cookie path) or is at the start of the flow (Login).
 func normalizePurpose(p string) string {
 	if strings.TrimSpace(p) == auth.OAuthPurposeBot {
@@ -164,7 +164,7 @@ func normalizePurpose(p string) string {
 // purpose into the single string that lives in BOTH the state cookie
 // and the OAuth `state` query parameter. Because both sides hold the
 // SAME composite string, the existing constant-time equality check is
-// what binds the purpose to the request — an attacker cannot change
+// what binds the purpose to the request - an attacker cannot change
 // just the purpose suffix without breaking the state match. This is
 // what lets Callback safely recover the purpose from the cookie
 // without trusting any callback-side query parameter.
@@ -216,7 +216,7 @@ func (o *OAuth) Login(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(oauthStateTTL.Seconds()),
 		HttpOnly: true,
 		Secure:   o.cookieSecure,
-		// Lax (not Strict) — see OAuthStateCookieName doc comment.
+		// Lax (not Strict) - see OAuthStateCookieName doc comment.
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, o.cfg.AuthCodeURL(stateVal), http.StatusFound)
@@ -285,7 +285,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Purpose is recovered from the (now CSRF-validated) cookie value,
-	// NOT from any callback query parameter — otherwise an attacker
+	// NOT from any callback query parameter - otherwise an attacker
 	// could downgrade/upgrade the flow without invalidating state.
 	_, purpose := parseStateValue(cookie.Value)
 
@@ -420,7 +420,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 // When an OAuthIdentity already exists, the linked User is loaded by
 // (tenant, id). When it does not exist, a new viewer-role User is
 // created with email = providerEmail (or "<login>@twitch.local" when
-// the user has not exposed their email to the OAuth app — the schema
+// the user has not exposed their email to the OAuth app - the schema
 // requires a non-empty unique email). PasswordHash is filled with a
 // random 32-byte un-loginable blob because these users will never
 // authenticate via password.

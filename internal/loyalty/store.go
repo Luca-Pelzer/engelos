@@ -69,7 +69,7 @@ type Store interface {
 	// and ErrInvalid when amount <= 0.
 	Spend(ctx context.Context, tenantID, channel, viewerID string, amount int64) (Account, error)
 	// Transfer moves amount (must be > 0) from one viewer to another
-	// atomically — the "!give" command. The sender must already exist and
+	// atomically - the "!give" command. The sender must already exist and
 	// hold enough funds (else ErrInsufficient); the recipient account is
 	// created if needed. A self-transfer (from == to) returns ErrInvalid,
 	// as does amount <= 0.
@@ -89,7 +89,7 @@ func newID() string {
 }
 
 // normalizeChannel lower-cases, trims, and strips a leading "#" so callers
-// may pass either "#cohh" or "cohh" — mirrors how the twitch adapter and
+// may pass either "#cohh" or "cohh" - mirrors how the twitch adapter and
 // commands engine canonicalise channel logins.
 func normalizeChannel(channel string) string {
 	return strings.TrimPrefix(strings.ToLower(strings.TrimSpace(channel)), "#")
@@ -271,7 +271,7 @@ func (s *sqliteStore) Spend(ctx context.Context, tenantID, channel, viewerID str
 	// Read-check-write under one transaction. With SetMaxOpenConns(1) the
 	// single writer connection serialises this against every other writer,
 	// so the balance read here cannot be invalidated by a concurrent Spend
-	// before the UPDATE lands — no overdraw is possible.
+	// before the UPDATE lands - no overdraw is possible.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Account{}, fmt.Errorf("loyalty: spend begin: %w", err)

@@ -86,7 +86,7 @@ func chanKey(channel string) string {
 
 // open starts a fresh OPEN giveaway in channel with a newly-drawn seed and
 // returns that seed. ok is false when a giveaway is already present in the
-// channel — the caller must cancel or draw the existing one first.
+// channel - the caller must cancel or draw the existing one first.
 func (m *giveawayManager) open(channel, keyword string) (seed int64, ok bool) {
 	ch := chanKey(channel)
 	m.mu.Lock()
@@ -147,7 +147,7 @@ func (m *giveawayManager) close(channel string) (count int, ok bool) {
 // marks them a past winner, and advances the draw counter so a subsequent
 // reroll resolves to a different deterministic pick. ok is false when there is
 // no giveaway or no eligible entrant remains. A draw works on an open OR a
-// closed giveaway — closing only stops new !enter.
+// closed giveaway - closing only stops new !enter.
 func (m *giveawayManager) draw(channel string) (winnerID, winnerName string, seed int64, ok bool) {
 	ch := chanKey(channel)
 	m.mu.Lock()
@@ -207,7 +207,7 @@ func (m *giveawayManager) status(channel string) (keyword string, open bool, cou
 //
 // Provably-fair: winner index = H(seed || drawNumber || joinedSortedEntrantIDs) mod N.
 // Because the seed is published at open time and the entrant set is observable,
-// anyone can recompute the winner — the streamer cannot secretly bias it.
+// anyone can recompute the winner - the streamer cannot secretly bias it.
 //
 // The eligible IDs are sorted before hashing so the result depends only on the
 // SET of entrants (not their map iteration order), and drawNumber increments
@@ -223,8 +223,8 @@ func provablyFairIndex(seed int64, drawNumber int, eligible []string) int {
 	return int(n % uint64(len(sorted)))
 }
 
-// NewGiveawayCommands returns the four giveaway commands — !giveaway, !enter,
-// !draw, and !reroll — all sharing one in-memory [giveawayManager]. It is the
+// NewGiveawayCommands returns the four giveaway commands - !giveaway, !enter,
+// !draw, and !reroll - all sharing one in-memory [giveawayManager]. It is the
 // exported wiring entry point, since the manager type is package-private.
 //
 // The giveaway is a free, keyword-labelled raffle: a moderator opens it with a
@@ -246,7 +246,7 @@ func NewGiveawayCommands() []Command {
 func newGiveawayCommand(m *giveawayManager) Command {
 	return Command{
 		Name:    "giveaway",
-		Help:    "Open a keyword giveaway — !giveaway <keyword> | cancel | close | status.",
+		Help:    "Open a keyword giveaway - !giveaway <keyword> | cancel | close | status.",
 		MinRole: RoleModerator,
 		Handler: func(_ context.Context, msg Message, args []string) Reply {
 			if len(args) > 0 {
@@ -261,7 +261,7 @@ func newGiveawayCommand(m *giveawayManager) Command {
 					if !ok {
 						return Reply{Text: fmt.Sprintf("%sthere's no giveaway to close.", mentionPrefix(msg))}
 					}
-					return Reply{Text: fmt.Sprintf("Entries closed — %d entrants. Use !draw.", count)}
+					return Reply{Text: fmt.Sprintf("Entries closed - %d entrants. Use !draw.", count)}
 				case "status":
 					kw, open, count, ok := m.status(msg.Channel)
 					if !ok {
@@ -271,7 +271,7 @@ func newGiveawayCommand(m *giveawayManager) Command {
 					if !open {
 						state = "closed"
 					}
-					return Reply{Text: fmt.Sprintf("Giveaway \"%s\" is %s — %d entrants.", kw, state, count)}
+					return Reply{Text: fmt.Sprintf("Giveaway \"%s\" is %s - %d entrants.", kw, state, count)}
 				}
 			}
 			keyword := strings.TrimSpace(strings.Join(args, " "))
@@ -280,7 +280,7 @@ func newGiveawayCommand(m *giveawayManager) Command {
 			}
 			seed, ok := m.open(msg.Channel, keyword)
 			if !ok {
-				return Reply{Text: fmt.Sprintf("%sa giveaway is already running — !draw or !giveaway cancel first.", mentionPrefix(msg))}
+				return Reply{Text: fmt.Sprintf("%sa giveaway is already running - !draw or !giveaway cancel first.", mentionPrefix(msg))}
 			}
 			return Reply{Text: fmt.Sprintf("🎉 Giveaway open! Type !enter to join. (keyword: %s, seed: %d)", keyword, seed)}
 		},
@@ -292,7 +292,7 @@ func newGiveawayCommand(m *giveawayManager) Command {
 func newEnterCommand(m *giveawayManager) Command {
 	return Command{
 		Name:         "enter",
-		Help:         "Enter the running giveaway — !enter.",
+		Help:         "Enter the running giveaway - !enter.",
 		UserCooldown: enterUserCooldown,
 		Handler: func(_ context.Context, msg Message, _ []string) Reply {
 			switch m.enter(msg.Channel, msg.UserID, msg.Username) {
@@ -314,7 +314,7 @@ func newEnterCommand(m *giveawayManager) Command {
 func newDrawCommand(m *giveawayManager) Command {
 	return Command{
 		Name:    "draw",
-		Help:    "Draw a provably-fair giveaway winner — !draw.",
+		Help:    "Draw a provably-fair giveaway winner - !draw.",
 		MinRole: RoleModerator,
 		Handler: func(_ context.Context, msg Message, _ []string) Reply {
 			_, winnerName, seed, ok := m.draw(msg.Channel)
@@ -331,7 +331,7 @@ func newDrawCommand(m *giveawayManager) Command {
 func newRerollCommand(m *giveawayManager) Command {
 	return Command{
 		Name:    "reroll",
-		Help:    "Draw another winner, excluding past winners — !reroll.",
+		Help:    "Draw another winner, excluding past winners - !reroll.",
 		MinRole: RoleModerator,
 		Handler: func(_ context.Context, msg Message, _ []string) Reply {
 			_, winnerName, seed, ok := m.draw(msg.Channel)

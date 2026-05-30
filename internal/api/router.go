@@ -41,7 +41,7 @@ type WSHandler interface {
 
 // Deps bundles the narrow set of dependencies the router needs. Concrete
 // implementations (auth, eventsourcing, etc.) live in their own packages and
-// satisfy these interfaces — the api package never imports them directly.
+// satisfy these interfaces - the api package never imports them directly.
 type Deps struct {
 	Logger *slog.Logger
 
@@ -96,7 +96,7 @@ type Deps struct {
 	Streak *streak.System
 
 	// StatsProvider, when non-nil, surfaces dispatcher counters at
-	// GET /api/v1/stats. Nil hides the dispatcher block — the version
+	// GET /api/v1/stats. Nil hides the dispatcher block - the version
 	// payload is still served.
 	StatsProvider handlers.StatsProvider
 

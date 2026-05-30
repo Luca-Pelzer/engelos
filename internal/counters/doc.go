@@ -1,5 +1,5 @@
 // Package counters provides named integer counters scoped to a
-// (tenant, channel) — the classic streamer "death counter" feature
+// (tenant, channel) - the classic streamer "death counter" feature
 // (e.g. "!deaths" shows the value, mods bump it).
 //
 // A [Store] persists counters in pure-Go SQLite (modernc.org/sqlite,

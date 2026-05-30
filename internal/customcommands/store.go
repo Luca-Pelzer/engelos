@@ -60,7 +60,7 @@ const maxResponseLen = 480
 // CustomCommand is a streamer-defined text command scoped to a
 // (tenant, channel). Name is the trigger WITHOUT the prefix, lower-cased.
 // Response is the raw text emitted (may contain $user/$channel/$args
-// placeholders that the commands engine expands at send time — this
+// placeholders that the commands engine expands at send time - this
 // package stores them raw).
 type CustomCommand struct {
 	ID        string

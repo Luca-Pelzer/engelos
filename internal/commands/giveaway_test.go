@@ -318,7 +318,7 @@ func TestGiveaway_CommandAlreadyRunning(t *testing.T) {
 	give := newGiveawayCommand(m)
 	give.Handler(context.Background(), msg("chan", "mod", "moddy"), []string{"win"})
 	again := give.Handler(context.Background(), msg("chan", "mod", "moddy"), []string{"again"})
-	assert.Equal(t, "@moddy a giveaway is already running — !draw or !giveaway cancel first.", again.Text)
+	assert.Equal(t, "@moddy a giveaway is already running - !draw or !giveaway cancel first.", again.Text)
 }
 
 func TestGiveaway_CommandUsageNoArg(t *testing.T) {
@@ -345,7 +345,7 @@ func TestGiveaway_CommandSubcommands(t *testing.T) {
 	assert.Contains(t, status.Text, "1 entrants")
 
 	closed := give.Handler(context.Background(), msg("chan", "mod", "moddy"), []string{"close"})
-	assert.Equal(t, "Entries closed — 1 entrants. Use !draw.", closed.Text)
+	assert.Equal(t, "Entries closed - 1 entrants. Use !draw.", closed.Text)
 
 	cancel := give.Handler(context.Background(), msg("chan", "mod", "moddy"), []string{"cancel"})
 	assert.Equal(t, "Giveaway cancelled.", cancel.Text)

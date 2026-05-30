@@ -13,7 +13,7 @@
 // The engine OWNS detection only. It never talks to a chat platform and it
 // never mutates any state. A dispatcher calls [Engine.Evaluate] for every
 // message BEFORE command routing; the dispatcher (not this package) then
-// executes the resulting punishment — delete, timeout or ban — and records
+// executes the resulting punishment - delete, timeout or ban - and records
 // escalation. Offense counting, audit logging and the link "!permit" flow
 // live in a SEPARATE package and are deliberately absent here.
 //
@@ -45,7 +45,7 @@
 // otherwise runs every enabled, non-exempt filter and returns the result with
 // the highest [Verdict]; ties are broken by a fixed filter order (BannedWords,
 // Links, Caps, Symbols, Emotes, Length, Repetition). [ModeDryRun] still
-// evaluates — the caller decides not to act.
+// evaluates - the caller decides not to act.
 //
 // # Concurrency
 //

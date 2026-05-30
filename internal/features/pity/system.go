@@ -21,7 +21,7 @@ import (
 //
 // Production injects a crypto/rand-backed implementation; tests inject a
 // seeded PCG so rolls are replayable. Implementations must be safe for
-// concurrent use only if the caller does not serialise access — [System]
+// concurrent use only if the caller does not serialise access - [System]
 // serialises on its own mutex, so single-threaded implementations are fine.
 type RngSource interface {
 	// Float64 returns a uniform sample in the half-open interval [0, 1).
@@ -94,7 +94,7 @@ func (s *System) WithClock(clock func() time.Time) *System {
 }
 
 // WithSeed records a seed value that is stamped into emitted
-// [RollMadePayload]s. It does NOT itself reseed the RNG — call
+// [RollMadePayload]s. It does NOT itself reseed the RNG - call
 // rng.Seed(seed) on a [SeededRng] separately if you want both behaviours.
 //
 // Production code with crypto/rand should leave this as zero.
@@ -383,7 +383,7 @@ func (s *System) Recover(ctx context.Context, tenantID string) error {
 	// The store orders by ULID, which on production hardware is effectively a
 	// monotonic timestamp ordering. We sort by (OccurredAt, ID) before
 	// applying so that replay is robust against sub-millisecond ULID entropy
-	// collisions — important when many events are emitted within the same
+	// collisions - important when many events are emitted within the same
 	// millisecond, as happens under load or with a fake clock in tests.
 	sort.SliceStable(collected, func(i, j int) bool {
 		if collected[i].OccurredAt.Equal(collected[j].OccurredAt) {

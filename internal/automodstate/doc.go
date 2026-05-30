@@ -10,8 +10,8 @@
 //
 // Escalator is an in-memory, concurrency-safe tracker of per-(channel, user,
 // filter) offense counts. Each new violation is mapped onto an escalation
-// ladder — by default warn, then 60s, 10m and 24h timeouts, then a permanent
-// ban — so repeat offenders are punished progressively. A decay window lets a
+// ladder - by default warn, then 60s, 10m and 24h timeouts, then a permanent
+// ban - so repeat offenders are punished progressively. A decay window lets a
 // user who behaves for long enough start over with a clean record.
 //
 // PermitTracker implements the link `!permit <user>` flow: a moderator grants a
@@ -22,8 +22,8 @@
 //
 // AuditStore is a SQLite-backed log of every enforcement action AutoMod takes,
 // including dry-run (shadow) actions that were decided but not executed. It
-// captures the full context — message text, filter, matched substring, action
-// and duration — so streamers can review or reverse a decision later. It
+// captures the full context - message text, filter, matched substring, action
+// and duration - so streamers can review or reverse a decision later. It
 // mirrors the persistence conventions of internal/counters (WAL, single
 // connection, embedded migrations, ULID ids).
 //

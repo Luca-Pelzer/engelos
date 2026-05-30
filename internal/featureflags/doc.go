@@ -1,7 +1,7 @@
 // Package featureflags is a small SQLite-backed store of per-channel
 // feature on/off toggles for engelOS.
 //
-// A feature flag is one boolean per (tenant, channel, feature-key) — for
+// A feature flag is one boolean per (tenant, channel, feature-key) - for
 // example the "economy" mini-game being enabled for a single channel. Only
 // EXPLICIT overrides are persisted: an unset flag has no row, and callers
 // supply their own default for that case (see Store.GetOrDefault). This

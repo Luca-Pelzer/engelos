@@ -86,7 +86,7 @@ type RaidEvent struct {
 
 // UserActionEvent carries the payload for moderation-style events
 // ([EventUserBanned], [EventUserTimedOut], and arbitrary role changes the
-// adapter wishes to surface — mod_added, vip_added, untimeout, ...).
+// adapter wishes to surface - mod_added, vip_added, untimeout, ...).
 type UserActionEvent struct {
 	Action     string        `json:"action"`
 	TargetUser string        `json:"target_user"`
@@ -195,7 +195,7 @@ type Platform interface {
 
 	// Health returns nil if the underlying connection is currently healthy
 	// and able to send/receive, or an error describing the unhealthy state
-	// otherwise. Health MUST NOT block on network I/O — it reports cached
+	// otherwise. Health MUST NOT block on network I/O - it reports cached
 	// state maintained by the adapter.
 	Health() error
 }

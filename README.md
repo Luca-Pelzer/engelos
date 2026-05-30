@@ -13,8 +13,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/Luca-Pelzer/engelos?style=social)](https://github.com/Luca-Pelzer/engelos/stargazers)
 
 **One fast, self-hosted binary for Twitch and Discord.**
-Moderation, custom commands, Channel-Points triggers (with a points fallback), mini-games, and
-provably-fair giveaways. Self-host it free forever, your data on your machine.
+Moderation, custom commands, Channel-Points triggers and native Twitch Predictions, a points economy
+with mini-games, provably-fair giveaways, multi-provider song requests (Spotify and YouTube), Stream
+Wrapped recap cards, and OBS overlays. Self-host it free forever, your data on your machine.
 
 [Why EngelOS?](#-why-engelos) • [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Architecture](#-architecture) • [Status](#-project-status)
 
@@ -77,8 +78,12 @@ Plus a few things the big bots simply don't offer:
 | Custom commands + `$(...)` vars | ✅ incl. `$(math)` | ✅ | ✅ | ✅ |
 | AutoMod audit log + dry-run | ✅ | ❌ | ❌ | partial |
 | Channel-Points triggers + points fallback | ✅ | ❌ | partial | partial |
+| Native Twitch Predictions | ✅ | ❌ | ❌ | ❌ |
 | Mini-games (gamble/duel/heist) | ✅ | ❌ | ✅ | ✅ |
 | Provably-fair giveaways | ✅ | ❌ | ❌ | ❌ |
+| Song requests (Spotify + YouTube) | ✅ both | ✅ YT | ✅ both | ❌ |
+| Stream Wrapped recap cards | ✅ | ❌ | ❌ | ❌ |
+| OBS overlays built in | ✅ | ❌ | ✅ | ❌ |
 | Single binary | ✅ Go | n/a | n/a | ❌ Python |
 | Multi-platform | Twitch + Discord, YouTube/Kick 🚧 | Twitch/YT | Twitch/YT | Twitch |
 
@@ -108,7 +113,10 @@ Seven configurable filters, each with **per-filter role exemptions**:
 Two independent systems you can switch on or off, in any combination:
 
 **Channel-Points trigger engine** (for affiliates and partners): bind a real Twitch Channel-Point
-reward to a bot action. If your channel has Channel Points and you want to use them, turn it on.
+reward to a bot action. If your channel has Channel Points and you want to use them, turn it on. This
+also powers **native Twitch Predictions**: `!prediction <title> | <option> | <option>` opens a real
+Channel-Points prediction, `!lockprediction` stops betting, and `!endprediction <winner>` settles it,
+Twitch handles the proportional points payout itself.
 
 **Built-in points economy** (works on any channel, affiliate or not): a self-managed currency that
 powers engagement and mini-games. Channels without Channel Points use it as their main system, but an
@@ -127,22 +135,44 @@ affiliate who still wants gambling can run it alongside Channel Points, or skip 
   `winner = SHA256(seed │ drawNumber │ sorted-entrant-ids) mod N`, where the seed is announced at open
   time, so the draw is publicly verifiable and un-riggable.
 
+### 🎵 Song requests (multi-provider)
+Per-channel choice of music backend, so you pick how requests are played:
+
+- **Spotify** (playlist-as-queue): `!sr <song or link>` adds the track to a dedicated playlist,
+  `!song` shows what's playing, `!skipsong` skips. Connect your account from the dashboard
+  (`/api/v1/auth/spotify/login`); needs Spotify Premium on the bot account.
+- **YouTube** (bot-managed queue): the bot keeps the queue itself and the `/overlay/song-player`
+  browser source auto-plays it via the YouTube IFrame player.
+- A **now-playing overlay** (`/overlay/now-playing`) renders the current track for either provider.
+
+### 📊 Stream Wrapped
+Spotify-Wrapped-style recap cards, served as shareable pages and a `/overlay/wrapped` browser source:
+
+- **Per-viewer card**: messages sent, chatter rank and top-percentile, points, longest streak.
+- **Per-channel card**: total messages, subs, raids, distinct chatters, and the top chatters.
+- Stats accumulate live (all-time plus per-month buckets) from chat, sub and raid activity.
+
 ### 🎮 Engagement systems
 - **Pity-System** (gacha): soft-pity ramps win chance, hard-pity guarantees, fully event-sourced and replayable.
 - **Streak-System** (Duolingo-style daily streaks).
-- **Live-Ops calendar**: `!nextevent`, `!schedule`.
-- **Channel-Points trigger engine**: bind a Twitch reward to a bot action.
+- **Live-Ops schedule**: a lightweight event calendar the bot is aware of, `!addevent <when> <name>`,
+  `!nextevent`, and `!schedule` with live countdowns, so viewers always know what's coming up.
+- **Channel-Points trigger engine + Predictions**: bind a Twitch reward to a bot action, or run native
+  Channel-Points predictions.
+- **Moment Alerts** (experimental): a mod opens a short `!here` window on a big play and it earns a
+  common/rare/legendary tier by turnout. Small engagement extra, off unless a mod starts one.
 
 ### 🖥️ Platform and Dashboard
 - **Embedded SvelteKit web dashboard** (via `go:embed`) with live pages: Home (real daemon stats),
   Channel Points, Commands, Counters, AutoMod (filter config plus audit-log viewer), and Login.
-- **OBS browser-source overlays** served straight from the daemon at `/overlay/events`,
-  `/overlay/alerts`, and `/overlay/leaderboard`: drop the URL into an OBS Browser Source and go.
+- **OBS browser-source overlays** served straight from the daemon: `/overlay/events`,
+  `/overlay/alerts`, `/overlay/leaderboard`, `/overlay/now-playing`, `/overlay/song-player`,
+  `/overlay/wrapped`, and `/overlay/moment`. Drop the URL into an OBS Browser Source and go.
 - **Event-sourcing engine** (SQLite WAL, append-only, ULID, multi-tenant).
 - **Auth**: Argon2id, RBAC, sessions (HttpOnly/Secure/SameSite cookies), and API keys.
 - **HTTP API** (chi router, security headers), **Server-Sent Events** stream, and a **WebSocket** hub.
 - **Adapters**: Twitch (IRC plus Helix plus EventSub WebSocket, anonymous or authenticated) and Discord
-  (needs a bot token). Around 32 Go packages, all tested under the race detector.
+  (needs a bot token). Around 40 internal Go packages, all tested under the race detector.
 
 ---
 
@@ -177,6 +207,8 @@ All configuration is via environment variables:
 | `ENGELOS_TWITCH_OAUTH` | OAuth token (`oauth:` prefix optional) | empty (anonymous) |
 | `ENGELOS_TWITCH_CLIENT_ID` | Helix Client-ID (required with OAuth) | empty |
 | `ENGELOS_SECRETS_KEY` | Enables encrypted OAuth/login storage (`openssl rand -base64 32`) | unset |
+| `ENGELOS_SPOTIFY_CLIENT_ID` / `_SECRET` / `_REDIRECT_URL` | Enable Spotify song requests (needs `ENGELOS_SECRETS_KEY`) | unset |
+| `ENGELOS_YOUTUBE_API_KEY` | Enable YouTube song requests (YouTube Data API v3 key) | unset |
 
 > [!NOTE]
 > Anonymous mode is read-only (chat-reading and counters). Moderation actions, the dashboard login,
@@ -202,10 +234,10 @@ All configuration is via environment variables:
 │  │  audit log)  │  │  · Quotes    │  │  Giveaways   │    │
 │  └──────────────┘  └──────────────┘  └──────────────┘    │
 │  ┌──────────────┐  ┌──────────────────────────────┐      │
-│  │  Auth        │  │  Pity · Streak · Live-Ops ·   │      │
-│  │  (Argon2id,  │  │  Channel-Points · Counters    │      │
-│  │  RBAC, keys) │  └──────────────────────────────┘      │
-│  └──────────────┘                │                       │
+│  │  Auth        │  │ Pity·Streak·Live-Ops·Channel- │      │
+│  │  (Argon2id,  │  │ Points·Predictions·SongReqs·  │      │
+│  │  RBAC, keys) │  │ Wrapped·Moments·Counters      │      │
+│  └──────────────┘  └──────────────────────────────┘      │
 │            └────────┬────────────┘                       │
 │                     ↓                                    │
 │  ┌────────────────────────────────────────────────────┐  │
@@ -252,15 +284,21 @@ open-source work, not to cripple the free one.
 - Custom commands and `$(...)` variable system, quotes, counters, timers
 - Loyalty economy and mini-games (`!gamble` `!slots` `!duel` `!heist`)
 - Provably-fair giveaways
-- Pity, Streak, Live-Ops, Channel-Points trigger engine
-- Fun and info commands (`!8ball` `!so` `!accountage`, and more)
+- Pity, Streak, Live-Ops schedule, Channel-Points trigger engine
+- Native Twitch Predictions (`!prediction` / `!lockprediction` / `!endprediction`)
+- Multi-provider song requests: Spotify (Connect-OAuth, playlist queue) and YouTube (bot queue +
+  player overlay), with a now-playing overlay and per-channel config API
+- Stream Wrapped recap cards (per-viewer and per-channel) with a shareable overlay
+- Moment Alerts (experimental engagement extra)
+- Fun and info commands (`!8ball` `!so` `!accountage` `!followage`, and more)
 - Event-sourcing, Argon2id auth, REST/SSE/WebSocket API, embedded SvelteKit dashboard
+- Seven OBS browser-source overlays
 
 **🚧 Planned (roadmap):**
 
-- YouTube and Kick adapters
+- Full YouTube and Kick chat adapters (YouTube song requests already work)
 - AI features: Auto-Clipper, real-time Translator, context-aware AI-Mod, AI Co-Host, AI-Voice/TTS
-- Stream-Wrapped, plugin/addon ecosystem and marketplace
+- Plugin/addon ecosystem and marketplace
 - Downloadable companion client: a desktop app that manages the OBS browser-source overlays (set
   them up and tweak them without editing config) and lets the bot trigger on-machine actions from
   events, for example a channel-point redemption firing an on-screen effect
@@ -283,8 +321,11 @@ internal/
   automod/               Stateless filter engine
   automodstate/          Escalation ladder + audit-log store
   moderation/            Glue: filters + escalation + audit into one Service
-  commands/              ~30 builtins, custom commands, $(...) vars, games, giveaways
-  counters/ quotes/ timers/ customcommands/ redemptions/ loyalty/ rewards/
+  commands/              builtins, custom commands, $(...) vars, games, giveaways, predictions,
+                         song requests, moments
+  counters/ quotes/ timers/ customcommands/ redemptions/ loyalty/ rewards/ liveops/
+  songrequests/          provider config + spotify/ + youtube/ + queue/ (bot-managed queue)
+  wrapped/ moments/      Stream Wrapped stats + Moment Alerts
   eventsourcing/         SQLite append-only event log
   features/pity/ streak/ Engagement systems
   runtime/               Dispatcher: adapter events into features + broadcast

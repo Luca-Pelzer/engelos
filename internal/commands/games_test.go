@@ -166,7 +166,7 @@ func TestSlots_JackpotThreeSevens(t *testing.T) {
 
 	assert.Equal(t, int64(100), bank.gotBet)
 	assert.Equal(t, int64(1000), bank.gotPayout) // bet*10 jackpot
-	assert.Contains(t, reply.Text, "🎰 @bob spun [7️⃣ | 7️⃣ | 7️⃣] — WON")
+	assert.Contains(t, reply.Text, "🎰 @bob spun [7️⃣ | 7️⃣ | 7️⃣] - WON")
 	assert.Contains(t, reply.Text, "Balance: 1,900")
 	assert.Equal(t, RoleEveryone, cmd.MinRole)
 }
@@ -195,7 +195,7 @@ func TestSlots_TwoMatch(t *testing.T) {
 	reply := cmd.Handler(context.Background(), Message{Username: "bob"}, []string{"100"})
 
 	assert.Equal(t, int64(200), bank.gotPayout) // bet*2 small win
-	assert.Contains(t, reply.Text, "spun [🍒 | 🍒 | 🍋] — WON")
+	assert.Contains(t, reply.Text, "spun [🍒 | 🍒 | 🍋] - WON")
 }
 
 func TestSlots_Loss(t *testing.T) {
@@ -205,7 +205,7 @@ func TestSlots_Loss(t *testing.T) {
 	reply := cmd.Handler(context.Background(), Message{Username: "bob"}, []string{"100"})
 
 	assert.Equal(t, int64(0), bank.gotPayout)
-	assert.Equal(t, "🎰 @bob spun [🍒 | 🍋 | 🔔] — no win, lost 100. Balance: 900", reply.Text)
+	assert.Equal(t, "🎰 @bob spun [🍒 | 🍋 | 🔔] - no win, lost 100. Balance: 900", reply.Text)
 }
 
 func TestSlots_AllBetsFullBalance(t *testing.T) {

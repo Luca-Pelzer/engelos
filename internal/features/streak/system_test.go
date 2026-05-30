@@ -90,7 +90,7 @@ func newSystemWithStore(t *testing.T, cfg streak.Config) (*streak.System, *fakeC
 }
 
 // noGraceCfg returns a config with grace=0 so day boundaries are exact
-// midnights — easier to reason about in most tests.
+// midnights - easier to reason about in most tests.
 func noGraceCfg() streak.Config {
 	cfg := streak.DefaultConfig()
 	cfg.GraceWindow = 0

@@ -214,10 +214,10 @@ func TestList_OrderedAndScoped(t *testing.T) {
 	_, err = s.Create(ctx, sampleCmd("local", "chan-A", "mike", "m"))
 	require.NoError(t, err)
 
-	// different channel — must NOT appear in chan-A list
+	// different channel - must NOT appear in chan-A list
 	_, err = s.Create(ctx, sampleCmd("local", "chan-B", "alpha", "other"))
 	require.NoError(t, err)
-	// different tenant — must NOT appear
+	// different tenant - must NOT appear
 	_, err = s.Create(ctx, sampleCmd("other-tenant", "chan-A", "alpha", "x"))
 	require.NoError(t, err)
 

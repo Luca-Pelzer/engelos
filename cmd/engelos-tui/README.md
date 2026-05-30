@@ -28,7 +28,7 @@ Flags:
 | `-password` | _(empty)_ | Login password (prompted, hidden) |
 | `-insecure` | `false` | Skip TLS certificate verification |
 
-The TUI prompts inside the bubbletea event loop for any missing credentials —
+The TUI prompts inside the bubbletea event loop for any missing credentials -
 nothing is read from raw stdin, so terminal modes stay sane.
 
 ## Keys
@@ -47,7 +47,7 @@ nothing is read from raw stdin, so terminal modes stay sane.
 
 ## Environment
 
-`ENGELOS_TWITCH_CHANNELS` — comma-separated list; the first entry seeds the
+`ENGELOS_TWITCH_CHANNELS` - comma-separated list; the first entry seeds the
 leaderboard channel input. Falls back to `engelswtf` when unset.
 
 ## Architecture

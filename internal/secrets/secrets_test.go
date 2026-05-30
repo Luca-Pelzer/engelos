@@ -102,7 +102,7 @@ func TestRoundTrip(t *testing.T) {
 		{"short", []byte("hi")},
 		{"sentence", []byte("the quick brown fox jumps over the lazy dog")},
 		{"1KB random", large},
-		{"unicode", []byte("héllo 世界 🔐 — αβγ")},
+		{"unicode", []byte("héllo 世界 🔐 - αβγ")},
 		{"binary nul bytes", []byte{0, 0, 0, 1, 2, 3, 0, 0}},
 	}
 
@@ -161,7 +161,7 @@ func TestNonceIsRandom_SamePlaintextDifferentBlobs(t *testing.T) {
 
 	require.Equal(t, len(blob1), len(blob2))
 	assert.False(t, bytes.Equal(blob1, blob2),
-		"two encryptions of the same plaintext produced identical blobs — nonce is not random")
+		"two encryptions of the same plaintext produced identical blobs - nonce is not random")
 
 	assert.False(t, bytes.Equal(blob1[1:1+nonceSize], blob2[1:1+nonceSize]),
 		"nonce bytes are identical across two encryptions")

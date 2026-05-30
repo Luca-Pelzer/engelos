@@ -1,4 +1,4 @@
-// Package rewards persists streamer-defined loyalty rewards — the
+// Package rewards persists streamer-defined loyalty rewards - the
 // "!reward add coffee 500 A hot coffee" feature familiar from channel
 // loyalty systems. Viewers redeem these with loyalty points via
 // !redeem, and !rewards lists what is available.
@@ -13,7 +13,7 @@
 // # Decoupling
 //
 // This package stands alone: it imports no other engelos/internal
-// package. It stores ONLY the reward definitions — deducting loyalty
+// package. It stores ONLY the reward definitions - deducting loyalty
 // points, checking balances and recording redemptions are the concern
 // of the commands layer, which composes this [Store] with the loyalty
 // ledger. main.go wires the store and the !reward/!rewards/!redeem

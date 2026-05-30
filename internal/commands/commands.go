@@ -13,7 +13,7 @@ import (
 
 // Message is the platform-neutral command-invocation context the engine
 // needs. The runtime dispatcher fills it from an adapters.Event before
-// calling [Engine.Handle]. Username is informational only — routing keys
+// calling [Engine.Handle]. Username is informational only - routing keys
 // off Channel/UserID/Text.
 //
 // The IsBroadcaster/IsModerator/IsVIP/IsSubscriber flags carry the
@@ -32,7 +32,7 @@ type Message struct {
 	Text          string
 }
 
-// Reply is what a [Handler] returns. An empty Text means "no reply" — the
+// Reply is what a [Handler] returns. An empty Text means "no reply" - the
 // dispatcher sends nothing. Reply is a struct (not a bare string) so future
 // fields (reply-to, whisper, ...) can be added without a breaking change.
 type Reply struct {
@@ -65,7 +65,7 @@ const (
 // a Subscriber passes subscriber/everyone; RoleEveryone always passes.
 //
 // The implications are an authorisation convenience, not a claim about
-// platform semantics — a Twitch mod is not literally a subscriber, but for
+// platform semantics - a Twitch mod is not literally a subscriber, but for
 // the purpose of "can this user run a sub-only command?" the answer is
 // yes.
 func (m Message) satisfies(min Role) bool {
@@ -142,7 +142,7 @@ type ResolvedCommand struct {
 }
 
 // Resolver looks up a command by name at invocation time. ok=false means
-// "no such dynamic command" — the engine then treats the message as a
+// "no such dynamic command" - the engine then treats the message as a
 // non-command (Handle returns (Reply{}, false)).
 //
 // A statically-registered command always takes precedence over a
@@ -155,7 +155,7 @@ type Resolver interface {
 // [Command]s. Handle is safe for concurrent use; Register and Handle are
 // serialised via an RWMutex so late registration is race-free.
 //
-// Cooldown bookkeeping lives behind a dedicated [sync.Mutex] (cdMu) — kept
+// Cooldown bookkeeping lives behind a dedicated [sync.Mutex] (cdMu) - kept
 // separate from the registration RWMutex so the hot path (a successful
 // invocation) takes one short write-lock on cdMu instead of upgrading the
 // registration RWMutex.
@@ -284,7 +284,7 @@ func (e *Engine) Register(c Command) error {
 //     Reply{} when (a) the handler chose not to respond, (b) the handler
 //     panicked (recovered + logged), (c) the author failed the permission
 //     gate, or (d) a cooldown was active. Cases (c) and (d) are
-//     intentionally silent — telling chat "you lack permission" or "wait
+//     intentionally silent - telling chat "you lack permission" or "wait
 //     5s" invites spam and leaks information.
 //
 // Order: name lookup → permission gate → cooldown gate → handler. The
@@ -326,7 +326,7 @@ func (e *Engine) Handle(ctx context.Context, msg Message) (Reply, bool) {
 // NOT match any static registration. A miss (or a nil/panicking
 // resolver) yields (Reply{}, false) so the dispatcher treats the
 // message as a non-command. A hit goes through the SAME permission and
-// cooldown gates as a static command — the cooldown maps are keyed by
+// cooldown gates as a static command - the cooldown maps are keyed by
 // command name, and because we only get here after the static lookup
 // missed, that name is unambiguous between static and dynamic spaces.
 func (e *Engine) handleDynamic(ctx context.Context, name string, msg Message, args []string) (Reply, bool) {
@@ -432,7 +432,7 @@ func (e *Engine) invoke(ctx context.Context, cmd Command, msg Message, args []st
 }
 
 // Commands returns the registered primary commands, sorted by Name. Aliases
-// are NOT returned as separate entries — each Command's Aliases slice
+// are NOT returned as separate entries - each Command's Aliases slice
 // carries them. The returned slice is a fresh copy and safe to mutate.
 func (e *Engine) Commands() []Command {
 	e.mu.RLock()

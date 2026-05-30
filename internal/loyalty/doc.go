@@ -1,5 +1,5 @@
 // Package loyalty provides a spendable points economy scoped to a
-// (tenant, channel) — each viewer holds a per-channel balance they earn by
+// (tenant, channel) - each viewer holds a per-channel balance they earn by
 // chatting and spend on games, rewards, or gifts to other viewers.
 //
 // A [Store] persists accounts in pure-Go SQLite (modernc.org/sqlite,
