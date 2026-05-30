@@ -148,4 +148,16 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	})
 	require.True(t, handled)
 	require.NotEmpty(t, uptimeReply.Text)
+
+	gameReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!game",
+	})
+	require.True(t, handled)
+	require.NotEmpty(t, gameReply.Text)
+
+	titleReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!title",
+	})
+	require.True(t, handled)
+	require.NotEmpty(t, titleReply.Text)
 }

@@ -494,6 +494,9 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewSetCounterCommand(counterAdminStore))
 	register(commands.NewResetCounterCommand(counterAdminStore))
 	register(commands.NewUptimeCommand(uptimeProvider{adapter: twitchAdapter}))
+	streamProvider := streamStatusProvider{adapter: twitchAdapter}
+	register(commands.NewGameCommand(streamProvider))
+	register(commands.NewTitleCommand(streamProvider))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
@@ -724,6 +727,28 @@ func (p uptimeProvider) Uptime(ctx context.Context, channel string) (time.Time, 
 		return time.Time{}, false, err
 	}
 	return info.StartedAt, info.Live, nil
+}
+
+// streamStatusProvider maps the Twitch adapter's StreamInfo onto the narrow
+// commands.StreamStatusProvider the !game/!title commands need. Like
+// uptimeProvider it is nil-safe so a missing Twitch adapter yields a
+// graceful error reply rather than a nil dereference.
+type streamStatusProvider struct{ adapter *twitch.Adapter }
+
+func (p streamStatusProvider) Status(ctx context.Context, channel string) (commands.StreamStatus, error) {
+	if p.adapter == nil {
+		return commands.StreamStatus{}, errNoTwitchAdapter
+	}
+	info, err := p.adapter.StreamInfo(ctx, channel)
+	if err != nil {
+		return commands.StreamStatus{}, err
+	}
+	return commands.StreamStatus{
+		Live:        info.Live,
+		GameName:    info.GameName,
+		Title:       info.Title,
+		ViewerCount: info.ViewerCount,
+	}, nil
 }
 
 // commandRouterAdapter maps the commands.Engine onto runtime.CommandRouter,

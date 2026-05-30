@@ -829,7 +829,14 @@ func TestSetToken_RaceWithHealthAndDo(t *testing.T) {
 
 func liveStreamsResp(start time.Time) *helix.StreamsResponse {
 	resp := &helix.StreamsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}
-	resp.Data.Streams = []helix.Stream{{UserLogin: "broadcaster", Type: "live", StartedAt: start}}
+	resp.Data.Streams = []helix.Stream{{
+		UserLogin:   "broadcaster",
+		Type:        "live",
+		StartedAt:   start,
+		GameName:    "Elden Ring",
+		Title:       "blind run",
+		ViewerCount: 42,
+	}}
 	return resp
 }
 
@@ -853,6 +860,9 @@ func TestStreamInfo_Live(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.Live)
 	assert.Equal(t, start, info.StartedAt)
+	assert.Equal(t, "Elden Ring", info.GameName)
+	assert.Equal(t, "blind run", info.Title)
+	assert.Equal(t, 42, info.ViewerCount)
 }
 
 func TestStreamInfo_Offline(t *testing.T) {
@@ -865,6 +875,8 @@ func TestStreamInfo_Offline(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, info.Live)
 	assert.True(t, info.StartedAt.IsZero())
+	assert.Empty(t, info.GameName)
+	assert.Empty(t, info.Title)
 }
 
 func TestStreamInfo_CachesWithinTTLAndExpires(t *testing.T) {

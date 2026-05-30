@@ -874,6 +874,88 @@ func NewUptimeCommand(provider UptimeProvider) Command {
 	}
 }
 
+// defaultStreamStatusCooldown throttles the channel-wide read-only !game
+// and !title commands. 5s keeps chat tidy while the underlying provider's
+// own TTL cache absorbs the rest.
+const defaultStreamStatusCooldown = 5 * time.Second
+
+// StreamStatus is a point-in-time view of a channel's stream used by the
+// !game and !title commands.
+type StreamStatus struct {
+	Live        bool
+	GameName    string
+	Title       string
+	ViewerCount int
+}
+
+// StreamStatusProvider reports a channel's current stream metadata. An
+// adapter over the Twitch adapter is wired in main.
+type StreamStatusProvider interface {
+	// Status returns the channel's current stream status. err is non-nil
+	// only on a lookup failure (e.g. the platform API is unavailable).
+	Status(ctx context.Context, channel string) (StreamStatus, error)
+}
+
+// NewGameCommand returns "!game" (MinRole RoleEveryone, ~5s global
+// Cooldown). Replies "<channel> is playing <GameName>" when live (or
+// "<channel> has no category set" when the category is empty), "<channel>
+// is offline" when not, and "couldn't check the game right now" on error.
+// A nil provider yields "that's unavailable".
+func NewGameCommand(provider StreamStatusProvider) Command {
+	return Command{
+		Name:     "game",
+		Help:     "Show the current category the stream is playing.",
+		Cooldown: defaultStreamStatusCooldown,
+		Handler: func(ctx context.Context, msg Message, _ []string) Reply {
+			if provider == nil {
+				return Reply{Text: "that's unavailable"}
+			}
+			channel := strings.TrimPrefix(strings.TrimSpace(msg.Channel), "#")
+			status, err := provider.Status(ctx, channel)
+			if err != nil {
+				return Reply{Text: "couldn't check the game right now"}
+			}
+			if !status.Live {
+				return Reply{Text: fmt.Sprintf("%s is offline", channel)}
+			}
+			if strings.TrimSpace(status.GameName) == "" {
+				return Reply{Text: fmt.Sprintf("%s has no category set", channel)}
+			}
+			return Reply{Text: fmt.Sprintf("%s is playing %s", channel, status.GameName)}
+		},
+	}
+}
+
+// NewTitleCommand returns "!title" (MinRole RoleEveryone, ~5s global
+// Cooldown). Replies "Title: <Title>" when live (or "<channel> has no
+// title set" when the title is empty), "<channel> is offline" when not,
+// and "couldn't check the title right now" on error. A nil provider
+// yields "that's unavailable".
+func NewTitleCommand(provider StreamStatusProvider) Command {
+	return Command{
+		Name:     "title",
+		Help:     "Show the current stream title.",
+		Cooldown: defaultStreamStatusCooldown,
+		Handler: func(ctx context.Context, msg Message, _ []string) Reply {
+			if provider == nil {
+				return Reply{Text: "that's unavailable"}
+			}
+			channel := strings.TrimPrefix(strings.TrimSpace(msg.Channel), "#")
+			status, err := provider.Status(ctx, channel)
+			if err != nil {
+				return Reply{Text: "couldn't check the title right now"}
+			}
+			if !status.Live {
+				return Reply{Text: fmt.Sprintf("%s is offline", channel)}
+			}
+			if strings.TrimSpace(status.Title) == "" {
+				return Reply{Text: fmt.Sprintf("%s has no title set", channel)}
+			}
+			return Reply{Text: fmt.Sprintf("Title: %s", status.Title)}
+		},
+	}
+}
+
 // formatDuration renders a stream's elapsed live time as a compact human
 // string: "3d 4h" once 24h+ (days + hours), "2h 13m" for an hour or more
 // (hours + minutes), "45m" under an hour, and "just went live" under a

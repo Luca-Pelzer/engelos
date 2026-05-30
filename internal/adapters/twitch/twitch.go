@@ -143,8 +143,11 @@ const streamCacheTTL = 60 * time.Second
 // StreamInfo is a point-in-time view of a channel's live status, returned
 // by [Adapter.StreamInfo].
 type StreamInfo struct {
-	Live      bool
-	StartedAt time.Time
+	Live        bool
+	StartedAt   time.Time // zero when offline
+	GameName    string    // current category; empty when offline/unknown
+	Title       string    // stream title; empty when offline/unknown
+	ViewerCount int       // current viewers; 0 when offline
 }
 
 // New constructs a Twitch adapter from cfg. The returned adapter is
@@ -628,7 +631,13 @@ func (a *Adapter) StreamInfo(_ context.Context, login string) (StreamInfo, error
 	if resp != nil {
 		for _, s := range resp.Data.Streams {
 			if s.Type == "live" || !s.StartedAt.IsZero() {
-				info = StreamInfo{Live: true, StartedAt: s.StartedAt}
+				info = StreamInfo{
+					Live:        true,
+					StartedAt:   s.StartedAt,
+					GameName:    s.GameName,
+					Title:       s.Title,
+					ViewerCount: s.ViewerCount,
+				}
 				break
 			}
 		}
