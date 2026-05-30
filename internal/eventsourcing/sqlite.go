@@ -104,11 +104,6 @@ func buildSQLiteDSN(raw string, busyTimeout time.Duration) (string, error) {
 		return "", errors.New("empty dsn")
 	}
 
-	pragmas := map[string]string{
-		"_pragma": "",
-	}
-	_ = pragmas
-
 	base := raw
 	var existingQuery string
 	if i := strings.IndexByte(raw, '?'); i >= 0 {

@@ -195,7 +195,7 @@ func New(cfg Config) *Dispatcher {
 // or all platform Events channels close. Safe to call exactly once.
 func (d *Dispatcher) Run(ctx context.Context) error {
 	if !d.started.CompareAndSwap(false, true) {
-		return errors.New("runtime: dispatcher already started")
+		return ErrAlreadyStarted
 	}
 	defer d.stopOnce.Do(func() {
 		d.stopped.Store(true)
