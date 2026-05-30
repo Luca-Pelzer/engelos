@@ -99,6 +99,7 @@ type helixClient interface {
 	DeleteChatMessage(*helix.DeleteChatMessageParams) (*helix.DeleteChatMessageResponse, error)
 	GetUsers(*helix.UsersParams) (*helix.UsersResponse, error)
 	GetStreams(*helix.StreamsParams) (*helix.StreamsResponse, error)
+	GetChannelFollows(*helix.GetChannelFollowsParams) (*helix.GetChannelFollowersResponse, error)
 	CreateCustomReward(*helix.ChannelCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error)
 	GetCustomRewards(*helix.GetCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error)
 	DeleteCustomReward(*helix.DeleteCustomRewardsParams) (*helix.DeleteCustomRewardsResponse, error)
@@ -798,6 +799,9 @@ func (w *helixWrapper) GetUsers(p *helix.UsersParams) (*helix.UsersResponse, err
 }
 func (w *helixWrapper) GetStreams(p *helix.StreamsParams) (*helix.StreamsResponse, error) {
 	return w.c.GetStreams(p)
+}
+func (w *helixWrapper) GetChannelFollows(p *helix.GetChannelFollowsParams) (*helix.GetChannelFollowersResponse, error) {
+	return w.c.GetChannelFollows(p)
 }
 func (w *helixWrapper) CreateCustomReward(p *helix.ChannelCustomRewardsParams) (*helix.ChannelCustomRewardResponse, error) {
 	return w.c.CreateCustomReward(p)

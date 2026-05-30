@@ -101,6 +101,57 @@ func TestShoutout_ProfileFallbackOnError(t *testing.T) {
 	assert.Contains(t, reply.Text, "twitch.tv/SomeStreamer")
 }
 
+type fakeFollowProvider struct {
+	since time.Time
+	err   error
+}
+
+func (f fakeFollowProvider) FollowAge(_ context.Context, _, _ string) (time.Time, error) {
+	return f.since, f.err
+}
+
+func TestFollowAge_Self(t *testing.T) {
+	since := time.Now().Add(-400 * 24 * time.Hour)
+	cmd := NewFollowAgeCommand(fakeFollowProvider{since: since})
+	reply := cmd.Handler(context.Background(), Message{Channel: "#chan", Username: "bob"}, nil)
+	assert.Contains(t, reply.Text, "you've followed for")
+	assert.Contains(t, reply.Text, "1y")
+}
+
+func TestFollowAge_Other(t *testing.T) {
+	since := time.Now().Add(-100 * 24 * time.Hour)
+	cmd := NewFollowAgeCommand(fakeFollowProvider{since: since})
+	reply := cmd.Handler(context.Background(), Message{Channel: "chan", Username: "bob"}, []string{"@alice"})
+	assert.Contains(t, reply.Text, "alice has followed for")
+}
+
+func TestFollowAge_NotFollowingSelf(t *testing.T) {
+	cmd := NewFollowAgeCommand(fakeFollowProvider{err: ErrNotFollowing})
+	reply := cmd.Handler(context.Background(), Message{Channel: "chan", Username: "bob"}, nil)
+	assert.Contains(t, reply.Text, "don't follow")
+}
+
+func TestFollowAge_NotFollowingOther(t *testing.T) {
+	cmd := NewFollowAgeCommand(fakeFollowProvider{err: ErrNotFollowing})
+	reply := cmd.Handler(context.Background(), Message{Channel: "chan", Username: "bob"}, []string{"alice"})
+	assert.Contains(t, reply.Text, "alice doesn't follow")
+}
+
+func TestFollowAge_Error(t *testing.T) {
+	cmd := NewFollowAgeCommand(fakeFollowProvider{err: errors.New("boom")})
+	reply := cmd.Handler(context.Background(), Message{Channel: "chan", Username: "bob"}, nil)
+	assert.Contains(t, strings.ToLower(reply.Text), "couldn't look that up")
+}
+
+func TestFollowAge_NilProvider(t *testing.T) {
+	reply := NewFollowAgeCommand(nil).Handler(context.Background(), Message{Channel: "chan", Username: "bob"}, nil)
+	assert.Contains(t, reply.Text, "unavailable")
+}
+
+func TestFollowAge_MinRoleEveryone(t *testing.T) {
+	assert.Equal(t, RoleEveryone, NewFollowAgeCommand(nil).MinRole)
+}
+
 func TestFormatAge(t *testing.T) {
 	cases := map[time.Duration]string{
 		12 * time.Hour:              "less than a day",

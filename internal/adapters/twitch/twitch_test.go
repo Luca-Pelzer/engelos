@@ -130,6 +130,10 @@ type fakeHelix struct {
 	getStreamsResp  *helix.StreamsResponse
 	getStreamsErr   error
 
+	getFollowsCalls []*helix.GetChannelFollowsParams
+	getFollowsResp  *helix.GetChannelFollowersResponse
+	getFollowsErr   error
+
 	createRewardResp *helix.ChannelCustomRewardResponse
 	createRewardErr  error
 	lastCreateParams *helix.ChannelCustomRewardsParams
@@ -354,6 +358,19 @@ func (h *fakeHelix) getStreamsCallCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.getStreamsCalls)
+}
+
+func (h *fakeHelix) GetChannelFollows(p *helix.GetChannelFollowsParams) (*helix.GetChannelFollowersResponse, error) {
+	h.mu.Lock()
+	h.getFollowsCalls = append(h.getFollowsCalls, p)
+	h.mu.Unlock()
+	if h.getFollowsErr != nil {
+		return nil, h.getFollowsErr
+	}
+	if h.getFollowsResp != nil {
+		return h.getFollowsResp, nil
+	}
+	return &helix.GetChannelFollowersResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
 }
 
 func newTestAdapter(t *testing.T, anon bool) (*Adapter, *fakeIRCClient, *fakeHelix) {

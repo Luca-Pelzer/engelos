@@ -497,6 +497,7 @@ var defaultTwitchScopes = []string{
 	"moderator:manage:chat_messages", // delete-message action
 	"channel:read:redemptions",       // observe channel-point redemptions
 	"channel:manage:redemptions",     // create rewards + fulfill/refund redemptions
+	"moderator:read:followers",       // read follower dates for !followage
 }
 
 // twitchOAuthScopes returns the scopes to request, allowing an operator to
@@ -993,6 +994,7 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	profileProvider := userProfileProvider{adapter: twitchAdapter}
 	register(commands.NewAccountAgeCommand(profileProvider))
 	register(commands.NewShoutoutCommand(profileProvider, streamProvider))
+	register(commands.NewFollowAgeCommand(profileProvider))
 
 	register(commands.NewPointsCommand(loyaltyProvider))
 	register(commands.NewGiveCommand(loyaltyProvider))
@@ -1435,6 +1437,19 @@ func (p userProfileProvider) UserProfile(ctx context.Context, login string) (com
 		DisplayName: prof.DisplayName,
 		CreatedAt:   prof.CreatedAt,
 	}, nil
+}
+
+// FollowAge implements commands.FollowAgeProvider, translating the twitch
+// adapter's not-following sentinel into the command-facing one.
+func (p userProfileProvider) FollowAge(ctx context.Context, channel, viewer string) (time.Time, error) {
+	if p.adapter == nil {
+		return time.Time{}, errNoTwitchAdapter
+	}
+	since, err := p.adapter.FollowAge(ctx, channel, viewer)
+	if errors.Is(err, twitch.ErrNotFollowing) {
+		return time.Time{}, commands.ErrNotFollowing
+	}
+	return since, err
 }
 
 type uptimeProvider struct{ adapter *twitch.Adapter }

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -23,6 +24,61 @@ type UserProfile struct {
 // over the Twitch adapter is wired in main.
 type UserProfileProvider interface {
 	UserProfile(ctx context.Context, login string) (UserProfile, error)
+}
+
+// ErrNotFollowing is returned by a FollowAgeProvider when the viewer does not
+// follow the channel, so !followage can report that distinctly from a failure.
+var ErrNotFollowing = errors.New("not following")
+
+// FollowAgeProvider reports how long a viewer has followed a channel. An
+// adapter over the Twitch adapter is wired in main; it returns ErrNotFollowing
+// when the viewer doesn't follow.
+type FollowAgeProvider interface {
+	FollowAge(ctx context.Context, channel, viewer string) (time.Time, error)
+}
+
+// NewFollowAgeCommand returns "!followage" (MinRole RoleEveryone, ~5s cooldown).
+// With no argument it reports how long the caller has followed; with
+// "!followage <name>" it reports that viewer's follow age. Replies that the
+// user isn't following when applicable, and "couldn't look that up" on error.
+func NewFollowAgeCommand(provider FollowAgeProvider) Command {
+	return Command{
+		Name:     "followage",
+		Help:     "Show how long someone has followed the channel.",
+		Cooldown: defaultUserInfoCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if provider == nil {
+				return Reply{Text: "that's unavailable"}
+			}
+			channel := strings.TrimPrefix(strings.TrimSpace(msg.Channel), "#")
+			if channel == "" {
+				return Reply{Text: "couldn't tell which channel to check"}
+			}
+			viewer := firstTarget(args)
+			self := viewer == ""
+			if self {
+				viewer = strings.TrimSpace(msg.Username)
+			}
+			if viewer == "" {
+				return Reply{Text: "couldn't tell whose follow age to check"}
+			}
+			since, err := provider.FollowAge(ctx, channel, viewer)
+			if errors.Is(err, ErrNotFollowing) {
+				if self {
+					return Reply{Text: fmt.Sprintf("%syou don't follow this channel (yet! 💜)", mentionPrefix(msg))}
+				}
+				return Reply{Text: fmt.Sprintf("%s%s doesn't follow this channel", mentionPrefix(msg), viewer)}
+			}
+			if err != nil {
+				return Reply{Text: "couldn't look that up right now"}
+			}
+			age := formatAge(time.Since(since))
+			if self {
+				return Reply{Text: fmt.Sprintf("%syou've followed for %s (since %s)", mentionPrefix(msg), age, since.Format("Jan 2006"))}
+			}
+			return Reply{Text: fmt.Sprintf("%s%s has followed for %s (since %s)", mentionPrefix(msg), viewer, age, since.Format("Jan 2006"))}
+		},
+	}
 }
 
 // NewAccountAgeCommand returns "!accountage" (MinRole RoleEveryone, ~5s
