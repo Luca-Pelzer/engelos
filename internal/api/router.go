@@ -21,6 +21,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
+	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/wrapped"
 )
 
@@ -119,6 +120,11 @@ type Deps struct {
 	// /api/v1/commands/*. Nil makes those endpoints return 501 (feature off).
 	CommandStore customcommands.Store
 
+	// TimerStore, when non-nil, lets the migration import create timers from a
+	// Nightbot/StreamElements export under /api/v1/migrate. Nil imports
+	// commands only.
+	TimerStore timers.Store
+
 	// CounterStore, when non-nil, exposes the named-counter CRUD under
 	// /api/v1/counters/*. Nil makes those endpoints return 501 (feature off).
 	CounterStore counters.Store
@@ -173,6 +179,7 @@ func NewRouter(deps Deps) chi.Router {
 	statsH := handlers.NewStats(deps.Version, deps.StatsProvider, logger)
 	redemptionsH := handlers.NewRedemptions(deps.RedemptionStore, deps.TenantID, logger)
 	commandsH := handlers.NewCommands(deps.CommandStore, deps.TenantID, logger)
+	migrateH := handlers.NewMigrate(deps.CommandStore, deps.TimerStore, deps.TenantID, logger)
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
@@ -261,6 +268,13 @@ func NewRouter(deps Deps) chi.Router {
 			r.Post("/", commandsH.Create)
 			r.Put("/{name}", commandsH.Update)
 			r.Delete("/{name}", commandsH.Delete)
+		})
+
+		r.Route("/migrate", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Post("/", migrateH.Import)
 		})
 
 		r.Route("/counters", func(r chi.Router) {

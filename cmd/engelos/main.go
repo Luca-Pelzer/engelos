@@ -35,6 +35,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/channelpoints"
 	"github.com/Luca-Pelzer/engelos/internal/cohost"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
+	"github.com/Luca-Pelzer/engelos/internal/contextmod"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
@@ -452,6 +453,12 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	autoClip := newAutoClipper(twitchAdapter, claudeClient, platformSender{platforms: platforms},
 		splitCSV(os.Getenv("ENGELOS_CLIPPER_CHANNELS")), logger)
 
+	// Context-AI moderation is opt-in: it only runs when the streamer supplies
+	// plain-language rules via ENGELOS_CONTEXTMOD_RULES. It escalates only
+	// messages the rule engine passed, and fails open to the existing behaviour.
+	contextRules := strings.TrimSpace(os.Getenv("ENGELOS_CONTEXTMOD_RULES"))
+	contextEscalator := contextmod.NewEscalator(claudeClient, contextmod.DefaultOptions())
+
 	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, translateCfg, cohostCfg, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
@@ -488,7 +495,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Streak:           streakTickAdapter{sys: streakSystem},
 		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
 		Commands:         cmdRouter,
-		Moderator:        moderationAdapter{svc: moderationSvc},
+		Moderator:        moderationAdapter{svc: moderationSvc, escalator: contextEscalator, rules: contextRules},
 		Economy:          economy,
 		Activity:         timerScheduler,
 		Wrapped:          newWrappedRecorder(wrappedStore, defaultTenantID, logger),
@@ -601,6 +608,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		OAuthSpotify:     oauthSpotify,
 		RedemptionStore:  redemptionStore,
 		CommandStore:     customStore,
+		TimerStore:       timerStore,
 		CounterStore:     counterStore,
 		Moderation:       moderationSvc,
 		FeatureStore:     featureFlagStore,
@@ -1237,7 +1245,11 @@ func (a redeemSenderAdapter) Send(ctx context.Context, channel, message string) 
 // keep the runtime decoupled) to the moderation.Service. A nil svc yields a
 // no-op that always passes, so AutoMod can be absent without a nil-check at the
 // dispatcher call site.
-type moderationAdapter struct{ svc *moderation.Service }
+type moderationAdapter struct {
+	svc       *moderation.Service
+	escalator *contextmod.Escalator
+	rules     string
+}
 
 func (a moderationAdapter) Evaluate(ctx context.Context, channel, messageID, userID, username, text string,
 	emoteCount int, firstMsg, isMod, isVIP, isSub, isBroadcaster bool) runtime.ModDecision {
@@ -1254,11 +1266,29 @@ func (a moderationAdapter) Evaluate(ctx context.Context, channel, messageID, use
 		IsSubscriber:  isSub,
 		IsBroadcaster: isBroadcaster,
 	})
-	return runtime.ModDecision{
+	out := runtime.ModDecision{
 		Action:   runtime.ModAction(dec.Kind),
 		Duration: dec.Duration,
 		Reason:   dec.Reason,
 		DryRun:   dec.DryRun,
+	}
+	// AI escalation is strictly additive: only consult it for messages the
+	// rule engine let pass, and never for privileged users. A non-actionable
+	// verdict (unknown/allow) leaves the original pass untouched.
+	if out.Action != runtime.ModActionNone || a.escalator == nil || a.rules == "" {
+		return out
+	}
+	if isMod || isBroadcaster {
+		return out
+	}
+	d := a.escalator.Classify(ctx, a.rules, username, text)
+	switch d.Verdict {
+	case contextmod.VerdictDelete:
+		return runtime.ModDecision{Action: runtime.ModActionDelete, Reason: "AI: " + d.Reason}
+	case contextmod.VerdictTimeout:
+		return runtime.ModDecision{Action: runtime.ModActionTimeout, Duration: a.escalator.TimeoutDuration(), Reason: "AI: " + d.Reason}
+	default:
+		return out
 	}
 }
 
