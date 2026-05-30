@@ -12,6 +12,7 @@ import (
 	apimw "github.com/Luca-Pelzer/engelos/internal/api/middleware"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
@@ -102,6 +103,10 @@ type Deps struct {
 	// binding CRUD under /api/v1/redemptions/*. Nil makes those endpoints
 	// return 501 (feature off).
 	RedemptionStore redemptions.Store
+
+	// CommandStore, when non-nil, exposes the custom-command CRUD under
+	// /api/v1/commands/*. Nil makes those endpoints return 501 (feature off).
+	CommandStore customcommands.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -124,6 +129,7 @@ func NewRouter(deps Deps) chi.Router {
 	streakH := handlers.NewStreak(deps.Streak, deps.TenantID, logger)
 	statsH := handlers.NewStats(deps.Version, deps.StatsProvider, logger)
 	redemptionsH := handlers.NewRedemptions(deps.RedemptionStore, deps.TenantID, logger)
+	commandsH := handlers.NewCommands(deps.CommandStore, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -192,6 +198,16 @@ func NewRouter(deps Deps) chi.Router {
 			r.Put("/{rewardID}", redemptionsH.Update)
 			r.Post("/{rewardID}/enabled", redemptionsH.SetEnabled)
 			r.Delete("/{rewardID}", redemptionsH.Delete)
+		})
+
+		r.Route("/commands", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", commandsH.List)
+			r.Post("/", commandsH.Create)
+			r.Put("/{name}", commandsH.Update)
+			r.Delete("/{name}", commandsH.Delete)
 		})
 	})
 

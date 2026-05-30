@@ -368,6 +368,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		StatsProvider:   dispatcherStatsAdapter{d: dispatcher},
 		OAuthTwitch:     oauthTwitch,
 		RedemptionStore: redemptionStore,
+		CommandStore:    customStore,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")
