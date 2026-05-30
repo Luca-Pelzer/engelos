@@ -12,6 +12,7 @@ import (
 	apimw "github.com/Luca-Pelzer/engelos/internal/api/middleware"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
@@ -107,6 +108,10 @@ type Deps struct {
 	// CommandStore, when non-nil, exposes the custom-command CRUD under
 	// /api/v1/commands/*. Nil makes those endpoints return 501 (feature off).
 	CommandStore customcommands.Store
+
+	// CounterStore, when non-nil, exposes the named-counter CRUD under
+	// /api/v1/counters/*. Nil makes those endpoints return 501 (feature off).
+	CounterStore counters.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -130,6 +135,7 @@ func NewRouter(deps Deps) chi.Router {
 	statsH := handlers.NewStats(deps.Version, deps.StatsProvider, logger)
 	redemptionsH := handlers.NewRedemptions(deps.RedemptionStore, deps.TenantID, logger)
 	commandsH := handlers.NewCommands(deps.CommandStore, deps.TenantID, logger)
+	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -208,6 +214,16 @@ func NewRouter(deps Deps) chi.Router {
 			r.Post("/", commandsH.Create)
 			r.Put("/{name}", commandsH.Update)
 			r.Delete("/{name}", commandsH.Delete)
+		})
+
+		r.Route("/counters", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", countersH.List)
+			r.Put("/{name}", countersH.Set)
+			r.Post("/{name}/add", countersH.Add)
+			r.Delete("/{name}", countersH.Delete)
 		})
 	})
 
