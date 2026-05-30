@@ -33,6 +33,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/automod"
 	"github.com/Luca-Pelzer/engelos/internal/automodstate"
 	"github.com/Luca-Pelzer/engelos/internal/channelpoints"
+	"github.com/Luca-Pelzer/engelos/internal/cohost"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
@@ -319,6 +320,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("translate store opened", "dsn", translateDSN)
 
+	cohostDSN := filepath.Join(dataDir, "cohost.db")
+	cohostStore, err := cohost.OpenSQLiteStore(ctx, cohostDSN)
+	if err != nil {
+		return fmt.Errorf("open cohost store %s: %w", cohostDSN, err)
+	}
+	defer func() {
+		if cerr := cohostStore.Close(); cerr != nil {
+			logger.Warn("cohost store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("cohost store opened", "dsn", cohostDSN)
+
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
 		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
@@ -431,10 +444,13 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	momentCtrl := newMomentController(momentsStore, runtime.NewWSBroadcaster(hub, logger), defaultTenantID, logger)
 
+	claudeClient := newClaudeClient(logger)
 	translateCfg := translateConfigAdapter{store: translateStore, tenantID: defaultTenantID, logger: logger}
-	msgTranslator := newMessageTranslator(translateStore, defaultTenantID, logger)
+	msgTranslator := newMessageTranslator(translateStore, claudeClient, defaultTenantID, logger)
+	cohostCfg := cohostConfigAdapter{store: cohostStore, tenantID: defaultTenantID, logger: logger}
+	coHost := newCoHostResponder(cohostStore, claudeClient, defaultTenantID, logger)
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, translateCfg, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, translateCfg, cohostCfg, logger)
 
 	// Channel-Points trigger engine (#13). Gated: it only starts when the
 	// Twitch adapter is authenticated (Helix available) AND the broadcaster
@@ -475,6 +491,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Activity:         timerScheduler,
 		Wrapped:          newWrappedRecorder(wrappedStore, defaultTenantID, logger),
 		Translator:       msgTranslator,
+		CoHost:           coHost,
 		Logger:           logger,
 	})
 	go func() {
@@ -1257,7 +1274,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, songRequester commands.SongRequester, momentCtrl commands.MomentController, translateConfig commands.TranslateConfigStore, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, loyaltyProvider commands.LoyaltyProvider, heistSender commands.HeistSender, rewardCatalog commands.RewardCatalog, featureToggle commands.FeatureToggleStore, predictions commands.PredictionController, songRequester commands.SongRequester, momentCtrl commands.MomentController, translateConfig commands.TranslateConfigStore, cohostConfig commands.CoHostConfigStore, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -1309,6 +1326,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 
 	if translateConfig != nil {
 		register(commands.NewTranslateToggleCommand(translateConfig))
+	}
+
+	if cohostConfig != nil {
+		register(commands.NewCoHostToggleCommand(cohostConfig))
 	}
 
 	if predictions != nil {

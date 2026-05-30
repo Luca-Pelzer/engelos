@@ -89,7 +89,18 @@ func (m messageTranslator) Maybe(ctx context.Context, channel, userID, text stri
 // ENGELOS_TRANSLATE_BASE_URL; ENGELOS_TRANSLATE_API_KEY enables a
 // bring-your-own-key endpoint instead, and ENGELOS_TRANSLATE_MODEL overrides
 // the model id.
-func newMessageTranslator(store translate.Store, tenantID string, logger *slog.Logger) messageTranslator {
+func newMessageTranslator(store translate.Store, backend *claude.Client, tenantID string, logger *slog.Logger) messageTranslator {
+	tr := translate.New(backend, translate.DefaultOptions())
+	return messageTranslator{store: store, tr: tr, tenantID: tenantID, logger: logger}
+}
+
+// newClaudeClient builds the shared Claude client used by every AI feature
+// (translation, co-host, context moderation). It targets the local Anthropic
+// OAuth proxy by default (the shared subscription, no per-token cost) and can
+// be repointed with ENGELOS_TRANSLATE_BASE_URL; ENGELOS_TRANSLATE_API_KEY
+// enables a bring-your-own-key endpoint, and ENGELOS_TRANSLATE_MODEL overrides
+// the model id.
+func newClaudeClient(logger *slog.Logger) *claude.Client {
 	opts := []claude.Option{claude.WithLogger(logger)}
 	if base := strings.TrimSpace(os.Getenv("ENGELOS_TRANSLATE_BASE_URL")); base != "" {
 		opts = append(opts, claude.WithBaseURL(base))
@@ -100,9 +111,7 @@ func newMessageTranslator(store translate.Store, tenantID string, logger *slog.L
 	if model := strings.TrimSpace(os.Getenv("ENGELOS_TRANSLATE_MODEL")); model != "" {
 		opts = append(opts, claude.WithModel(model))
 	}
-	backend := claude.New(opts...)
-	tr := translate.New(backend, translate.DefaultOptions())
-	return messageTranslator{store: store, tr: tr, tenantID: tenantID, logger: logger}
+	return claude.New(opts...)
 }
 
 // compile-time interface checks.

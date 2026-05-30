@@ -185,13 +185,31 @@ func (c *Client) Translate(ctx context.Context, text, targetLang string) (string
 	if strings.TrimSpace(targetLang) == "" {
 		targetLang = "en"
 	}
+	return c.complete(ctx, buildSystemPrompt(targetLang), text, 0)
+}
 
+// Complete is a general single-turn completion: it sends systemPrompt plus a
+// single user message and returns the model's text reply. It is used by
+// features other than translation (co-host, context moderation) that share the
+// same proxy and model. An empty userText returns "" with no request made.
+//
+// A 401 maps to [ErrUnauthorized]; any other non-2xx maps to [ErrAPI].
+func (c *Client) Complete(ctx context.Context, systemPrompt, userText string) (string, error) {
+	if strings.TrimSpace(userText) == "" {
+		return "", nil
+	}
+	return c.complete(ctx, systemPrompt, userText, 0)
+}
+
+// complete posts a single-turn /v1/messages request and returns the joined
+// text content. temperature is passed through (0 for deterministic output).
+func (c *Client) complete(ctx context.Context, systemPrompt, userText string, temperature float64) (string, error) {
 	reqBody := wireRequest{
 		Model:       c.model,
 		MaxTokens:   maxOutputTokens,
-		Temperature: 0,
-		System:      buildSystemPrompt(targetLang),
-		Messages:    []wireMessage{{Role: "user", Content: text}},
+		Temperature: temperature,
+		System:      systemPrompt,
+		Messages:    []wireMessage{{Role: "user", Content: userText}},
 	}
 	b, err := json.Marshal(reqBody)
 	if err != nil {

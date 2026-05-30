@@ -98,6 +98,18 @@ type MessageTranslator interface {
 	Maybe(ctx context.Context, channel, userID, text string) (reply string, ok bool)
 }
 
+// CoHost is the narrow contract the dispatcher uses to optionally answer chat
+// messages that address the bot. A thin adapter over the internal/cohost
+// responder satisfies it (wired in main), so the runtime stays free of any
+// cohost import.
+//
+// Maybe reports whether the channel has the co-host enabled and the message
+// addressed it, returning the reply to post back. It is best-effort: an empty
+// reply means "post nothing", and it must never block message processing.
+type CoHost interface {
+	Maybe(ctx context.Context, channel, userID, username, text string) (reply string, ok bool)
+}
+
 // Economy is the narrow contract the dispatcher uses to award loyalty points
 // for chat activity. The adapter wired in main applies a per-viewer earn
 // cooldown (anti-farming) so idle or bot accounts cannot accumulate points by
@@ -242,6 +254,11 @@ type Config struct {
 	// posts the translation back to chat. Best-effort: it runs after command
 	// routing and a failure never blocks message processing.
 	Translator MessageTranslator
+
+	// CoHost, when non-nil, optionally answers chat messages that address the
+	// bot and posts the reply to chat. Best-effort: it runs after command
+	// routing and a failure never blocks message processing.
+	CoHost CoHost
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -442,6 +459,8 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 
 	d.translate(ctx, p, ev)
 
+	d.cohost(ctx, p, ev)
+
 	if d.cfg.Pity != nil && d.cfg.PointsPerMessage > 0 {
 		if _, err := d.cfg.Pity.GrantPoints(ctx, d.cfg.TenantID,
 			ev.Channel, ev.Message.UserID, ev.Message.Username,
@@ -622,6 +641,24 @@ func (d *Dispatcher) translate(ctx context.Context, p adapters.Platform, ev adap
 		SendMessage: &adapters.SendMessageAction{Text: reply},
 	}); err != nil {
 		d.logger.Warn("translation send failed",
+			"platform", ev.Platform, "channel", ev.Channel, "err", err)
+	}
+}
+
+func (d *Dispatcher) cohost(ctx context.Context, p adapters.Platform, ev adapters.Event) {
+	if d.cfg.CoHost == nil || p == nil {
+		return
+	}
+	reply, ok := d.cfg.CoHost.Maybe(ctx, ev.Channel, ev.Message.UserID, ev.Message.Username, ev.Message.Content)
+	if !ok || reply == "" {
+		return
+	}
+	if err := p.Do(ctx, adapters.Action{
+		Type:        adapters.ActionSendMessage,
+		Channel:     ev.Channel,
+		SendMessage: &adapters.SendMessageAction{Text: reply},
+	}); err != nil {
+		d.logger.Warn("cohost send failed",
 			"platform", ev.Platform, "channel", ev.Channel, "err", err)
 	}
 }
