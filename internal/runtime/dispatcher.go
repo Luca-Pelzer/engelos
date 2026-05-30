@@ -72,6 +72,18 @@ type Broadcaster interface {
 	Broadcast(eventType string, payload any)
 }
 
+// WrappedRecorder is the narrow contract the dispatcher uses to accumulate
+// per-viewer "Stream Wrapped" statistics (message/sub/raid counters). A thin
+// adapter over internal/wrapped satisfies it (wired in main), so the runtime
+// stays free of any wrapped import. The adapter owns the period bucketing
+// (all-time plus current month). Every method must be safe for concurrent use
+// and is best-effort: a recording error must never block message processing.
+type WrappedRecorder interface {
+	RecordMessage(ctx context.Context, channel, viewerID, username string)
+	RecordSub(ctx context.Context, channel, viewerID, username string, giftCount int)
+	RecordRaid(ctx context.Context, channel, fromUsername string)
+}
+
 // Economy is the narrow contract the dispatcher uses to award loyalty points
 // for chat activity. The adapter wired in main applies a per-viewer earn
 // cooldown (anti-farming) so idle or bot accounts cannot accumulate points by
@@ -206,6 +218,11 @@ type Config struct {
 	// Economy, when non-nil, is told about every chat message so it can award
 	// loyalty points (the adapter rate-limits earning per viewer).
 	Economy Economy
+
+	// Wrapped, when non-nil, accumulates per-viewer Stream-Wrapped statistics
+	// for every message/sub/raid the dispatcher sees. Best-effort: recording
+	// is fire-and-forget and never blocks message processing.
+	Wrapped WrappedRecorder
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -368,10 +385,17 @@ func (d *Dispatcher) handle(ctx context.Context, p adapters.Platform, ev adapter
 		d.stats.mu.Lock()
 		d.stats.subs++
 		d.stats.mu.Unlock()
+		if d.cfg.Wrapped != nil && ev.Subscription != nil && ev.Subscription.UserID != "" {
+			d.cfg.Wrapped.RecordSub(ctx, ev.Channel,
+				ev.Subscription.UserID, ev.Subscription.Username, 0)
+		}
 	case adapters.EventChannelRaided:
 		d.stats.mu.Lock()
 		d.stats.raids++
 		d.stats.mu.Unlock()
+		if d.cfg.Wrapped != nil && ev.Raid != nil && ev.Raid.FromUsername != "" {
+			d.cfg.Wrapped.RecordRaid(ctx, ev.Channel, ev.Raid.FromUsername)
+		}
 	}
 }
 
@@ -416,6 +440,11 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 	if d.cfg.Economy != nil {
 		d.cfg.Economy.Award(ctx, d.cfg.TenantID,
 			ev.Channel, ev.Message.UserID, ev.Message.Username)
+	}
+
+	if d.cfg.Wrapped != nil {
+		d.cfg.Wrapped.RecordMessage(ctx, ev.Channel,
+			ev.Message.UserID, ev.Message.Username)
 	}
 
 	if d.cfg.Streak != nil {

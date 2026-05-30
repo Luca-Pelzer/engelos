@@ -21,6 +21,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
+	"github.com/Luca-Pelzer/engelos/internal/wrapped"
 )
 
 // Login rate-limit budget: ~1 attempt/sec sustained per client IP with a small
@@ -140,6 +141,15 @@ type Deps struct {
 	// to the player overlay at /api/v1/songqueue/next (intentionally NOT
 	// session-protected; an OBS browser source cannot log in). Nil returns 501.
 	SongQueueStore queue.Store
+
+	// WrappedStore, when non-nil, serves Stream-Wrapped recap cards at
+	// /api/v1/wrapped (public: cards are meant to be shared/screenshotted).
+	// Nil returns 501.
+	WrappedStore wrapped.Store
+
+	// WrappedRanker, when non-nil, supplies the loyalty/streak extras on a
+	// viewer Wrapped card. Optional; nil omits those fields.
+	WrappedRanker handlers.WrappedRanker
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -168,6 +178,7 @@ func NewRouter(deps Deps) chi.Router {
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
 	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
+	wrappedH := handlers.NewWrapped(deps.WrappedStore, deps.WrappedRanker, deps.TenantID, logger)
 
 	r := chi.NewRouter()
 
@@ -290,6 +301,10 @@ func NewRouter(deps Deps) chi.Router {
 		// /songqueue is intentionally NOT session-protected: the OBS browser
 		// source player has no login and only advances the public song queue.
 		r.Get("/songqueue/next", songQueueH.Next)
+
+		// /wrapped is public: recap cards are meant to be shared and rendered
+		// in an unauthenticated overlay/browser source.
+		r.Get("/wrapped", wrappedH.Get)
 	})
 
 	if deps.Overlay != nil {

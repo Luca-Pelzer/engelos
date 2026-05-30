@@ -18,6 +18,7 @@ var pages = map[string]string{
 	"leaderboard": "assets/leaderboard.html",
 	"now-playing": "assets/now-playing.html",
 	"song-player": "assets/song-player.html",
+	"wrapped":     "assets/wrapped.html",
 }
 
 // Handler serves OBS browser-source overlay pages from an embedded asset
@@ -87,6 +88,7 @@ const notFoundHTML = `<!doctype html>
 <li><a href="/overlay/leaderboard">/overlay/leaderboard</a></li>
 <li><a href="/overlay/now-playing">/overlay/now-playing</a></li>
 <li><a href="/overlay/song-player">/overlay/song-player</a></li>
+<li><a href="/overlay/wrapped">/overlay/wrapped</a></li>
 </ul>
 </body></html>`
 

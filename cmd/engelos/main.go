@@ -57,6 +57,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/youtube"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/web"
+	"github.com/Luca-Pelzer/engelos/internal/wrapped"
 	"github.com/coder/websocket"
 	"golang.org/x/oauth2"
 	spotifyoauth "golang.org/x/oauth2/spotify"
@@ -280,6 +281,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("song queue store opened", "dsn", songQueueDSN)
 
+	wrappedDSN := filepath.Join(dataDir, "wrapped.db")
+	wrappedStore, err := wrapped.OpenSQLiteStore(ctx, wrappedDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open wrapped store %s: %w", wrappedDSN, err)
+	}
+	defer func() {
+		if cerr := wrappedStore.Close(); cerr != nil {
+			logger.Warn("wrapped store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("wrapped store opened", "dsn", wrappedDSN)
+
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
 		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
@@ -429,6 +442,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Moderator:        moderationAdapter{svc: moderationSvc},
 		Economy:          economy,
 		Activity:         timerScheduler,
+		Wrapped:          newWrappedRecorder(wrappedStore, defaultTenantID, logger),
 		Logger:           logger,
 	})
 	go func() {
@@ -540,6 +554,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		FeatureStore:     featureFlagStore,
 		SongRequestStore: songRequestStore,
 		SongQueueStore:   songQueueStore,
+		WrappedStore:     wrappedStore,
+		WrappedRanker:    wrappedRankerAdapter{loyalty: loyaltyStore, streak: streakSystem, tenantID: defaultTenantID},
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")
