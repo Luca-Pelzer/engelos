@@ -24,10 +24,12 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/adapters"
 	"github.com/Luca-Pelzer/engelos/internal/adapters/discord"
 	"github.com/Luca-Pelzer/engelos/internal/adapters/twitch"
+	"github.com/Luca-Pelzer/engelos/internal/adapters/twitch/eventsub"
 	"github.com/Luca-Pelzer/engelos/internal/api"
 	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/channelpoints"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
@@ -38,6 +40,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
 	"github.com/Luca-Pelzer/engelos/internal/overlay"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
+	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
@@ -193,6 +196,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("liveops store opened", "dsn", liveopsDSN)
 
+	redemptionsDSN := filepath.Join(dataDir, "redemptions.db")
+	redemptionStore, err := redemptions.OpenSQLiteStore(ctx, redemptionsDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open redemptions store %s: %w", redemptionsDSN, err)
+	}
+	defer func() {
+		if cerr := redemptionStore.Close(); cerr != nil {
+			logger.Warn("redemptions store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("redemptions store opened", "dsn", redemptionsDSN)
+
 	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
 	if err != nil {
 		return fmt.Errorf("init pity system: %w", err)
@@ -238,6 +253,16 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	defer cleanupPlatforms()
 
 	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, logger)
+
+	// Channel-Points trigger engine (#13). Gated: it only starts when the
+	// Twitch adapter is authenticated (Helix available) AND the broadcaster
+	// is an affiliate/partner — custom rewards 403 otherwise. In every other
+	// case it logs the reason and stays a no-op, so anonymous/non-affiliate
+	// deployments boot cleanly with the rest of the bot unaffected.
+	startChannelPoints(ctx, logger, twitchAdapter, redemptionStore,
+		platformSender{platforms: platforms},
+		channelPointsCounters{admin: counterAdmin{tenantID: defaultTenantID, store: counterStore}},
+		defaultTenantID, splitCSV(os.Getenv("ENGELOS_TWITCH_CHANNELS")))
 
 	timerScheduler, err := timers.New(timers.Config{
 		Store:    timerStore,
@@ -723,6 +748,103 @@ func (a counterAdmin) Set(ctx context.Context, channel, name string, value int64
 		return 0, err
 	}
 	return c.Value, nil
+}
+
+// channelPointsCounters adapts counterAdmin onto channelpoints.CounterAdmin:
+// a Channel-Points "counter_increment" action bumps by one and
+// "counter_reset" sets the counter back to zero, reusing the same counter
+// store the chat !counter commands write to.
+type channelPointsCounters struct{ admin counterAdmin }
+
+func (c channelPointsCounters) Increment(ctx context.Context, channel, name string) (int64, error) {
+	return c.admin.Add(ctx, channel, name, 1)
+}
+
+func (c channelPointsCounters) Reset(ctx context.Context, channel, name string) (int64, error) {
+	return c.admin.Set(ctx, channel, name, 0)
+}
+
+// startChannelPoints wires the Channel-Points trigger engine (#13) and starts
+// its EventSub WebSocket listener in the background. It is gated: custom
+// rewards require an authenticated Helix client AND an affiliate/partner
+// broadcaster, so anything short of that logs the reason and returns without
+// starting the listener (the redemption store stays open for later dashboard
+// configuration regardless). The listener's OnSession callback re-subscribes
+// every channel on each (re)connect, since a dropped EventSub socket loses
+// its subscriptions.
+func startChannelPoints(
+	ctx context.Context,
+	logger *slog.Logger,
+	tw *twitch.Adapter,
+	store redemptions.Store,
+	chat channelpoints.ChatSender,
+	counters channelpoints.CounterAdmin,
+	tenantID string,
+	channels []string,
+) {
+	if tw == nil {
+		logger.Info("channel points disabled", "reason", "twitch adapter not started")
+		return
+	}
+	if len(channels) == 0 {
+		logger.Info("channel points disabled", "reason", "no twitch channels configured")
+		return
+	}
+
+	// The affiliate gate is checked against the broadcaster (first joined
+	// channel). A non-affiliate channel cannot own custom rewards, so the
+	// feature would only 403 — better to stay off and say why.
+	broadcaster := channels[0]
+	btype, err := tw.BroadcasterType(ctx, broadcaster)
+	if err != nil {
+		if errors.Is(err, twitch.ErrHelixUnavailable) {
+			logger.Info("channel points disabled",
+				"reason", "anonymous mode: needs Login-with-Twitch + channel:manage:redemptions scope")
+		} else {
+			logger.Warn("channel points disabled",
+				"reason", "broadcaster type lookup failed", "channel", broadcaster, "err", err)
+		}
+		return
+	}
+	if btype != "affiliate" && btype != "partner" {
+		logger.Info("channel points disabled",
+			"reason", "channel is not affiliate or partner",
+			"channel", broadcaster, "broadcaster_type", btype)
+		return
+	}
+
+	exec := channelpoints.New(channelpoints.Config{
+		TenantID:  tenantID,
+		Store:     store,
+		Chat:      chat,
+		Counters:  counters,
+		Fulfiller: tw,
+		Logger:    logger,
+	})
+
+	client := eventsub.New(eventsub.Config{
+		OnSession: func(ctx context.Context, sessionID string) error {
+			var firstErr error
+			for _, ch := range channels {
+				if serr := tw.SubscribeRedemptions(ctx, ch, sessionID); serr != nil {
+					logger.Warn("channel points subscribe failed", "channel", ch, "err", serr)
+					if firstErr == nil {
+						firstErr = serr
+					}
+				}
+			}
+			return firstErr
+		},
+		Handler: exec.Handle,
+		Logger:  logger,
+	})
+
+	go func() {
+		if rerr := client.Run(ctx); rerr != nil && !errors.Is(rerr, context.Canceled) {
+			logger.Error("channel points eventsub listener exited", "err", rerr)
+		}
+	}()
+	logger.Info("channel points enabled", "channels", channels, "broadcaster_type", btype)
 }
 
 // liveopsAdmin maps liveops.Store onto the narrow commands.EventStore the
