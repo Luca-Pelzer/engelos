@@ -62,9 +62,9 @@ Plus a few things the big bots simply don't offer:
   verify the winner wasn't rigged.
 - 🛡️ **AutoMod with an audit log and dry-run mode.** Test moderation rules in shadow mode before they
   ever time anyone out, and review every action after the fact.
-- 🎟️ **Channel Points first, with a fallback.** Affiliates and partners can bind real Twitch
-  Channel-Point redemptions to bot actions. Channels without Channel Points (most small streamers)
-  get a built-in points economy instead, so engagement and mini-games work for everyone.
+- 🎟️ **Channel Points and a points economy, both optional, both toggleable.** Affiliates can bind
+  real Twitch Channel-Point redemptions to bot actions. Everyone (affiliate or not) can also switch on
+  a built-in points economy with mini-games. They're independent: run either, both, or neither.
 - 🧮 **A `$(...)` variable system** for custom commands, including a real `$(math …)` evaluator.
 
 ### Quick comparison
@@ -101,21 +101,26 @@ Seven configurable filters, each with **per-filter role exemptions**:
   `$(time)` and a real **`$(math 1+2*3)`** recursive-descent evaluator (not arbitrary code-eval).
 - **Quotes**: `!quote`, `!addquote`, `!delquote`. **Counters**: `!counter`, `+`, `−`, `set`, `reset`.
   **Timers** and auto-announcements.
-- **Stream info**: `!uptime` `!game` `!title` `!accountage` `!so` (shoutout with last category).
+- **Stream info**: `!uptime` `!game` `!title` `!accountage` `!followage` `!so` (shoutout with last category).
 - **Fun**: `!8ball` `!lurk` `!unlurk` `!dice` `!roll` `!love` `!ship` `!hug` `!slap`.
 
-### 🎟️ Channel Points and the points fallback
-EngelOS prefers **real Twitch Channel Points** where they exist: a **Channel-Points trigger engine**
-binds a reward to a bot action, so affiliates and partners don't need a parallel currency.
+### 🎟️ Channel Points and the points economy
+Two independent systems you can switch on or off, in any combination:
 
-Channel Points are only available to affiliates and partners, though, so for everyone else EngelOS
-ships a **built-in points fallback** that drives the same engagement and mini-games:
+**Channel-Points trigger engine** (for affiliates and partners): bind a real Twitch Channel-Point
+reward to a bot action. If your channel has Channel Points and you want to use them, turn it on.
+
+**Built-in points economy** (works on any channel, affiliate or not): a self-managed currency that
+powers engagement and mini-games. Channels without Channel Points use it as their main system, but an
+affiliate who still wants gambling can run it alongside Channel Points, or skip it entirely.
 
 - **Economy**: earn points by chatting with a per-viewer cooldown (**anti-farming**, so idle and bot
   accounts can't grind), `!points`, `!give`, `!pointslb`. The store is atomic and **can never overdraw**.
 - **Games**: `!gamble` (double-or-nothing with a documented house edge), `!slots` (weighted reels),
   `!duel` (PvP wager, both players must afford the stake before any points move), and `!heist`
   (async multiplayer group game). No player can ever go negative.
+- **Rewards**: `!reward`/`!rewards`/`!redeem`, a points-backed reward store, a Channel-Points-style
+  redemption system for channels that don't have Channel Points.
 
 ### 🎁 Giveaways
 - `!giveaway`, `!enter`, `!draw`, `!reroll` with a **provably-fair draw**:
