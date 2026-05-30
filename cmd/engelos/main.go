@@ -38,6 +38,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/secrets"
 	"github.com/Luca-Pelzer/engelos/internal/server"
+	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/web"
 	"golang.org/x/oauth2"
 	twitchoauth "golang.org/x/oauth2/twitch"
@@ -140,6 +141,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("custom command store opened", "dsn", customDSN)
 
+	timersDSN := filepath.Join(dataDir, "timers.db")
+	timerStore, err := timers.OpenSQLiteStore(ctx, timersDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open timer store %s: %w", timersDSN, err)
+	}
+	defer func() {
+		if cerr := timerStore.Close(); cerr != nil {
+			logger.Warn("timer store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("timer store opened", "dsn", timersDSN)
+
 	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
 	if err != nil {
 		return fmt.Errorf("init pity system: %w", err)
@@ -171,9 +184,6 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	defer cleanupPlatforms()
 
 	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, logger)
-
-	hub := ws.NewHub(logger)
-	go hub.Run(ctx)
 
 	timerScheduler, err := timers.New(timers.Config{
 		Store:    timerStore,
@@ -501,23 +511,21 @@ func parseRole(s string) commands.Role {
 	}
 }
 
-// platformSender adapts the connected platform adapters onto
-// timers.Sender so the scheduler can post auto-announcements. It sends to
-// every connected platform and reports success if at least one delivered;
-// per-platform channel routing is future work (today's live deployment is
-// Twitch-only).
+// platformSender adapts the connected platform adapters onto timers.Sender
+// so the scheduler can post auto-announcements. It posts to every connected
+// platform and reports success when at least one delivered; per-platform
+// channel routing is future work (the live deployment is Twitch-only).
 type platformSender struct{ platforms []adapters.Platform }
 
 func (s platformSender) Send(ctx context.Context, channel, message string) error {
 	var firstErr error
 	sent := false
 	for _, p := range s.platforms {
-		err := p.Do(ctx, adapters.Action{
+		if err := p.Do(ctx, adapters.Action{
 			Type:        adapters.ActionSendMessage,
 			Channel:     channel,
 			SendMessage: &adapters.SendMessageAction{Text: message},
-		})
-		if err != nil {
+		}); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}

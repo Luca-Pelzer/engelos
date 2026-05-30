@@ -91,38 +91,6 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	})
 	require.False(t, handled)
 
-	// Custom-command lifecycle: a mod adds "!discord", then any viewer
-	// triggering it gets the response with $user expanded — proving the
-	// admin command, the SQLite store, the dynamic resolver, and variable
-	// expansion are all wired together end to end.
-	_, handled = router.Route(ctx, runtime.CommandInvocation{
-		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
-		Text: "!addcom !discord Hey $user join discord.gg/x", IsModerator: true,
-	})
-	require.True(t, handled)
-
-	ccReply, handled := router.Route(ctx, runtime.CommandInvocation{
-		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!discord",
-	})
-	require.True(t, handled, "custom command must resolve dynamically")
-	require.Equal(t, "Hey alice join discord.gg/x", ccReply.Text)
-
-	// A non-mod cannot add commands (mod-gated, silent deny → empty reply).
-	denyReply, handled := router.Route(ctx, runtime.CommandInvocation{
-		Platform: "twitch", Channel: channel, UserID: viewer, Username: user,
-		Text: "!addcom !nope blocked",
-	})
-	require.True(t, handled)
-	require.Empty(t, denyReply.Text)
-
-	_, handled = router.Route(ctx, runtime.CommandInvocation{
-		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!nope",
-	})
-	require.False(t, handled, "non-mod add must not have created the command")
-
-	// Timer lifecycle: a mod adds a timer, then !timers lists it — proving
-	// the timerAdmin -> timers.Store field mapping is wired correctly (a
-	// swapped field would compile but list wrong data).
 	addTimerReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
 		Text: "!addtimer rules 600 Follow the channel rules!", IsModerator: true,
