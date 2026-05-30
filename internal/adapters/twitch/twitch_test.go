@@ -163,6 +163,39 @@ type fakeHelix struct {
 	endPredictionResp   *helix.PredictionsResponse
 	endPredictionErr    error
 	lastEndPred         *helix.EndPredictionParams
+
+	createClipResp *helix.CreateClipResponse
+	createClipErr  error
+	lastCreateClip *helix.CreateClipParams
+	getClipsResp   *helix.ClipsResponse
+	getClipsErr    error
+	lastGetClips   *helix.ClipsParams
+}
+
+func (h *fakeHelix) CreateClip(p *helix.CreateClipParams) (*helix.CreateClipResponse, error) {
+	h.mu.Lock()
+	h.lastCreateClip = p
+	h.mu.Unlock()
+	if h.createClipErr != nil {
+		return nil, h.createClipErr
+	}
+	if h.createClipResp != nil {
+		return h.createClipResp, nil
+	}
+	return &helix.CreateClipResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) GetClips(p *helix.ClipsParams) (*helix.ClipsResponse, error) {
+	h.mu.Lock()
+	h.lastGetClips = p
+	h.mu.Unlock()
+	if h.getClipsErr != nil {
+		return nil, h.getClipsErr
+	}
+	if h.getClipsResp != nil {
+		return h.getClipsResp, nil
+	}
+	return &helix.ClipsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
 }
 
 func (h *fakeHelix) GetPredictions(p *helix.PredictionsParams) (*helix.PredictionsResponse, error) {

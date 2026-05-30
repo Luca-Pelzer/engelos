@@ -108,6 +108,8 @@ type helixClient interface {
 	GetPredictions(*helix.PredictionsParams) (*helix.PredictionsResponse, error)
 	CreatePrediction(*helix.CreatePredictionParams) (*helix.PredictionsResponse, error)
 	EndPrediction(*helix.EndPredictionParams) (*helix.PredictionsResponse, error)
+	CreateClip(*helix.CreateClipParams) (*helix.CreateClipResponse, error)
+	GetClips(*helix.ClipsParams) (*helix.ClipsResponse, error)
 	SetUserAccessToken(token string)
 }
 
@@ -826,6 +828,12 @@ func (w *helixWrapper) GetPredictions(p *helix.PredictionsParams) (*helix.Predic
 }
 func (w *helixWrapper) CreatePrediction(p *helix.CreatePredictionParams) (*helix.PredictionsResponse, error) {
 	return w.c.CreatePrediction(p)
+}
+func (w *helixWrapper) CreateClip(p *helix.CreateClipParams) (*helix.CreateClipResponse, error) {
+	return w.c.CreateClip(p)
+}
+func (w *helixWrapper) GetClips(p *helix.ClipsParams) (*helix.ClipsResponse, error) {
+	return w.c.GetClips(p)
 }
 func (w *helixWrapper) EndPrediction(p *helix.EndPredictionParams) (*helix.PredictionsResponse, error) {
 	return w.c.EndPrediction(p)
