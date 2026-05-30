@@ -14,6 +14,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/liveops"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
@@ -48,6 +49,10 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = counterStore.Close() })
 
+	liveopsStore, err := liveops.OpenSQLiteStore(ctx, "file:lo?mode=memory&cache=shared", logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = liveopsStore.Close() })
+
 	pitySys, err := pity.New(pity.DefaultConfig(), store, logger)
 	require.NoError(t, err)
 	streakSys, err := streak.New(streak.DefaultConfig(), store, logger)
@@ -65,7 +70,7 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	_, err = streakSys.Tick(ctx, tenant, channel, viewer, user)
 	require.NoError(t, err)
 
-	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, counterStore, nil, logger)
+	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, quoteStore, counterStore, liveopsStore, nil, logger)
 
 	pityReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!pity",
@@ -160,4 +165,31 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	})
 	require.True(t, handled)
 	require.NotEmpty(t, titleReply.Text)
+
+	addEventReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
+		Text: "!addevent 2d Double Points Weekend", IsModerator: true,
+	})
+	require.True(t, handled)
+	require.Contains(t, addEventReply.Text, "Double Points Weekend")
+	require.Contains(t, addEventReply.Text, "#1")
+
+	nextEventReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!nextevent",
+	})
+	require.True(t, handled)
+	require.Contains(t, nextEventReply.Text, "Double Points Weekend")
+
+	scheduleReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!schedule",
+	})
+	require.True(t, handled)
+	require.Contains(t, scheduleReply.Text, "Double Points Weekend")
+
+	delEventReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
+		Text: "!delevent 1", IsModerator: true,
+	})
+	require.True(t, handled)
+	require.Contains(t, delEventReply.Text, "deleted event #1")
 }

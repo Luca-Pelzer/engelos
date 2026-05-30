@@ -34,6 +34,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/eventsourcing"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/liveops"
 	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
 	"github.com/Luca-Pelzer/engelos/internal/overlay"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
@@ -180,6 +181,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("counter store opened", "dsn", countersDSN)
 
+	liveopsDSN := filepath.Join(dataDir, "liveops.db")
+	eventStoreLO, err := liveops.OpenSQLiteStore(ctx, liveopsDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open liveops store %s: %w", liveopsDSN, err)
+	}
+	defer func() {
+		if cerr := eventStoreLO.Close(); cerr != nil {
+			logger.Warn("liveops store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("liveops store opened", "dsn", liveopsDSN)
+
 	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
 	if err != nil {
 		return fmt.Errorf("init pity system: %w", err)
@@ -224,7 +237,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, twitchAdapter, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, logger)
 
 	timerScheduler, err := timers.New(timers.Config{
 		Store:    timerStore,
@@ -462,7 +475,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, twitchAdapter *twitch.Adapter, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, quoteStore quotes.Store, counterStore counters.Store, liveopsStore liveops.Store, twitchAdapter *twitch.Adapter, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -497,6 +510,11 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	streamProvider := streamStatusProvider{adapter: twitchAdapter}
 	register(commands.NewGameCommand(streamProvider))
 	register(commands.NewTitleCommand(streamProvider))
+	liveopsAdminStore := liveopsAdmin{tenantID: tenantID, store: liveopsStore}
+	register(commands.NewNextEventCommand(liveopsAdminStore))
+	register(commands.NewScheduleCommand(liveopsAdminStore))
+	register(commands.NewAddEventCommand(liveopsAdminStore))
+	register(commands.NewDelEventCommand(liveopsAdminStore))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
@@ -705,6 +723,70 @@ func (a counterAdmin) Set(ctx context.Context, channel, name string, value int64
 		return 0, err
 	}
 	return c.Value, nil
+}
+
+// liveopsAdmin maps liveops.Store onto the narrow commands.EventStore the
+// !nextevent/!schedule/!addevent/!delevent built-ins need, binding the
+// served tenant id and projecting the rich liveops.Event onto the chat-
+// facing commands.ScheduledEvent so internal/commands stays free of any
+// liveops import.
+type liveopsAdmin struct {
+	tenantID string
+	store    liveops.Store
+}
+
+// toScheduled projects a liveops.Event onto the chat-facing view, marking
+// it Active when now sits between its start and (defined) end. now is taken
+// once by the caller so a batch of events is judged against one clock.
+func toScheduled(e liveops.Event, now time.Time) commands.ScheduledEvent {
+	active := !e.StartsAt.After(now) && e.EndsAt != nil && !e.EndsAt.Before(now)
+	return commands.ScheduledEvent{
+		Number:   e.Number,
+		Name:     e.Name,
+		StartsAt: e.StartsAt,
+		Active:   active,
+	}
+}
+
+// Next returns the soonest upcoming-or-active event. It queries Upcoming
+// with limit 1 (rather than the store's strictly-future Next) so that an
+// in-progress event surfaces as Active and the command can say it is
+// happening now instead of skipping straight to the following one.
+func (a liveopsAdmin) Next(ctx context.Context, channel string) (commands.ScheduledEvent, bool, error) {
+	now := time.Now().UTC()
+	events, err := a.store.Upcoming(ctx, a.tenantID, channel, now, 1)
+	if err != nil {
+		return commands.ScheduledEvent{}, false, err
+	}
+	if len(events) == 0 {
+		return commands.ScheduledEvent{}, false, nil
+	}
+	return toScheduled(events[0], now), true, nil
+}
+
+func (a liveopsAdmin) Upcoming(ctx context.Context, channel string, limit int) ([]commands.ScheduledEvent, error) {
+	now := time.Now().UTC()
+	events, err := a.store.Upcoming(ctx, a.tenantID, channel, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]commands.ScheduledEvent, 0, len(events))
+	for _, e := range events {
+		out = append(out, toScheduled(e, now))
+	}
+	return out, nil
+}
+
+func (a liveopsAdmin) Add(ctx context.Context, channel, name, description string, startsAt time.Time, endsAt *time.Time) (int, error) {
+	e, err := a.store.Add(ctx, a.tenantID, channel, name, description, startsAt, endsAt)
+	if err != nil {
+		return 0, err
+	}
+	return e.Number, nil
+}
+
+func (a liveopsAdmin) Delete(ctx context.Context, channel string, number int) error {
+	return a.store.Delete(ctx, a.tenantID, channel, number)
 }
 
 // errNoTwitchAdapter is returned by uptimeProvider when no Twitch adapter is

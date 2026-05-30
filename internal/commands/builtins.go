@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -997,4 +998,235 @@ func mentionPrefix(msg Message) string {
 		return ""
 	}
 	return "@" + name + " "
+}
+
+// ScheduledEvent is the chat-facing view of a Live-Ops item used by the
+// !nextevent / !schedule commands. Active reports whether the event is
+// currently running (between its start and end), in which case a countdown
+// would be meaningless and the command instead says it is happening now.
+type ScheduledEvent struct {
+	Number   int
+	Name     string
+	StartsAt time.Time
+	Active   bool
+}
+
+// EventStore is the narrow surface the Live-Ops built-ins need. An adapter
+// over [github.com/Luca-Pelzer/engelos/internal/liveops.Store] is wired in
+// main; this interface lives HERE so internal/commands does NOT import
+// internal/liveops (mirrors [CounterStore] and [QuoteStore]). main's
+// adapter chooses the tenant_id and normalises the channel; the built-ins
+// pass msg.Channel through raw (matching the counter admin commands).
+type EventStore interface {
+	// Next returns the next upcoming event; ok=false if none is upcoming.
+	Next(ctx context.Context, channel string) (ScheduledEvent, bool, error)
+	// Upcoming returns up to limit upcoming-or-active events, soonest first.
+	Upcoming(ctx context.Context, channel string, limit int) ([]ScheduledEvent, error)
+	// Add schedules a new event and returns its assigned per-channel number.
+	Add(ctx context.Context, channel, name, description string, startsAt time.Time, endsAt *time.Time) (number int, err error)
+	// Delete removes the event with the given per-channel number.
+	Delete(ctx context.Context, channel string, number int) error
+}
+
+// whenOffsetRE matches a relative offset token combining optional days,
+// hours, and minutes (e.g. "2d", "4h", "90m", "1d12h", "2d4h30m"). At least
+// one group must be present; parseWhen rejects the all-empty match
+// separately so a bare "" never parses.
+var whenOffsetRE = regexp.MustCompile(`^(\d+d)?(\d+h)?(\d+m)?$`)
+
+// parseWhen converts a single whitespace-free token into an absolute UTC
+// start time relative to time.Now. Accepted forms:
+//
+//   - Relative offset combining days/hours/minutes, in that order, each
+//     optional but at least one present: "2d", "4h", "90m", "1d12h",
+//     "2d4h30m". The sum is added to the current time.
+//   - Absolute date "2006-01-02", interpreted as 00:00 UTC on that day.
+//   - Absolute datetime "2006-01-02T15:04", interpreted as UTC.
+//
+// Any other input yields a non-nil error.
+func parseWhen(token string) (time.Time, error) {
+	t := strings.TrimSpace(token)
+	if t == "" {
+		return time.Time{}, fmt.Errorf("empty when token")
+	}
+
+	if m := whenOffsetRE.FindStringSubmatch(t); m != nil && (m[1] != "" || m[2] != "" || m[3] != "") {
+		var d time.Duration
+		if m[1] != "" {
+			days, _ := strconv.Atoi(strings.TrimSuffix(m[1], "d"))
+			d += time.Duration(days) * 24 * time.Hour
+		}
+		if m[2] != "" {
+			hours, _ := strconv.Atoi(strings.TrimSuffix(m[2], "h"))
+			d += time.Duration(hours) * time.Hour
+		}
+		if m[3] != "" {
+			mins, _ := strconv.Atoi(strings.TrimSuffix(m[3], "m"))
+			d += time.Duration(mins) * time.Minute
+		}
+		return time.Now().UTC().Add(d), nil
+	}
+
+	if abs, err := time.ParseInLocation("2006-01-02T15:04", t, time.UTC); err == nil {
+		return abs.UTC(), nil
+	}
+	if abs, err := time.ParseInLocation("2006-01-02", t, time.UTC); err == nil {
+		return abs.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("unparseable when token %q", t)
+}
+
+// formatCountdown renders a time-until-start as a compact human phrase:
+// "in 2d 4h" once 24h+ (days + hours), "in 2h 13m" for an hour or more
+// (hours + minutes), "in 45m" under an hour, and "soon" under a minute.
+// Unlike formatDuration it is phrased as a forward-looking countdown.
+func formatCountdown(d time.Duration) string {
+	if d < time.Minute {
+		return "soon"
+	}
+	if d >= 24*time.Hour {
+		days := d / (24 * time.Hour)
+		hours := (d % (24 * time.Hour)) / time.Hour
+		return fmt.Sprintf("in %dd %dh", days, hours)
+	}
+	if d >= time.Hour {
+		hours := d / time.Hour
+		minutes := (d % time.Hour) / time.Minute
+		return fmt.Sprintf("in %dh %dm", hours, minutes)
+	}
+	return fmt.Sprintf("in %dm", d/time.Minute)
+}
+
+// NewNextEventCommand returns "!nextevent" (MinRole RoleEveryone, ~5s
+// global Cooldown). Replies "<Name> is happening now!" for an active
+// event, "Next: <Name> <countdown>" for an upcoming one, "no upcoming
+// events" when none, and "couldn't check events right now" on error. A nil
+// store yields "events unavailable".
+func NewNextEventCommand(store EventStore) Command {
+	return Command{
+		Name:     "nextevent",
+		Help:     "Show the next scheduled event.",
+		Cooldown: defaultStreamStatusCooldown,
+		Handler: func(ctx context.Context, msg Message, _ []string) Reply {
+			if store == nil {
+				return Reply{Text: "events unavailable"}
+			}
+			channel := strings.TrimPrefix(strings.TrimSpace(msg.Channel), "#")
+			evt, ok, err := store.Next(ctx, channel)
+			if err != nil {
+				return Reply{Text: "couldn't check events right now"}
+			}
+			if !ok {
+				return Reply{Text: "no upcoming events"}
+			}
+			if evt.Active {
+				return Reply{Text: fmt.Sprintf("%s is happening now!", evt.Name)}
+			}
+			return Reply{Text: fmt.Sprintf("Next: %s %s",
+				evt.Name, formatCountdown(time.Until(evt.StartsAt)))}
+		},
+	}
+}
+
+// NewScheduleCommand returns "!schedule" (MinRole RoleEveryone, ~5s global
+// Cooldown). Lists up to three upcoming-or-active events as "Schedule:
+// <Name> (<countdown or 'now'>) | ...". Replies "no upcoming events" when
+// empty and "couldn't check the schedule right now" on error. A nil store
+// yields "events unavailable".
+func NewScheduleCommand(store EventStore) Command {
+	return Command{
+		Name:     "schedule",
+		Help:     "Show the next few scheduled events.",
+		Cooldown: defaultStreamStatusCooldown,
+		Handler: func(ctx context.Context, msg Message, _ []string) Reply {
+			if store == nil {
+				return Reply{Text: "events unavailable"}
+			}
+			channel := strings.TrimPrefix(strings.TrimSpace(msg.Channel), "#")
+			events, err := store.Upcoming(ctx, channel, 3)
+			if err != nil {
+				return Reply{Text: "couldn't check the schedule right now"}
+			}
+			if len(events) == 0 {
+				return Reply{Text: "no upcoming events"}
+			}
+			parts := make([]string, 0, len(events))
+			for _, e := range events {
+				when := formatCountdown(time.Until(e.StartsAt))
+				if e.Active {
+					when = "now"
+				}
+				parts = append(parts, fmt.Sprintf("%s (%s)", e.Name, when))
+			}
+			return Reply{Text: "Schedule: " + strings.Join(parts, " | ")}
+		},
+	}
+}
+
+// NewAddEventCommand returns "!addevent". Mods-only.
+//
+// Usage: "!addevent <when> <name...>" where the first arg is a when-token
+// (see [parseWhen]) and the rest is the event name. A missing arg or an
+// unparseable when yields a usage reply; on success replies "@mod added
+// '<name>' (#<n>), <countdown>". A store error yields a friendly reply. A
+// nil store yields "events unavailable".
+func NewAddEventCommand(store EventStore) Command {
+	return Command{
+		Name:         "addevent",
+		Help:         "Schedule an event — !addevent <when> <name>.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%sevents unavailable", mentionPrefix(msg))}
+			}
+			usage := fmt.Sprintf("%susage: !addevent <when> <name> — when = 2d / 4h / 90m / 1d12h / 2026-06-15",
+				mentionPrefix(msg))
+			if len(args) < 2 {
+				return Reply{Text: usage}
+			}
+			startsAt, err := parseWhen(args[0])
+			if err != nil {
+				return Reply{Text: usage}
+			}
+			name := strings.TrimSpace(strings.Join(args[1:], " "))
+			if name == "" {
+				return Reply{Text: usage}
+			}
+			number, aerr := store.Add(ctx, msg.Channel, name, "", startsAt, nil)
+			if aerr != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't add that event", mentionPrefix(msg))}
+			}
+			return Reply{Text: fmt.Sprintf("%sadded '%s' (#%d), %s",
+				mentionPrefix(msg), name, number, formatCountdown(time.Until(startsAt)))}
+		},
+	}
+}
+
+// NewDelEventCommand returns "!delevent". Mods-only.
+//
+// Usage: "!delevent <number>". On success replies "@mod deleted event
+// #<n>". A missing or bad number yields a usage reply; any store error
+// yields "@mod no event #<n>". A nil store yields "events unavailable".
+func NewDelEventCommand(store EventStore) Command {
+	return Command{
+		Name:         "delevent",
+		Help:         "Remove a scheduled event — !delevent <number>.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%sevents unavailable", mentionPrefix(msg))}
+			}
+			target := parseAdminTarget(args)
+			number, err := strconv.Atoi(target)
+			if target == "" || err != nil || number <= 0 {
+				return Reply{Text: fmt.Sprintf("%susage: !delevent <number>", mentionPrefix(msg))}
+			}
+			if derr := store.Delete(ctx, msg.Channel, number); derr != nil {
+				return Reply{Text: fmt.Sprintf("%sno event #%d", mentionPrefix(msg), number)}
+			}
+			return Reply{Text: fmt.Sprintf("%sdeleted event #%d", mentionPrefix(msg), number)}
+		},
+	}
 }
