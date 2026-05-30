@@ -120,6 +120,8 @@ Seven configurable filters, each with **per-filter role exemptions**:
 ### 🖥️ Platform and Dashboard
 - **Embedded SvelteKit web dashboard** (via `go:embed`) with live pages: Home (real daemon stats),
   Channel Points, Commands, Counters, AutoMod (filter config plus audit-log viewer), and Login.
+- **OBS browser-source overlays** served straight from the daemon at `/overlay/events`,
+  `/overlay/alerts`, and `/overlay/leaderboard`: drop the URL into an OBS Browser Source and go.
 - **Event-sourcing engine** (SQLite WAL, append-only, ULID, multi-tenant).
 - **Auth**: Argon2id, RBAC, sessions (HttpOnly/Secure/SameSite cookies), and API keys.
 - **HTTP API** (chi router, security headers), **Server-Sent Events** stream, and a **WebSocket** hub.
@@ -197,10 +199,11 @@ All configuration is via environment variables:
 │  HTTP / WebSocket / SSE API on 127.0.0.1:8080            │
 └──────────────────────────────────────────────────────────┘
         ▲                  ▲                    ▲
-   ┌────┴────┐    ┌────────┴───────┐    ┌───────┴────────┐
-   │ TUI 🚧  │    │  Web Dashboard │    │ Native GUI 🚧  │
-   │ (BTea)  │    │  (Svelte 5) ✅ │    │ (Wails v2)     │
-   └─────────┘    └────────────────┘    └────────────────┘
+   ┌────┴────┐    ┌────────┴───────┐    ┌─────────┴─────────┐
+   │ TUI 🚧  │    │  Web Dashboard │    │ Companion app 🚧  │
+   │ (BTea)  │    │  (Svelte 5) ✅ │    │ OBS overlays +    │
+   │         │    │                │    │ on-machine actions│
+   └─────────┘    └────────────────┘    └───────────────────┘
 ```
 
 ---
@@ -223,8 +226,9 @@ All configuration is via environment variables:
 - YouTube and Kick adapters
 - AI features: Auto-Clipper, real-time Translator, context-aware AI-Mod, AI Co-Host, AI-Voice/TTS
 - Stream-Wrapped, plugin/addon ecosystem and marketplace
-- Downloadable companion client (lets the bot trigger on-machine actions from events, e.g. a
-  channel-point redemption firing an on-screen effect)
+- Downloadable companion client: a desktop app that manages the OBS browser-source overlays (set
+  them up and tweak them without editing config) and lets the bot trigger on-machine actions from
+  events, for example a channel-point redemption firing an on-screen effect
 - TUI (Bubble Tea), native GUI (Wails v2)
 - Managed Cloud-Premium tier (Phase 2+, not in this repo)
 
