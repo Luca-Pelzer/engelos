@@ -12,8 +12,8 @@
 [![Successor to EngelGuard](https://img.shields.io/badge/successor%20to-EngelGuard-9146FF.svg)](https://github.com/Luca-Pelzer/engelguard)
 
 **One fast, self-hosted binary for Twitch and Discord.**
-Moderation, custom commands, a loyalty economy, mini-games, and provably-fair giveaways.
-Free forever, no premium tier, no vendor lock-in, your data on your machine.
+Moderation, custom commands, Channel-Points triggers (with a points fallback), mini-games, and
+provably-fair giveaways. Self-host it free forever, your data on your machine.
 
 [Why EngelOS?](#-why-engelos) • [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Architecture](#-architecture) • [Status](#-project-status)
 
@@ -59,20 +59,22 @@ Plus a few things the big bots simply don't offer:
   verify the winner wasn't rigged.
 - 🛡️ **AutoMod with an audit log and dry-run mode.** Test moderation rules in shadow mode before they
   ever time anyone out, and review every action after the fact.
-- 🪙 **A real points economy with mini-games.** Earn, gift, gamble, duel, and heist, with anti-farming
-  and a store that can never go negative.
+- 🎟️ **Channel Points first, with a fallback.** Affiliates and partners can bind real Twitch
+  Channel-Point redemptions to bot actions. Channels without Channel Points (most small streamers)
+  get a built-in points economy instead, so engagement and mini-games work for everyone.
 - 🧮 **A `$(...)` variable system** for custom commands, including a real `$(math …)` evaluator.
 
 ### Quick comparison
 
 | | EngelOS | Nightbot | StreamElements | EngelGuard (Python) |
 |---|:---:|:---:|:---:|:---:|
-| Cost | **Free forever** | Free + Premium | Free + Premium | Free |
+| Cost | **Free self-hosted** (optional paid Cloud later) | Free + Premium | Free + Premium | Free |
 | Self-hosted | ✅ | ❌ cloud only | ❌ cloud only | ✅ |
 | Open source | ✅ AGPL-3.0 | ❌ | ❌ | ✅ MIT |
 | Custom commands + `$(...)` vars | ✅ incl. `$(math)` | ✅ | ✅ | ✅ |
 | AutoMod audit log + dry-run | ✅ | ❌ | ❌ | partial |
-| Loyalty economy + mini-games | ✅ | ❌ | ✅ | ✅ |
+| Channel-Points triggers + points fallback | ✅ | ❌ | partial | partial |
+| Mini-games (gamble/duel/heist) | ✅ | ❌ | ✅ | ✅ |
 | Provably-fair giveaways | ✅ | ❌ | ❌ | ❌ |
 | Single binary | ✅ Go | n/a | n/a | ❌ Python |
 | Multi-platform | Twitch + Discord, YouTube/Kick 🚧 | Twitch/YT | Twitch/YT | Twitch |
@@ -99,7 +101,13 @@ Seven configurable filters, each with **per-filter role exemptions**:
 - **Stream info**: `!uptime` `!game` `!title` `!accountage` `!so` (shoutout with last category).
 - **Fun**: `!8ball` `!lurk` `!unlurk` `!dice` `!roll` `!love` `!ship` `!hug` `!slap`.
 
-### 🪙 Loyalty and Mini-Games
+### 🎟️ Channel Points and the points fallback
+EngelOS prefers **real Twitch Channel Points** where they exist: a **Channel-Points trigger engine**
+binds a reward to a bot action, so affiliates and partners don't need a parallel currency.
+
+Channel Points are only available to affiliates and partners, though, so for everyone else EngelOS
+ships a **built-in points fallback** that drives the same engagement and mini-games:
+
 - **Economy**: earn points by chatting with a per-viewer cooldown (**anti-farming**, so idle and bot
   accounts can't grind), `!points`, `!give`, `!pointslb`. The store is atomic and **can never overdraw**.
 - **Games**: `!gamble` (double-or-nothing with a documented house edge), `!slots` (weighted reels),
@@ -208,6 +216,21 @@ All configuration is via environment variables:
 
 ---
 
+## ☁️ Self-host vs Cloud
+
+EngelOS follows an open-core model, the same spirit as [Netdata](https://www.netdata.cloud/):
+
+- **Self-hosted (this repo): free forever.** The full bot, dashboard, and engagement features, AGPL-3.0,
+  running on your own machine with your data under your control. This is the real product, not a teaser.
+- **Cloud (planned, Phase 2+): a paid, hosted option.** For people who don't want to run a server, a
+  managed version with a flat monthly price, one-click setup, and some extra conveniences and AI-backed
+  features that only make sense in the cloud. It funds the open-source work; it never holds the
+  self-hosted version hostage.
+
+Nothing in this repository is paywalled, and nothing here will be moved behind the Cloud tier.
+
+---
+
 ## 📦 Project status
 
 **✅ Built and live (Phase 1 alpha):**
@@ -230,7 +253,8 @@ All configuration is via environment variables:
   them up and tweak them without editing config) and lets the bot trigger on-machine actions from
   events, for example a channel-point redemption firing an on-screen effect
 - TUI (Bubble Tea), native GUI (Wails v2)
-- Managed Cloud-Premium tier (Phase 2+, not in this repo)
+- Managed Cloud tier: a paid, hosted option for non-self-hosters (flat monthly price, easier setup,
+  some cloud-only AI features), Netdata-style. The self-hosted build stays free forever. (Phase 2+, not in this repo.)
 
 See [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) for the full multi-year roadmap.
 
