@@ -1,159 +1,272 @@
+<div align="center">
+
 # engelOS
 
-> **The streaming bot that remembers you. Open source. Run it anywhere.**
+### The open-source streaming bot that does what the paid ones do, and the things they won't.
 
-engelOS is an open-source streaming bot for Twitch, Discord, YouTube Live, and Kick.
-Self-host it on Linux, macOS, or Windows — eventually with a managed Cloud version
-for streamers who don't want to run a server themselves.
+[![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![SDK: Apache-2.0](https://img.shields.io/badge/SDK-Apache--2.0-green.svg)](pkg/sdk/LICENSE)
+[![Platforms](https://img.shields.io/badge/Linux%20·%20macOS%20·%20Windows-self--hosted-success.svg)](#-quick-start)
+[![Status: Alpha](https://img.shields.io/badge/status-Phase%201%20alpha-orange.svg)](#-project-status)
+[![Successor to EngelGuard](https://img.shields.io/badge/successor%20to-EngelGuard-9146FF.svg)](https://github.com/Luca-Pelzer/engelguard)
 
-## Status
+**One fast, self-hosted binary for Twitch and Discord.**
+Moderation, custom commands, a loyalty economy, mini-games, and provably-fair giveaways.
+Free forever, no premium tier, no vendor lock-in, your data on your machine.
 
-**Phase 1B — Alpha.** Core daemon works end-to-end. Phase 0 (skeleton) and Phase 1A
-(foundations) are complete. The first real engagement feature (Pity-System) ships
-working over HTTP and is auto-credited from Twitch chat. Public OSS launch is still
-targeted for **December 2026** — APIs and database schema may change without notice
-until then.
+[Why engelOS?](#-why-engelos) • [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Architecture](#-architecture) • [Status](#-project-status)
 
-Currently working:
+</div>
 
-- ✅ **Twitch IRC adapter** (anonymous + authenticated modes via `gempir/go-twitch-irc`)
-- ✅ **Discord adapter** (skeleton via `bwmarrin/discordgo`, needs bot token)
-- ✅ **Event-sourcing engine** (SQLite append-only, ULID IDs, multi-tenant)
-- ✅ **Argon2id auth** with HttpOnly+Secure+SameSite=Strict session cookies
-- ✅ **Pity-System** (gacha mechanic): viewers earn points by chatting, soft-pity
-  ramps win chance, hard-pity guarantees a win — fully event-sourced and replayable
-- ✅ **Runtime dispatcher**: fans Twitch events into pity-grants automatically
-- ✅ **HTTP API** with chi router, security headers, SSE event stream, WebSocket hub
-- ✅ **SvelteKit dashboard** embedded into the binary via `go:embed`
+---
 
-Not done yet (Phase 1B-4+):
+engelOS grew out of **[EngelGuard](https://github.com/Luca-Pelzer/engelguard)**, an earlier Python
+Twitch bot. Building EngelGuard made one thing clear: the bot I actually wanted was far bigger than
+that codebase could ever carry. I didn't want a moderation bot plus a few add-ons; I wanted
+moderation, commands, a points economy, games, giveaways, and engagement systems all living in **one
+coherent suite**. So instead of bolting more onto EngelGuard, I rebuilt it from scratch in Go. engelOS
+is that rebuild: a single static binary you can run anywhere, with an embedded web dashboard and
+everything in one place.
 
-- Streak-System (Duolingo-style)
-- AI Auto-Clipper, Real-Time Translator, Stream-Wrapped (Tier-A features)
-- AI Co-Host, Context-Aware AI-Moderator (Tier-B, Cloud-only)
-- TUI via Bubble Tea
-- Native GUI app via Wails v2
-- Cloud-Premium variant
+> [!IMPORTANT]
+> **Phase 1 alpha.** The core is live and tested under Go's race detector, but the public OSS launch
+> is targeted for **December 2026**, so APIs and the database schema may still change without notice.
+> Not accepting external contributions yet (the codebase moves fast).
 
-See [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) for the full 5-7 year roadmap.
+---
 
-## Vision
+## 🎯 Why engelOS?
 
-| | |
-|---|---|
-| **License** | AGPL-3.0 (Core) · Apache-2.0 (SDK) · Proprietary (Cloud) |
-| **Stack** | Go 1.25 · Wails v2 · Bubble Tea · Svelte 5 · Tailwind 4 |
-| **Platforms** | Linux · macOS · Windows · Docker · Raspberry Pi |
-| **Roadmap** | [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) |
+Tired of Nightbot Premium, StreamElements' limits, or cloud bots that own your data?
 
-## Run it now (anonymous Twitch read-only)
+- 🟢 **Free forever.** No premium upsells, no feature paywalls.
+- 🏠 **Self-hosted.** Runs on your Linux, macOS, or Windows machine, loopback-only by default.
+- 🔓 **Open source.** AGPL-3.0 core plus Apache-2.0 SDK; modify and extend anything.
+- 🔌 **No vendor lock-in.** It's a SQLite-backed binary; your data never leaves your server.
+- ⚡ **One binary, one suite.** Everything in a single Go build with the dashboard embedded, no runtime to install.
+
+Plus a few things the big bots simply don't offer:
+
+- 🎲 **Provably-fair giveaways.** The draw seed is published when the giveaway opens, so anyone can
+  verify the winner wasn't rigged.
+- 🛡️ **AutoMod with an audit log and dry-run mode.** Test moderation rules in shadow mode before they
+  ever time anyone out, and review every action after the fact.
+- 🪙 **A real points economy with mini-games.** Earn, gift, gamble, duel, and heist, with anti-farming
+  and a store that can never go negative.
+- 🧮 **A `$(...)` variable system** for custom commands, including a real `$(math …)` evaluator.
+
+### Quick comparison
+
+| | engelOS | Nightbot | StreamElements | EngelGuard (Python) |
+|---|:---:|:---:|:---:|:---:|
+| Cost | **Free forever** | Free + Premium | Free + Premium | Free |
+| Self-hosted | ✅ | ❌ cloud only | ❌ cloud only | ✅ |
+| Open source | ✅ AGPL-3.0 | ❌ | ❌ | ✅ MIT |
+| Custom commands + `$(...)` vars | ✅ incl. `$(math)` | ✅ | ✅ | ✅ |
+| AutoMod audit log + dry-run | ✅ | ❌ | ❌ | partial |
+| Loyalty economy + mini-games | ✅ | ❌ | ✅ | ✅ |
+| Provably-fair giveaways | ✅ | ❌ | ❌ | ❌ |
+| Single binary | ✅ Go | n/a | n/a | ❌ Python |
+| Multi-platform | Twitch + Discord, YouTube/Kick 🚧 | Twitch/YT | Twitch/YT | Twitch |
+
+---
+
+## ✨ Features
+
+### 🛡️ Moderation (AutoMod)
+Seven configurable filters, each with **per-filter role exemptions**:
+
+- **Caps** (ratio-based, not a naive count), **symbols and zalgo**, **links** (allow-list plus `!permit`),
+  **emote limits**, **message length**, **repetition**, and **banned words** (5 match modes incl. regex).
+- **Escalation ladder**: warn, 60s, 10m, 24h, ban, with a decay window.
+- **Audit log** of every enforcement action, viewable in the dashboard.
+- **Dry-run / shadow mode**: see exactly what would happen without punishing anyone.
+
+### 💬 Commands and Variables
+- **Custom commands**: `!addcom`, `!editcom`, `!delcom` with a Nightbot-style variable system:
+  `$(user)` `$(touser)` `$(channel)` `$(args)` `$(1)…$(9)` `$(random a b)` `$(random.pick …)`
+  `$(time)` and a real **`$(math 1+2*3)`** recursive-descent evaluator (not arbitrary code-eval).
+- **Quotes**: `!quote`, `!addquote`, `!delquote`. **Counters**: `!counter`, `+`, `−`, `set`, `reset`.
+  **Timers** and auto-announcements.
+- **Stream info**: `!uptime` `!game` `!title` `!accountage` `!so` (shoutout with last category).
+- **Fun**: `!8ball` `!lurk` `!unlurk` `!dice` `!roll` `!love` `!ship` `!hug` `!slap`.
+
+### 🪙 Loyalty and Mini-Games
+- **Economy**: earn points by chatting with a per-viewer cooldown (**anti-farming**, so idle and bot
+  accounts can't grind), `!points`, `!give`, `!pointslb`. The store is atomic and **can never overdraw**.
+- **Games**: `!gamble` (double-or-nothing with a documented house edge), `!slots` (weighted reels),
+  `!duel` (PvP wager, both players must afford the stake before any points move), and `!heist`
+  (async multiplayer group game). No player can ever go negative.
+
+### 🎁 Giveaways
+- `!giveaway`, `!enter`, `!draw`, `!reroll` with a **provably-fair draw**:
+  `winner = SHA256(seed │ drawNumber │ sorted-entrant-ids) mod N`, where the seed is announced at open
+  time, so the draw is publicly verifiable and un-riggable.
+
+### 🎮 Engagement systems
+- **Pity-System** (gacha): soft-pity ramps win chance, hard-pity guarantees, fully event-sourced and replayable.
+- **Streak-System** (Duolingo-style daily streaks).
+- **Live-Ops calendar**: `!nextevent`, `!schedule`.
+- **Channel-Points trigger engine**: bind a Twitch reward to a bot action.
+
+### 🖥️ Platform and Dashboard
+- **Embedded SvelteKit web dashboard** (via `go:embed`) with live pages: Home (real daemon stats),
+  Channel Points, Commands, Counters, AutoMod (filter config plus audit-log viewer), and Login.
+- **Event-sourcing engine** (SQLite WAL, append-only, ULID, multi-tenant).
+- **Auth**: Argon2id, RBAC, sessions (HttpOnly/Secure/SameSite cookies), and API keys.
+- **HTTP API** (chi router, security headers), **Server-Sent Events** stream, and a **WebSocket** hub.
+- **Adapters**: Twitch (IRC plus Helix plus EventSub WebSocket, anonymous or authenticated) and Discord
+  (needs a bot token). Around 32 Go packages, all tested under the race detector.
+
+---
+
+## 🚀 Quick Start
 
 ```bash
 git clone https://github.com/Luca-Pelzer/engelos.git
 cd engelos
+
+make web-build          # build + embed the dashboard (optional; without it, / serves JSON)
 go build -o engelos ./cmd/engelos
 
-# Anonymous Twitch — no credentials needed
-ENGELOS_TWITCH_CHANNELS=engelswtf ./engelos
+# Anonymous, read-only Twitch, no credentials needed
+ENGELOS_TWITCH_CHANNELS=yourchannel ./engelos
 ```
 
-The daemon listens on `http://127.0.0.1:8080` (loopback only by default).
-Optionally `make web-build` first to embed the SvelteKit dashboard into the
-binary; without it `/` serves a JSON status page.
+The daemon listens on **`http://127.0.0.1:8080`** (loopback only by default). Open it in a browser to
+reach the dashboard, or a JSON status page if you skipped `make web-build`.
 
-### Live HTTP API (Phase 1B)
+---
 
-```
-GET  /version
-GET  /healthz
-GET  /readyz
-POST /api/v1/auth/login      → {email, password}
-POST /api/v1/auth/logout
-GET  /api/v1/users/me
-POST /api/v1/pity/grant      → {channel, viewer_id, amount?, reason?}
-POST /api/v1/pity/roll       → {channel, viewer_id}
-GET  /api/v1/pity/status?channel=...&viewer_id=...
-POST /api/v1/pity/reset
-GET  /api/v1/events          → Server-Sent Events stream
-     /api/v1/ws              → WebSocket live event feed
-```
+## ⚙️ Configuration
 
-All `/api/v1/*` routes require a valid session cookie (set by `/auth/login`).
+All configuration is via environment variables:
 
-### Environment variables
-
-| Var | Meaning | Default |
+| Variable | Meaning | Default |
 |---|---|---|
-| `ENGELOS_DATA_DIR` | Where SQLite DBs live | `$XDG_DATA_HOME/engelos` |
-| `ENGELOS_TWITCH_CHANNELS` | Comma-separated channels to JOIN | unset (Twitch disabled) |
+| `ENGELOS_DATA_DIR` | Where the SQLite databases live | `$XDG_DATA_HOME/engelos` |
+| `ENGELOS_ADDR` | HTTP listen address | `127.0.0.1:8080` |
+| `ENGELOS_TWITCH_CHANNELS` | Comma-separated channels to join | unset (Twitch disabled) |
 | `ENGELOS_TWITCH_USERNAME` | Bot login (authenticated mode) | empty (anonymous) |
 | `ENGELOS_TWITCH_OAUTH` | OAuth token (`oauth:` prefix optional) | empty (anonymous) |
-| `ENGELOS_TWITCH_CLIENT_ID` | Helix Client-ID (required with OAUTH) | empty |
+| `ENGELOS_TWITCH_CLIENT_ID` | Helix Client-ID (required with OAuth) | empty |
+| `ENGELOS_SECRETS_KEY` | Enables encrypted OAuth/login storage (`openssl rand -base64 32`) | unset |
 
-## Architecture
+> [!NOTE]
+> Anonymous mode is read-only (chat-reading and counters). Moderation actions, the dashboard login,
+> and OAuth-gated features need an authenticated bot account and `ENGELOS_SECRETS_KEY`.
+
+---
+
+## 🏗️ Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  engelOS Core Daemon (Go, single static binary)          │
 │                                                          │
 │  ┌────────────────────┐    ┌────────────────────────┐    │
-│  │ Platform Adapters  │ →  │  Runtime Dispatcher    │ →  │
+│  │ Platform Adapters  │ →  │  Runtime Dispatcher    │    │
 │  │  Twitch · Discord  │    │  (fan-in goroutine)    │    │
-│  │  YouTube · Kick    │    └────────────────────────┘    │
-│  └────────────────────┘             │                    │
-│                                     ↓                    │
-│  ┌────────────────────┐    ┌────────────────────────┐    │
-│  │  Auth (Argon2id +  │    │  Features              │    │
-│  │  RBAC + API keys)  │    │   Pity · Streak · ...  │    │
-│  └────────────────────┘    └────────────────────────┘    │
-│            │                        │                    │
-│            └────────┬───────────────┘                    │
+│  │  YouTube/Kick 🚧   │    └───────────┬────────────┘    │
+│  └────────────────────┘                │                 │
+│                                        ↓                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │  AutoMod     │  │  Commands +  │  │  Economy +   │    │
+│  │  (7 filters, │  │  $(...) vars │  │  Games +     │    │
+│  │  audit log)  │  │  · Quotes    │  │  Giveaways   │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘    │
+│  ┌──────────────┐  ┌──────────────────────────────┐      │
+│  │  Auth        │  │  Pity · Streak · Live-Ops ·   │      │
+│  │  (Argon2id,  │  │  Channel-Points · Counters    │      │
+│  │  RBAC, keys) │  └──────────────────────────────┘      │
+│  └──────────────┘                │                       │
+│            └────────┬────────────┘                       │
 │                     ↓                                    │
 │  ┌────────────────────────────────────────────────────┐  │
 │  │ Event-Sourcing Engine (SQLite WAL, append-only)    │  │
 │  └────────────────────────────────────────────────────┘  │
 │                                                          │
-│  HTTP/WebSocket/SSE API on 127.0.0.1:8080                │
+│  HTTP / WebSocket / SSE API on 127.0.0.1:8080            │
 └──────────────────────────────────────────────────────────┘
-        ▲              ▲                  ▲
-   ┌────┴───┐    ┌─────┴──────┐    ┌──────┴──────┐
-   │ TUI    │    │ Web UI     │    │ Native GUI  │
-   │ (BTea) │    │ (Svelte 5) │    │ (Wails v2)  │
-   └────────┘    └────────────┘    └─────────────┘
+        ▲                  ▲                    ▲
+   ┌────┴────┐    ┌────────┴───────┐    ┌───────┴────────┐
+   │ TUI 🚧  │    │  Web Dashboard │    │ Native GUI 🚧  │
+   │ (BTea)  │    │  (Svelte 5) ✅ │    │ (Wails v2)     │
+   └─────────┘    └────────────────┘    └────────────────┘
 ```
 
-## Repository layout
+---
+
+## 📦 Project status
+
+**✅ Built and live (Phase 1 alpha):**
+
+- Twitch (IRC, Helix, EventSub) and Discord adapters
+- AutoMod (7 filters, escalation, audit log, dry-run) plus dashboard config
+- Custom commands and `$(...)` variable system, quotes, counters, timers
+- Loyalty economy and mini-games (`!gamble` `!slots` `!duel` `!heist`)
+- Provably-fair giveaways
+- Pity, Streak, Live-Ops, Channel-Points trigger engine
+- Fun and info commands (`!8ball` `!so` `!accountage`, and more)
+- Event-sourcing, Argon2id auth, REST/SSE/WebSocket API, embedded SvelteKit dashboard
+
+**🚧 Planned (roadmap):**
+
+- YouTube and Kick adapters
+- AI features: Auto-Clipper, real-time Translator, context-aware AI-Mod, AI Co-Host, AI-Voice/TTS
+- Stream-Wrapped, Addon/Script marketplace
+- TUI (Bubble Tea), native GUI (Wails v2)
+- Managed Cloud-Premium tier (Phase 2+, not in this repo)
+
+See [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) for the full multi-year roadmap.
+
+---
+
+## 🗂️ Repository layout
 
 ```
-cmd/engelos/             Daemon entry point
+cmd/engelos/             Daemon entry point + wiring
 internal/
   adapters/              Platform interfaces + twitch/, discord/, mock/
   api/                   chi router, handlers, middleware, WebSocket hub
   auth/                  Users, sessions, RBAC, API keys, Argon2id
+  automod/               Stateless filter engine
+  automodstate/          Escalation ladder + audit-log store
+  moderation/            Glue: filters + escalation + audit into one Service
+  commands/              ~30 builtins, custom commands, $(...) vars, games, giveaways
+  counters/ quotes/ timers/ customcommands/ redemptions/ loyalty/ rewards/
   eventsourcing/         SQLite append-only event log
-  features/
-    pity/                Gacha mechanic (Tier-A #1 — shipped)
-    streak/              Duolingo-style streaks (Tier-A #2 — in progress)
-  runtime/               Dispatcher: adapter events → features + broadcast
-  server/                HTTP server lifecycle
-  web/                   go:embed wrapper for SvelteKit build/
+  features/pity/ streak/ Engagement systems
+  runtime/               Dispatcher: adapter events into features + broadcast
+  server/  web/          HTTP lifecycle + go:embed of the SvelteKit build
 pkg/sdk/                 Public SDK (Apache-2.0) for third-party plugins
 web/                     Svelte 5 frontend (local + cloud variants)
-docs/                    MASTER-VISION.md and other long-form docs
+docs/                    MASTER-VISION.md and long-form docs
 ```
 
-## Contributing
+---
 
-Not accepting external contributions yet — the codebase is moving too fast and
-the public APIs aren't stable. Once Phase 1 ships and the OSS launch happens
-(December 2026), see `CONTRIBUTING.md`.
+## 🤝 Contributing
 
-## License
+Not accepting external contributions **yet**: the codebase moves too fast and the public APIs aren't
+stable. Once Phase 1 ships and the OSS launch happens (December 2026), contribution guidelines will
+land in `CONTRIBUTING.md`. Stars and issues are very welcome in the meantime.
 
-- **Core daemon** (this repository, default): **AGPL-3.0** — see [`LICENSE`](LICENSE)
-- **SDK** (`pkg/sdk/`): **Apache-2.0** — see [`pkg/sdk/LICENSE`](pkg/sdk/LICENSE)
+---
+
+## 📄 License
+
+- **Core daemon** (this repository): **AGPL-3.0**, see [`LICENSE`](LICENSE)
+- **SDK** (`pkg/sdk/`): **Apache-2.0**, see [`pkg/sdk/LICENSE`](pkg/sdk/LICENSE)
 - **Cloud features** (Phase 2+): proprietary, not in this repository.
 
-The dual-license follows the [Grafana model](https://grafana.com/licensing/):
-core is protected from cloud reselling (AGPL), the SDK is open so any company
-or contributor can build integrations against it without AGPL burden (Apache).
+The dual license follows the [Grafana model](https://grafana.com/licensing/): the core is protected
+from cloud reselling (AGPL), while the SDK stays permissive (Apache) so anyone can build integrations
+against it without AGPL obligations.
+
+<div align="center">
+
+**engelOS**, built in the open, the successor to [EngelGuard](https://github.com/Luca-Pelzer/engelguard).
+
+</div>
