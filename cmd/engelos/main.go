@@ -170,7 +170,26 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	platforms, twitchAdapter, cleanupPlatforms := startPlatforms(ctx, logger, authStore, defaultTenantID)
 	defer cleanupPlatforms()
 
-	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, logger)
+	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, logger)
+
+	hub := ws.NewHub(logger)
+	go hub.Run(ctx)
+
+	timerScheduler, err := timers.New(timers.Config{
+		Store:    timerStore,
+		Sender:   platformSender{platforms: platforms},
+		TenantID: defaultTenantID,
+		Logger:   logger,
+	})
+	if err != nil {
+		return fmt.Errorf("init timer scheduler: %w", err)
+	}
+	go func() {
+		if rerr := timerScheduler.Run(ctx); rerr != nil {
+			logger.Error("timer scheduler exited", "err", rerr)
+		}
+	}()
+	logger.Info("timer scheduler started")
 
 	dispatcher := runtime.New(runtime.Config{
 		TenantID:         defaultTenantID,
@@ -180,6 +199,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Streak:           streakTickAdapter{sys: streakSystem},
 		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
 		Commands:         cmdRouter,
+		Activity:         timerScheduler,
 		Logger:           logger,
 	})
 	go func() {
@@ -389,7 +409,7 @@ func (a dispatcherStatsAdapter) Snapshot() any { return a.d.Stats() }
 // Resolver. Registration failures are fatal-free: they are logged and the
 // command is skipped, so a wiring bug degrades to "command missing" rather
 // than crashing the daemon.
-func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, logger *slog.Logger) runtime.CommandRouter {
+func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.System, custom customcommands.Store, timerStore timers.Store, logger *slog.Logger) runtime.CommandRouter {
 	engine := commands.New(commands.Config{
 		Logger:   logger,
 		Resolver: customResolver{tenantID: tenantID, store: custom},
@@ -406,6 +426,10 @@ func buildCommandRouter(tenantID string, pity *pity.System, streak *streak.Syste
 	register(commands.NewAddCommand(adminStore))
 	register(commands.NewEditCommand(adminStore))
 	register(commands.NewDeleteCommand(adminStore))
+	timerAdminStore := timerAdmin{tenantID: tenantID, store: timerStore}
+	register(commands.NewAddTimerCommand(timerAdminStore))
+	register(commands.NewDeleteTimerCommand(timerAdminStore))
+	register(commands.NewListTimersCommand(timerAdminStore))
 	register(commands.NewHelpCommand(engine))
 	return commandRouterAdapter{engine: engine}
 }
@@ -475,6 +499,77 @@ func parseRole(s string) commands.Role {
 	default:
 		return commands.RoleEveryone
 	}
+}
+
+// platformSender adapts the connected platform adapters onto
+// timers.Sender so the scheduler can post auto-announcements. It sends to
+// every connected platform and reports success if at least one delivered;
+// per-platform channel routing is future work (today's live deployment is
+// Twitch-only).
+type platformSender struct{ platforms []adapters.Platform }
+
+func (s platformSender) Send(ctx context.Context, channel, message string) error {
+	var firstErr error
+	sent := false
+	for _, p := range s.platforms {
+		err := p.Do(ctx, adapters.Action{
+			Type:        adapters.ActionSendMessage,
+			Channel:     channel,
+			SendMessage: &adapters.SendMessageAction{Text: message},
+		})
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		sent = true
+	}
+	if sent {
+		return nil
+	}
+	return firstErr
+}
+
+// timerAdmin maps timers.Store onto the narrow commands.TimerStore the
+// !addtimer/!deltimer/!timers built-ins need, binding the served tenant id.
+type timerAdmin struct {
+	tenantID string
+	store    timers.Store
+}
+
+func (a timerAdmin) AddTimer(ctx context.Context, channel, name, message string, intervalSeconds, minChatLines int, createdBy string) error {
+	_, err := a.store.Create(ctx, timers.Timer{
+		TenantID:     a.tenantID,
+		Channel:      channel,
+		Name:         name,
+		Message:      message,
+		Interval:     time.Duration(intervalSeconds) * time.Second,
+		MinChatLines: minChatLines,
+		Enabled:      true,
+		CreatedBy:    createdBy,
+	})
+	return err
+}
+
+func (a timerAdmin) RemoveTimer(ctx context.Context, channel, name string) error {
+	return a.store.Delete(ctx, a.tenantID, channel, name)
+}
+
+func (a timerAdmin) ListTimers(ctx context.Context, channel string) ([]commands.TimerInfo, error) {
+	rows, err := a.store.List(ctx, a.tenantID, channel)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]commands.TimerInfo, len(rows))
+	for i, t := range rows {
+		out[i] = commands.TimerInfo{
+			Name:            t.Name,
+			IntervalSeconds: int(t.Interval / time.Second),
+			Enabled:         t.Enabled,
+		}
+	}
+	return out, nil
 }
 
 // commandRouterAdapter maps the commands.Engine onto runtime.CommandRouter,

@@ -105,6 +105,14 @@ type CommandRouter interface {
 	Route(ctx context.Context, inv CommandInvocation) (reply CommandReply, handled bool)
 }
 
+// ActivityRecorder is the narrow contract the dispatcher uses to report
+// chat activity per channel. The timers scheduler implements it so
+// auto-announcements can be gated behind "chat has been active", keeping
+// the runtime free of any timers import.
+type ActivityRecorder interface {
+	RecordChatActivity(channel string)
+}
+
 // Config configures the Dispatcher.
 type Config struct {
 	// TenantID is the single-tenant identifier this runtime serves.
@@ -131,6 +139,10 @@ type Config struct {
 	// Broadcaster, when non-nil, receives every event the dispatcher sees
 	// so WebSocket / SSE consumers can render live activity.
 	Broadcaster Broadcaster
+
+	// Activity, when non-nil, is notified of every chat message so the
+	// timers scheduler can gate auto-announcements behind chat activity.
+	Activity ActivityRecorder
 
 	// Commands, when non-nil, routes incoming chat messages to bot
 	// commands (e.g. "!pity"). A non-empty reply is sent back to chat via
@@ -315,6 +327,10 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 
 	if ev.Message.UserID == "" || ev.Channel == "" {
 		return
+	}
+
+	if d.cfg.Activity != nil {
+		d.cfg.Activity.RecordChatActivity(ev.Channel)
 	}
 
 	d.routeCommand(ctx, p, ev)

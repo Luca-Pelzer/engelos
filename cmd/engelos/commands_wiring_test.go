@@ -14,6 +14,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/runtime"
+	"github.com/Luca-Pelzer/engelos/internal/timers"
 )
 
 // TestBuildCommandRouter_EndToEnd exercises the real wiring built in
@@ -33,6 +34,10 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = customStore.Close() })
 
+	timerStore, err := timers.OpenSQLiteStore(ctx, "file:tm?mode=memory&cache=shared", logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = timerStore.Close() })
+
 	pitySys, err := pity.New(pity.DefaultConfig(), store, logger)
 	require.NoError(t, err)
 	streakSys, err := streak.New(streak.DefaultConfig(), store, logger)
@@ -50,7 +55,7 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 	_, err = streakSys.Tick(ctx, tenant, channel, viewer, user)
 	require.NoError(t, err)
 
-	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, logger)
+	router := buildCommandRouter(tenant, pitySys, streakSys, customStore, timerStore, logger)
 
 	pityReply, handled := router.Route(ctx, runtime.CommandInvocation{
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!pity",
@@ -114,4 +119,22 @@ func TestBuildCommandRouter_EndToEnd(t *testing.T) {
 		Platform: "twitch", Channel: channel, UserID: viewer, Username: user, Text: "!nope",
 	})
 	require.False(t, handled, "non-mod add must not have created the command")
+
+	// Timer lifecycle: a mod adds a timer, then !timers lists it — proving
+	// the timerAdmin -> timers.Store field mapping is wired correctly (a
+	// swapped field would compile but list wrong data).
+	addTimerReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
+		Text: "!addtimer rules 600 Follow the channel rules!", IsModerator: true,
+	})
+	require.True(t, handled)
+	require.Contains(t, addTimerReply.Text, "rules")
+
+	listReply, handled := router.Route(ctx, runtime.CommandInvocation{
+		Platform: "twitch", Channel: channel, UserID: "mod-1", Username: "modder",
+		Text: "!timers", IsModerator: true,
+	})
+	require.True(t, handled)
+	require.Contains(t, listReply.Text, "rules")
+	require.Contains(t, listReply.Text, "600")
 }

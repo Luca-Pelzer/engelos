@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -387,6 +388,140 @@ func NewDeleteCommand(store CustomCommandStore) Command {
 					mentionPrefix(msg), target)}
 			}
 			return Reply{Text: fmt.Sprintf("%sdeleted !%s", mentionPrefix(msg), target)}
+		},
+	}
+}
+
+// defaultTimerMinChatLines is the activity-gate value passed to the store
+// by !addtimer. It is 0 — the chat command does NOT expose the activity
+// gate, so a timer added from chat fires purely on its interval. Gating a
+// timer behind chat activity is configured out-of-band (admin/config),
+// because defaulting to a non-zero gate here would silently prevent a mod
+// from seeing their just-added timer fire while testing in quiet chat.
+const defaultTimerMinChatLines = 0
+
+// TimerInfo is a read view for the !timers listing.
+type TimerInfo struct {
+	Name            string
+	IntervalSeconds int
+	Enabled         bool
+}
+
+// TimerStore is the narrow management surface the !addtimer / !deltimer /
+// !timers built-ins need. An adapter over
+// [github.com/Luca-Pelzer/engelos/internal/timers.Store] is wired in main;
+// this interface lives HERE so internal/commands does NOT import
+// internal/timers (mirrors [CustomCommandStore]).
+//
+// main's adapter chooses the tenant_id and converts the interval-seconds
+// and min-chat-lines ints into the store's richer types. Errors are opaque:
+// the handlers render a single generic reply on any non-nil error.
+type TimerStore interface {
+	AddTimer(ctx context.Context, channel, name, message string, intervalSeconds, minChatLines int, createdBy string) error
+	RemoveTimer(ctx context.Context, channel, name string) error
+	ListTimers(ctx context.Context, channel string) ([]TimerInfo, error)
+}
+
+// NewAddTimerCommand returns "!addtimer". Mods-only.
+//
+// Usage: "!addtimer <name> <interval_seconds> <message...>", e.g.
+// "!addtimer rules 600 Follow the rules!". The interval is parsed as
+// integer seconds; the message is everything after it. A nil store yields
+// a one-line "timers are unavailable" reply.
+func NewAddTimerCommand(store TimerStore) Command {
+	return Command{
+		Name:         "addtimer",
+		Help:         "Add an auto-announcement — !addtimer name seconds message.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%stimers are unavailable",
+					mentionPrefix(msg))}
+			}
+			if len(args) < 3 {
+				return Reply{Text: fmt.Sprintf("%susage: !addtimer name seconds message",
+					mentionPrefix(msg))}
+			}
+			name := parseAdminTarget(args)
+			seconds, err := strconv.Atoi(args[1])
+			if err != nil || seconds <= 0 {
+				return Reply{Text: fmt.Sprintf("%susage: !addtimer name seconds message",
+					mentionPrefix(msg))}
+			}
+			message := strings.Join(args[2:], " ")
+			if aerr := store.AddTimer(ctx, msg.Channel, name, message,
+				seconds, defaultTimerMinChatLines, msg.UserID); aerr != nil {
+				return Reply{Text: fmt.Sprintf(
+					"%scouldn't add timer '%s' (already exists, missing, or invalid)",
+					mentionPrefix(msg), name)}
+			}
+			return Reply{Text: fmt.Sprintf("%sadded timer '%s' (every %ds)",
+				mentionPrefix(msg), name, seconds)}
+		},
+	}
+}
+
+// NewDeleteTimerCommand returns "!deltimer". Mods-only.
+//
+// Usage: "!deltimer <name>". A nil store yields the "timers are
+// unavailable" reply (see [NewAddTimerCommand]).
+func NewDeleteTimerCommand(store TimerStore) Command {
+	return Command{
+		Name:         "deltimer",
+		Help:         "Delete an auto-announcement — !deltimer name.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, args []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%stimers are unavailable",
+					mentionPrefix(msg))}
+			}
+			name := parseAdminTarget(args)
+			if name == "" {
+				return Reply{Text: fmt.Sprintf("%susage: !deltimer name",
+					mentionPrefix(msg))}
+			}
+			if err := store.RemoveTimer(ctx, msg.Channel, name); err != nil {
+				return Reply{Text: fmt.Sprintf(
+					"%scouldn't delete timer '%s' (already exists, missing, or invalid)",
+					mentionPrefix(msg), name)}
+			}
+			return Reply{Text: fmt.Sprintf("%sdeleted timer '%s'",
+				mentionPrefix(msg), name)}
+		},
+	}
+}
+
+// NewListTimersCommand returns "!timers". Mods-only. It renders timer names
+// and their intervals on one line, e.g. "@mod timers: rules (600s),
+// discord (1800s)", or "no timers set" when empty. A nil store yields the
+// "timers are unavailable" reply (see [NewAddTimerCommand]).
+func NewListTimersCommand(store TimerStore) Command {
+	return Command{
+		Name:         "timers",
+		Help:         "List the channel's auto-announcements.",
+		MinRole:      RoleModerator,
+		UserCooldown: defaultAdminUserCooldown,
+		Handler: func(ctx context.Context, msg Message, _ []string) Reply {
+			if store == nil {
+				return Reply{Text: fmt.Sprintf("%stimers are unavailable",
+					mentionPrefix(msg))}
+			}
+			infos, err := store.ListTimers(ctx, msg.Channel)
+			if err != nil {
+				return Reply{Text: fmt.Sprintf("%scouldn't list timers",
+					mentionPrefix(msg))}
+			}
+			if len(infos) == 0 {
+				return Reply{Text: fmt.Sprintf("%sno timers set", mentionPrefix(msg))}
+			}
+			parts := make([]string, 0, len(infos))
+			for _, info := range infos {
+				parts = append(parts, fmt.Sprintf("%s (%ds)", info.Name, info.IntervalSeconds))
+			}
+			return Reply{Text: fmt.Sprintf("%stimers: %s",
+				mentionPrefix(msg), strings.Join(parts, ", "))}
 		},
 	}
 }
