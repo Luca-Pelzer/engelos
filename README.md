@@ -218,16 +218,20 @@ All configuration is via environment variables:
 
 ## ☁️ Self-host vs Cloud
 
-EngelOS follows an open-core model, the same spirit as [Netdata](https://www.netdata.cloud/):
+EngelOS follows an open-core model, the same spirit as [Netdata](https://www.netdata.cloud/): a free
+community edition you self-host, and a paid cloud edition for people who want it managed.
 
-- **Self-hosted (this repo): free forever.** The full bot, dashboard, and engagement features, AGPL-3.0,
-  running on your own machine with your data under your control. This is the real product, not a teaser.
-- **Cloud (planned, Phase 2+): a paid, hosted option.** For people who don't want to run a server, a
-  managed version with a flat monthly price, one-click setup, and some extra conveniences and AI-backed
-  features that only make sense in the cloud. It funds the open-source work; it never holds the
-  self-hosted version hostage.
+| | **Community** (self-hosted) | **Cloud** (planned, Phase 2+) |
+|---|---|---|
+| Price | **Free forever** | Flat monthly price |
+| Hosting | Your machine, your data | Managed for you |
+| Setup | Build and run the binary | One-click, no server to run |
+| Features | The full bot, dashboard, moderation, commands, economy and games | Everything in Community, plus cloud-only conveniences and AI-backed features |
+| Best for | Anyone who wants full control | People who are serious about it and would rather not run their own server |
 
-Nothing in this repository is paywalled, and nothing here will be moved behind the Cloud tier.
+The Community edition is the real product, not a teaser: nothing in this repository is paywalled, and
+nothing here will ever be moved behind the Cloud tier. The Cloud edition exists to fund the
+open-source work, not to cripple the free one.
 
 ---
 
