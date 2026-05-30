@@ -29,6 +29,8 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/automod"
+	"github.com/Luca-Pelzer/engelos/internal/automodstate"
 	"github.com/Luca-Pelzer/engelos/internal/channelpoints"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
@@ -37,6 +39,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/liveops"
+	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/oauthrefresh"
 	"github.com/Luca-Pelzer/engelos/internal/overlay"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
@@ -208,6 +211,30 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("redemptions store opened", "dsn", redemptionsDSN)
 
+	automodAuditDSN := filepath.Join(dataDir, "automod_audit.db")
+	automodAudit, err := automodstate.OpenSQLiteStore(ctx, automodAuditDSN, logger)
+	if err != nil {
+		return fmt.Errorf("open automod audit store %s: %w", automodAuditDSN, err)
+	}
+	defer func() {
+		if cerr := automodAudit.Close(); cerr != nil {
+			logger.Warn("automod audit store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("automod audit store opened", "dsn", automodAuditDSN)
+
+	automodEngine, err := automod.NewEngine(automod.DefaultConfig())
+	if err != nil {
+		return fmt.Errorf("init automod engine: %w", err)
+	}
+	moderationSvc := moderation.New(moderation.Config{
+		Engine:   automodEngine,
+		Audit:    automodAudit,
+		TenantID: defaultTenantID,
+		Logger:   logger,
+	})
+	logger.Info("automod ready", "mode", "active (all filters disabled by default)")
+
 	pitySystem, err := pity.New(pity.DefaultConfig(), eventStore, logger)
 	if err != nil {
 		return fmt.Errorf("init pity system: %w", err)
@@ -288,6 +315,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Streak:           streakTickAdapter{sys: streakSystem},
 		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
 		Commands:         cmdRouter,
+		Moderator:        moderationAdapter{svc: moderationSvc},
 		Activity:         timerScheduler,
 		Logger:           logger,
 	})
@@ -508,6 +536,35 @@ func (s streakTickAdapter) TickStreak(ctx context.Context, tenantID, channel, vi
 		BrokenFromDays: res.BrokenFromDays,
 		SameDayReTick:  res.SameDayReTick,
 	}, nil
+}
+
+// moderationAdapter bridges the runtime.Moderator interface (positional, to
+// keep the runtime decoupled) to the moderation.Service. A nil svc yields a
+// no-op that always passes, so AutoMod can be absent without a nil-check at the
+// dispatcher call site.
+type moderationAdapter struct{ svc *moderation.Service }
+
+func (a moderationAdapter) Evaluate(ctx context.Context, channel, messageID, userID, username, text string,
+	emoteCount int, firstMsg, isMod, isVIP, isSub, isBroadcaster bool) runtime.ModDecision {
+	dec := a.svc.Evaluate(ctx, moderation.Message{
+		Channel:       channel,
+		MessageID:     messageID,
+		UserID:        userID,
+		Username:      username,
+		Text:          text,
+		EmoteCount:    emoteCount,
+		FirstMsg:      firstMsg,
+		IsModerator:   isMod,
+		IsVIP:         isVIP,
+		IsSubscriber:  isSub,
+		IsBroadcaster: isBroadcaster,
+	})
+	return runtime.ModDecision{
+		Action:   runtime.ModAction(dec.Kind),
+		Duration: dec.Duration,
+		Reason:   dec.Reason,
+		DryRun:   dec.DryRun,
+	}
 }
 
 // dispatcherStatsAdapter wraps runtime.Dispatcher to satisfy

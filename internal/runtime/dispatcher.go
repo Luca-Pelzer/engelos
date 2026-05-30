@@ -112,6 +112,46 @@ type ActivityRecorder interface {
 	RecordChatActivity(channel string)
 }
 
+// ModAction enumerates the enforcement the dispatcher may carry out on a
+// message, in increasing severity. ModActionNone leaves the message untouched.
+type ModAction int
+
+const (
+	// ModActionNone means the message is clean; process it normally.
+	ModActionNone ModAction = iota
+	// ModActionDelete removes the message without timing the author out.
+	ModActionDelete
+	// ModActionTimeout removes the message and times the author out for Duration.
+	ModActionTimeout
+	// ModActionBan permanently bans the author.
+	ModActionBan
+)
+
+// ModDecision is the decoupled moderation verdict the dispatcher acts on. It
+// mirrors internal/moderation.Decision without importing it, keeping the
+// runtime free of any moderation import (the same pattern as StreakOutcome).
+type ModDecision struct {
+	// Action is the enforcement to apply.
+	Action ModAction
+	// Duration is the timeout length, only meaningful for ModActionTimeout.
+	Duration time.Duration
+	// Reason is a short human-readable explanation (e.g. "82% caps").
+	Reason string
+	// DryRun is true when the engine is in shadow mode: the dispatcher logs
+	// and records the decision but does NOT enforce it.
+	DryRun bool
+}
+
+// Moderator is the narrow contract the dispatcher consults for every chat
+// message before command routing. A thin adapter over internal/moderation
+// satisfies it (wired in main), so the runtime stays decoupled from the
+// automod packages. Evaluate must be safe for concurrent use and return a
+// ModActionNone decision for clean messages.
+type Moderator interface {
+	Evaluate(ctx context.Context, channel, messageID, userID, username, text string,
+		emoteCount int, firstMsg, isMod, isVIP, isSub, isBroadcaster bool) ModDecision
+}
+
 // Config configures the Dispatcher.
 type Config struct {
 	// TenantID is the single-tenant identifier this runtime serves.
@@ -147,6 +187,12 @@ type Config struct {
 	// commands (e.g. "!pity"). A non-empty reply is sent back to chat via
 	// the originating platform's Do(ActionSendMessage).
 	Commands CommandRouter
+
+	// Moderator, when non-nil, screens every chat message for AutoMod
+	// violations before command routing. A non-pass decision is enforced via
+	// the platform (delete/timeout/ban) and the message is dropped from
+	// further processing (no command, points or streak).
+	Moderator Moderator
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -332,6 +378,10 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 		d.cfg.Activity.RecordChatActivity(ev.Channel)
 	}
 
+	if d.moderate(ctx, p, ev) {
+		return
+	}
+
 	d.routeCommand(ctx, p, ev)
 
 	if d.cfg.Pity != nil && d.cfg.PointsPerMessage > 0 {
@@ -389,6 +439,70 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 			}
 		}
 	}
+}
+
+// moderate screens a message through the configured Moderator and, on a
+// non-pass decision, enforces it on the platform (delete/timeout/ban) unless
+// the decision is a dry-run. It returns true when the message was handled by
+// moderation and the dispatcher should stop processing it (no command, points
+// or streak for a rule-breaking message). A nil Moderator always returns false.
+func (d *Dispatcher) moderate(ctx context.Context, p adapters.Platform, ev adapters.Event) bool {
+	if d.cfg.Moderator == nil || p == nil {
+		return false
+	}
+	m := ev.Message
+	isBroadcaster := m.Username != "" && strings.EqualFold(m.Username, ev.Channel)
+	dec := d.cfg.Moderator.Evaluate(ctx, ev.Channel, m.ID, m.UserID, m.Username,
+		m.Content, len(m.EmotesUsed), false,
+		m.IsModerator, m.IsVIP, m.IsSubscriber, isBroadcaster)
+	if dec.Action == ModActionNone {
+		return false
+	}
+
+	d.logger.Info("automod",
+		"channel", ev.Channel, "user", m.Username,
+		"action", dec.Action, "reason", dec.Reason, "dry_run", dec.DryRun)
+
+	if dec.DryRun {
+		return true
+	}
+
+	for _, act := range moderationActions(ev.Channel, m, dec) {
+		if err := p.Do(ctx, act); err != nil {
+			d.logger.Warn("automod action failed",
+				"channel", ev.Channel, "type", act.Type, "err", err)
+		}
+	}
+	return true
+}
+
+// moderationActions translates a moderation decision into the concrete platform
+// actions to perform: every punishment first deletes the offending message,
+// then a timeout or ban additionally restricts the user.
+func moderationActions(channel string, m *adapters.MessageEvent, dec ModDecision) []adapters.Action {
+	acts := make([]adapters.Action, 0, 2)
+	if m.ID != "" {
+		acts = append(acts, adapters.Action{
+			Type:          adapters.ActionDeleteMessage,
+			Channel:       channel,
+			DeleteMessage: &adapters.DeleteMessageAction{MessageID: m.ID},
+		})
+	}
+	switch dec.Action {
+	case ModActionTimeout:
+		acts = append(acts, adapters.Action{
+			Type:    adapters.ActionTimeout,
+			Channel: channel,
+			Timeout: &adapters.TimeoutAction{UserID: m.UserID, Reason: dec.Reason, Duration: dec.Duration},
+		})
+	case ModActionBan:
+		acts = append(acts, adapters.Action{
+			Type:    adapters.ActionBan,
+			Channel: channel,
+			Ban:     &adapters.BanAction{UserID: m.UserID, Reason: dec.Reason},
+		})
+	}
+	return acts
 }
 
 // routeCommand offers the message to the command router (when configured)
