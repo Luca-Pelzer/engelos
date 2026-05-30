@@ -21,13 +21,13 @@ Free forever, no premium tier, no vendor lock-in, your data on your machine.
 
 ---
 
-engelOS grew out of **[EngelGuard](https://github.com/Luca-Pelzer/engelguard)**, an earlier Python
-Twitch bot. Building EngelGuard made one thing clear: the bot I actually wanted was far bigger than
-that codebase could ever carry. I didn't want a moderation bot plus a few add-ons; I wanted
-moderation, commands, a points economy, games, giveaways, and engagement systems all living in **one
-coherent suite**. So instead of bolting more onto EngelGuard, I rebuilt it from scratch in Go. engelOS
-is that rebuild: a single static binary you can run anywhere, with an embedded web dashboard and
-everything in one place.
+engelOS is a **suite**, not a single bot. It grew out of
+**[EngelGuard](https://github.com/Luca-Pelzer/engelguard)**, an earlier Python Twitch bot. Building
+EngelGuard made one thing clear: what I actually wanted was far bigger than any single bot, so I
+rebuilt everything from scratch in Go as one coherent suite. EngelGuard didn't disappear; it's the
+moderation bot **inside** engelOS. The Twitch and Discord bots are still EngelGuard, and engelOS is
+the bigger home they live in, tying moderation, commands, a points economy, games, giveaways, and
+engagement systems together in a single static binary with an embedded web dashboard.
 
 > [!IMPORTANT]
 > **Phase 1 alpha.** The core is live and tested under Go's race detector, but the public OSS launch
