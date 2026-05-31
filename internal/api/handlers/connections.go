@@ -15,9 +15,8 @@ import (
 // Connections exposes the current user's linked OAuth identities (Twitch
 // today, Discord/Spotify later) to the dashboard so a streamer can see
 // whether the bot is authorized, as whom, with which scopes, and whether the
-// stored token is still valid. It is read-only; (re)authorization happens by
-// redirecting to the provider login routes. When the store is nil every
-// endpoint returns 501 so the router still boots with auth disabled.
+// stored token is still valid. When the store is nil every endpoint returns
+// 501 so the router still boots with auth disabled.
 type Connections struct {
 	store    auth.Store
 	tenantID string
@@ -54,55 +53,6 @@ func (h *Connections) List(w http.ResponseWriter, r *http.Request) {
 	for _, id := range identities {
 		out = append(out, connectionJSON(id))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"connections": out})
-}
-
-// Delete handles DELETE /api/v1/connections/{id}. It unlinks one OAuth
-// identity (a Twitch/Discord login or bot link). The target is verified to
-// belong to the session user BEFORE deletion: DeleteOAuthIdentity takes a
-// bare id, so without this ownership check any logged-in user could unlink
-// another tenant's identity by guessing its ULID. Returns 404 (not 403) for
-// an identity the caller does not own, so the endpoint never reveals whether
-// an unowned id exists.
-func (h *Connections) Delete(w http.ResponseWriter, r *http.Request) {
-	if h.store == nil {
-		notImplemented(w)
-		return
-	}
-	user, ok := middleware.UserFromContext(r.Context())
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing_id"})
-		return
-	}
-	identities, err := h.store.GetOAuthIdentitiesByUser(r.Context(), h.tenantID, user.ID)
-	if err != nil {
-		h.logger.WarnContext(r.Context(), "connections delete lookup failed", slog.Any("err", err))
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal_error"})
-		return
-	}
-	owned := false
-	for _, ident := range identities {
-		if ident.ID == id {
-			owned = true
-			break
-		}
-	}
-	if !owned {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
-		return
-	}
-	if err := h.store.DeleteOAuthIdentity(r.Context(), id); err != nil {
-		h.logger.WarnContext(r.Context(), "connections delete failed", slog.Any("err", err))
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal_error"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
-}
 	writeJSON(w, http.StatusOK, map[string]any{"connections": out})
 }
 
