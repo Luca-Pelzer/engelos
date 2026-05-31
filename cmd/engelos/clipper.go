@@ -68,11 +68,11 @@ func (a *autoClipper) enabled(channel string) bool {
 	return a.channels[strings.ToLower(strings.TrimPrefix(channel, "#"))]
 }
 
-func (a *autoClipper) Message(_ context.Context, channel, _, _ string) {
+func (a *autoClipper) Message(_ context.Context, channel, userID, _, text string) {
 	if !a.enabled(channel) {
 		return
 	}
-	if fired, reason := a.det.Message(channel, a.now()); fired {
+	if fired, reason := a.det.Message(channel, userID, text, a.now()); fired {
 		a.capture(channel, reason)
 	}
 }

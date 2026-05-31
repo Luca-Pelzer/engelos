@@ -120,7 +120,7 @@ type CoHost interface {
 // must be safe for concurrent use and best-effort, never blocking the
 // dispatcher.
 type ClipDetector interface {
-	Message(ctx context.Context, channel, userID, username string)
+	Message(ctx context.Context, channel, userID, username, text string)
 	Sub(ctx context.Context, channel string)
 	Raid(ctx context.Context, channel string, viewers int)
 }
@@ -488,7 +488,7 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 	d.cohost(ctx, p, ev)
 
 	if d.cfg.ClipDetector != nil {
-		d.cfg.ClipDetector.Message(ctx, ev.Channel, ev.Message.UserID, ev.Message.Username)
+		d.cfg.ClipDetector.Message(ctx, ev.Channel, ev.Message.UserID, ev.Message.Username, ev.Message.Content)
 	}
 
 	if d.cfg.Pity != nil && d.cfg.PointsPerMessage > 0 {
