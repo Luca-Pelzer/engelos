@@ -346,6 +346,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("cohost store opened", "dsn", cohostDSN)
 
+	contextmodDSN := filepath.Join(dataDir, "contextmod.db")
+	contextmodStore, err := contextmod.OpenSQLiteStore(ctx, contextmodDSN)
+	if err != nil {
+		return fmt.Errorf("open contextmod store %s: %w", contextmodDSN, err)
+	}
+	defer func() {
+		if cerr := contextmodStore.Close(); cerr != nil {
+			logger.Warn("contextmod store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("contextmod store opened", "dsn", contextmodDSN)
+
 	economy := newEconomyAdapter(loyaltyStore, defaultTenantID, defaultEarnAmount, defaultEarnCooldown).
 		withFeatureGate(featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID})
 
@@ -467,13 +479,19 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		twitchAdapter, claudeClient, platformSender{platforms: platforms},
 		splitCSV(os.Getenv("ENGELOS_CLIPPER_CHANNELS")), logger)
 
-	// Context-AI moderation is opt-in: it only runs when the streamer supplies
-	// plain-language rules via ENGELOS_CONTEXTMOD_RULES. It escalates only
-	// messages the rule engine passed, and fails open to the existing behaviour.
-	contextRules := strings.TrimSpace(os.Getenv("ENGELOS_CONTEXTMOD_RULES"))
-	var contextEscalator *contextmod.Escalator
-	if contextRules != "" {
-		contextEscalator = contextmod.NewEscalator(claudeClient, contextmod.DefaultOptions())
+	// Context-AI moderation resolves its rules per channel from the contextmod
+	// store, falling back to the global ENGELOS_CONTEXTMOD_RULES env value when
+	// a channel has no row. The escalator is always created; escalation simply
+	// no-ops for channels whose resolved rules are empty, so the dashboard can
+	// turn it on per channel without a restart. It escalates only messages the
+	// rule engine passed, and fails open to the existing behaviour.
+	contextEnvRules := strings.TrimSpace(os.Getenv("ENGELOS_CONTEXTMOD_RULES"))
+	contextEscalator := contextmod.NewEscalator(claudeClient, contextmod.DefaultOptions())
+	contextRules := &contextRulesProvider{
+		store:    contextmodStore,
+		tenantID: defaultTenantID,
+		envRules: contextEnvRules,
+		logger:   logger,
 	}
 
 	cmdRouter := buildCommandRouter(defaultTenantID, pitySystem, streakSystem, customStore, timerStore, quoteStore, counterStore, eventStoreLO, twitchAdapter, economy, platformSender{platforms: platforms}, rewardCatalog, featureGateAdapter{store: featureFlagStore, tenantID: defaultTenantID}, predictionController{adapter: twitchAdapter, logger: logger}, songRequester, momentCtrl, translateCfg, cohostCfg, logger)
@@ -656,6 +674,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		TranslateStore:   translateStore,
 		ClipperStore:     clipperStore,
 		CoHostStore:      cohostStore,
+		ContextModStore:  contextmodStore,
 		SongQueueStore:   songQueueStore,
 		WrappedStore:     wrappedStore,
 		WrappedRanker:    wrappedRankerAdapter{loyalty: loyaltyStore, streak: streakSystem, tenantID: defaultTenantID},
@@ -1340,10 +1359,68 @@ func (a redeemSenderAdapter) Send(ctx context.Context, channel, message string) 
 // keep the runtime decoupled) to the moderation.Service. A nil svc yields a
 // no-op that always passes, so AutoMod can be absent without a nil-check at the
 // dispatcher call site.
+// contextRulesProvider resolves the active context-moderation rules for a
+// channel, preferring a per-channel store row and falling back to the global
+// env rules when no row exists. Results are cached for a short TTL so the
+// moderation hot path does not hit the database on every message.
+//
+// Returning empty rules disables AI escalation for that channel, so an absent
+// store, a disabled row, or an empty rule set all collapse to the safe "no
+// escalation" behaviour.
+type contextRulesProvider struct {
+	store    contextmod.Store
+	tenantID string
+	envRules string
+	logger   *slog.Logger
+
+	mu    sync.Mutex
+	cache map[string]contextRulesEntry
+}
+
+type contextRulesEntry struct {
+	rules    string
+	loadedAt time.Time
+}
+
+const contextRulesTTL = 30 * time.Second
+
+// rulesFor returns the rules to apply for channel, or "" to skip escalation.
+func (p *contextRulesProvider) rulesFor(ctx context.Context, channel string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := time.Now()
+	if e, ok := p.cache[channel]; ok && now.Sub(e.loadedAt) < contextRulesTTL {
+		return e.rules
+	}
+
+	rules := p.envRules
+	if p.store != nil {
+		cfg, err := p.store.Get(ctx, p.tenantID, channel)
+		switch {
+		case err == nil:
+			if cfg.Enabled {
+				rules = cfg.Rules
+			} else {
+				rules = ""
+			}
+		case errors.Is(err, contextmod.ErrNotFound):
+			// No per-channel row: keep the env fallback.
+		default:
+			p.logger.WarnContext(ctx, "contextmod rules load failed, using env fallback",
+				"channel", channel, "err", err)
+		}
+	}
+	if p.cache == nil {
+		p.cache = make(map[string]contextRulesEntry)
+	}
+	p.cache[channel] = contextRulesEntry{rules: rules, loadedAt: now}
+	return rules
+}
+
 type moderationAdapter struct {
 	svc       *moderation.Service
 	escalator *contextmod.Escalator
-	rules     string
+	rules     *contextRulesProvider
 }
 
 func (a moderationAdapter) Evaluate(ctx context.Context, channel, messageID, userID, username, text string,
@@ -1369,14 +1446,19 @@ func (a moderationAdapter) Evaluate(ctx context.Context, channel, messageID, use
 	}
 	// AI escalation is strictly additive: only consult it for messages the
 	// rule engine let pass, and never for privileged users. A non-actionable
-	// verdict (unknown/allow) leaves the original pass untouched.
-	if out.Action != runtime.ModActionNone || a.escalator == nil || a.rules == "" {
+	// verdict (unknown/allow) leaves the original pass untouched. Rules are
+	// resolved per channel; empty rules skip escalation entirely.
+	if out.Action != runtime.ModActionNone || a.escalator == nil || a.rules == nil {
 		return out
 	}
 	if isMod || isBroadcaster {
 		return out
 	}
-	d := a.escalator.Classify(ctx, a.rules, username, text)
+	rules := a.rules.rulesFor(ctx, channel)
+	if rules == "" {
+		return out
+	}
+	d := a.escalator.Classify(ctx, rules, username, text)
 	switch d.Verdict {
 	case contextmod.VerdictDelete:
 		return runtime.ModDecision{Action: runtime.ModActionDelete, Reason: "AI: " + d.Reason}

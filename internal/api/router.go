@@ -14,6 +14,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/clipper"
 	"github.com/Luca-Pelzer/engelos/internal/cohost"
+	"github.com/Luca-Pelzer/engelos/internal/contextmod"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/featureflags"
@@ -158,6 +159,10 @@ type Deps struct {
 	// under /api/v1/cohost. Nil makes those endpoints return 501.
 	CoHostStore cohost.Store
 
+	// ContextModStore, when non-nil, exposes per-channel AI context-moderation
+	// config under /api/v1/contextmod. Nil makes those endpoints return 501.
+	ContextModStore contextmod.Store
+
 	// SongQueueStore, when non-nil, exposes the bot-managed YouTube song queue
 	// to the player overlay at /api/v1/songqueue/next (intentionally NOT
 	// session-protected; an OBS browser source cannot log in). Nil returns 501.
@@ -202,6 +207,7 @@ func NewRouter(deps Deps) chi.Router {
 	translateH := handlers.NewTranslate(deps.TranslateStore, deps.TenantID, logger)
 	clipperH := handlers.NewClipper(deps.ClipperStore, deps.TenantID, logger)
 	cohostH := handlers.NewCoHost(deps.CoHostStore, deps.TenantID, logger)
+	contextmodH := handlers.NewContextMod(deps.ContextModStore, deps.TenantID, logger)
 	connectionsH := handlers.NewConnections(deps.AuthStore, deps.TenantID, logger)
 	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
 	wrappedH := handlers.NewWrapped(deps.WrappedStore, deps.WrappedRanker, deps.TenantID, logger)
@@ -359,6 +365,14 @@ func NewRouter(deps Deps) chi.Router {
 			}
 			r.Get("/", cohostH.Get)
 			r.Put("/", cohostH.Set)
+		})
+
+		r.Route("/contextmod", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", contextmodH.Get)
+			r.Put("/", contextmodH.Set)
 		})
 
 		// /songqueue is intentionally NOT session-protected: the OBS browser

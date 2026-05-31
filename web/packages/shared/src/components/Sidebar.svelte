@@ -18,6 +18,7 @@
     { href: '/automod',      label: 'AutoMod',      icon: 'M12 2l8 4v6c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6z' },
     { href: '/translate',    label: 'Translate',    icon: 'M4 5h7M9 3v2c0 4-2 7-5 8M5 9c0 3 3 5 6 6M13 19l4-9 4 9M14.5 16h5' },
     { href: '/cohost',       label: 'AI Co-Host',   icon: 'M12 2a5 5 0 015 5v2a5 5 0 01-10 0V7a5 5 0 015-5zM5 21v-1a7 7 0 0114 0v1M9 9h.01M15 9h.01' },
+    { href: '/contextmod',   label: 'AI Moderation', icon: 'M12 3l8 4v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V7zM9.5 12l1.8 1.8L15 10' },
     { href: '/clipper',      label: 'Auto-Clipper', icon: 'M6 4v16M18 4v16M6 8h12M6 16h12M2 8h4M2 16h4M18 8h4M18 16h4' },
     { href: '/connections',  label: 'Connections',  icon: 'M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M8 12h8' },
     { href: '/integrations', label: 'Integrations', icon: 'M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z' },
