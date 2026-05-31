@@ -24,6 +24,7 @@
     if (path.startsWith('/clipper'))      return 'Auto-Clipper';
     if (path.startsWith('/pity'))         return 'Pity';
     if (path.startsWith('/streak'))       return 'Streak';
+    if (path.startsWith('/wrapped'))      return 'Stream Wrapped';
     if (path.startsWith('/connections'))  return 'Connections';
     if (path.startsWith('/integrations')) return 'Integrations';
     if (path.startsWith('/settings'))     return 'Settings';
