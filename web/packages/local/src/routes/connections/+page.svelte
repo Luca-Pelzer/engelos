@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Card, Button, Badge } from '@engelos/shared/components';
+  import { Card, Badge } from '@engelos/shared/components';
   import { api, toast, API_BASE } from '@engelos/shared/lib';
 
   type Connection = {
@@ -15,10 +15,9 @@
     updated_at: string;
   };
 
-  let unlinking = $state('');
-
   let connections = $state<Connection[]>([]);
   let loading = $state(true);
+  let unlinking = $state('');
 
   const userLoginUrl = `${API_BASE}/api/v1/auth/twitch/login?purpose=user`;
   const botLoginUrl = `${API_BASE}/api/v1/auth/twitch/login?purpose=bot`;
@@ -42,6 +41,22 @@
       toast('Could not load connections.', 'error');
     } finally {
       loading = false;
+    }
+  }
+
+  async function unlink(conn: Connection) {
+    if (!confirm(`Disconnect ${conn.provider} (${conn.provider_login || 'unknown'})? The bot loses this authorization.`)) {
+      return;
+    }
+    unlinking = conn.id;
+    try {
+      await api.delete(`/api/v1/connections/${encodeURIComponent(conn.id)}`);
+      toast('Disconnected.', 'success');
+      await load();
+    } catch {
+      toast('Could not disconnect.', 'error');
+    } finally {
+      unlinking = '';
     }
   }
 
@@ -100,12 +115,19 @@
           {/if}
         </div>
 
-        <a href={row.url} class="twitch-btn shrink-0" data-sveltekit-reload>
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
-            <path d="M4 2L2.5 5.5v13H7V22h3l3-3h4l5-5V2zm15 11l-3 3h-4l-3 3v-3H7V4h12zM15 7h-2v5h2zm-5 0H8v5h2z"/>
-          </svg>
-          <span>{conn ? 'Re-authorize' : 'Connect'}</span>
-        </a>
+        <div class="flex flex-col gap-2 shrink-0">
+          <a href={row.url} class="twitch-btn" data-sveltekit-reload>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
+              <path d="M4 2L2.5 5.5v13H7V22h3l3-3h4l5-5V2zm15 11l-3 3h-4l-3 3v-3H7V4h12zM15 7h-2v5h2zm-5 0H8v5h2z"/>
+            </svg>
+            <span>{conn ? 'Re-authorize' : 'Connect'}</span>
+          </a>
+          {#if conn}
+            <button class="unlink-btn" onclick={() => unlink(conn)} disabled={unlinking === conn.id}>
+              {unlinking === conn.id ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+          {/if}
+        </div>
       </div>
     </Card>
   {/each}
@@ -119,6 +141,7 @@
   .twitch-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     padding: 9px 14px;
     border-radius: var(--radius-md);
@@ -131,6 +154,28 @@
   .twitch-btn:hover {
     background: #7c2fff;
     transform: translateY(-1px);
+  }
+  .unlink-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 14px;
+    border-radius: var(--radius-md);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-fg-soft);
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color var(--duration-fast), color var(--duration-fast);
+  }
+  .unlink-btn:hover {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+  .unlink-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .scope-chip {
     display: inline-block;

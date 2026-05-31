@@ -6,6 +6,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/Luca-Pelzer/engelos/internal/api/middleware"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 )
@@ -53,6 +55,99 @@ func (h *Connections) List(w http.ResponseWriter, r *http.Request) {
 		out = append(out, connectionJSON(id))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"connections": out})
+}
+
+// Delete handles DELETE /api/v1/connections/{id}. It unlinks one OAuth
+// identity (a Twitch/Discord login or bot link). The target is verified to
+// belong to the session user BEFORE deletion: DeleteOAuthIdentity takes a
+// bare id, so without this ownership check any logged-in user could unlink
+// another tenant's identity by guessing its ULID. Returns 404 (not 403) for
+// an identity the caller does not own, so the endpoint never reveals whether
+// an unowned id exists.
+func (h *Connections) Delete(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		notImplemented(w)
+		return
+	}
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing_id"})
+		return
+	}
+	identities, err := h.store.GetOAuthIdentitiesByUser(r.Context(), h.tenantID, user.ID)
+	if err != nil {
+		h.logger.WarnContext(r.Context(), "connections delete lookup failed", slog.Any("err", err))
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal_error"})
+		return
+	}
+	owned := false
+	for _, ident := range identities {
+		if ident.ID == id {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		return
+	}
+	if err := h.store.DeleteOAuthIdentity(r.Context(), id); err != nil {
+		h.logger.WarnContext(r.Context(), "connections delete failed", slog.Any("err", err))
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal_error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+}
+	writeJSON(w, http.StatusOK, map[string]any{"connections": out})
+}
+
+// Delete handles DELETE /api/v1/connections/{id}, unlinking one OAuth
+// identity. It verifies the identity belongs to the session user before the
+// bare-id store delete, returning 404 (not 403) for an id the caller does
+// not own so the endpoint never reveals whether an unowned id exists.
+func (h *Connections) Delete(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		notImplemented(w)
+		return
+	}
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing_id"})
+		return
+	}
+	identities, err := h.store.GetOAuthIdentitiesByUser(r.Context(), h.tenantID, user.ID)
+	if err != nil {
+		h.logger.WarnContext(r.Context(), "connections delete lookup failed", slog.Any("err", err))
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal_error"})
+		return
+	}
+	owned := false
+	for _, ident := range identities {
+		if ident.ID == id {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		return
+	}
+	if err := h.store.DeleteOAuthIdentity(r.Context(), id); err != nil {
+		h.logger.WarnContext(r.Context(), "connections delete failed", slog.Any("err", err))
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal_error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
 }
 
 // connectionJSON renders an identity into the wire shape: metadata plus

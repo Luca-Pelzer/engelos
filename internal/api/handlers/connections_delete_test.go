@@ -2,6 +2,8 @@ package handlers_test
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +16,10 @@ import (
 	apimw "github.com/Luca-Pelzer/engelos/internal/api/middleware"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 )
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 // seedIdentity links a Twitch OAuth identity to user and returns its id.
 func seedIdentity(t *testing.T, store auth.Store, user auth.User, providerUserID, login string) string {
@@ -71,11 +77,9 @@ func TestConnections_Delete_OtherUsersIdentityIs404(t *testing.T) {
 	other := seedUser(t, store, "other@example.com", testPassword, false)
 	victimID := seedIdentity(t, store, other, "tw-2", "victim")
 
-	// owner tries to delete other's identity by its id
 	rr := serveDelete(t, store, loginAs(t, store, owner), victimID)
 	require.Equal(t, http.StatusNotFound, rr.Code, "must not delete another user's identity")
 
-	// victim's identity must still exist
 	left, err := store.GetOAuthIdentitiesByUser(context.Background(), testTenant, other.ID)
 	require.NoError(t, err)
 	require.Len(t, left, 1, "other user's identity must be untouched")
