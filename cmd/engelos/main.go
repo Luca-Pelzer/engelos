@@ -691,20 +691,57 @@ func buildTwitchOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Confi
 	}
 }
 
-// defaultTwitchScopes lists each requested OAuth scope with the capability
-// it unlocks, so the grant stays minimal and auditable:
+// defaultTwitchScopes lists each requested OAuth scope with the capability it
+// unlocks, so the grant stays auditable. The same set is requested for both
+// the bot login (purpose=bot) and the broadcaster login (purpose=user); each
+// account only grants what it owns, so channel-scoped reads (subs, vips, hype
+// train) take effect on the broadcaster token while chat/clip/mod actions run
+// on the bot token. Destructive or secret scopes (stream key, commercials, VOD
+// deletion, moderator management) are deliberately excluded.
 var defaultTwitchScopes = []string{
-	"user:read:email",                // identify the account
-	"chat:read",                      // receive chat messages
-	"chat:edit",                      // send chat messages
+	"user:read:email", // identify the account
+
+	// Chat
+	"chat:read", // receive chat messages (IRC)
+	"chat:edit", // send chat messages (IRC)
+
+	// Moderation
 	"moderator:manage:banned_users",  // ban / timeout actions
 	"moderator:manage:chat_messages", // delete-message action
-	"clips:edit",                     // create clips for the auto-clipper
-	"channel:read:redemptions",       // observe channel-point redemptions
-	"channel:manage:redemptions",     // create rewards + fulfill/refund redemptions
+	"moderator:manage:chat_settings", // toggle slow / sub-only / emote-only mode
+	"moderator:manage:announcements", // post /announce messages
+	"moderator:manage:shoutouts",     // auto /shoutout on raid
+	"moderator:manage:warnings",      // warn a user before escalating
 	"moderator:read:followers",       // read follower dates for !followage
-	"channel:read:predictions",       // read the active prediction (id + outcomes)
-	"channel:manage:predictions",     // create / lock / resolve / cancel predictions
+	"moderator:read:chatters",        // list who is currently in chat
+
+	// Channel points
+	"channel:read:redemptions",   // observe channel-point redemptions
+	"channel:manage:redemptions", // create rewards + fulfill/refund redemptions
+
+	// Predictions / polls
+	"channel:read:predictions",   // read the active prediction (id + outcomes)
+	"channel:manage:predictions", // create / lock / resolve / cancel predictions
+	"channel:read:polls",         // read poll state + events
+	"channel:manage:polls",       // create / end polls
+
+	// Subscriptions / VIPs (viewer knowledge)
+	"channel:read:subscriptions", // subscriber list + sub/resub/giftsub events
+	"channel:read:vips",          // read VIP list
+	"channel:manage:vips",        // grant / revoke VIP
+
+	// Bits / hype train / goals / charity / ads (engagement signals)
+	"bits:read",               // cheer events + bits leaderboard
+	"channel:read:hype_train", // hype train begin/progress/end + contributors
+	"channel:read:goals",      // creator goal progress
+	"channel:read:charity",    // charity campaign donations + progress
+	"channel:read:ads",        // ad schedule + ad-break events
+
+	// Stream info
+	"channel:manage:broadcast", // edit title / category / tags, create markers
+
+	// Clips
+	"clips:edit", // create clips for the auto-clipper
 }
 
 // twitchOAuthScopes returns the scopes to request, allowing an operator to
