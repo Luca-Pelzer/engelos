@@ -12,6 +12,8 @@
     { href: '/commands',     label: 'Commands',     icon: 'M4 6h16M4 12h10M4 18h16' },
     { href: '/redemptions',  label: 'Channel Points', icon: 'M12 2l2.6 6.6L21 9.2l-5 4.3 1.6 6.5L12 16.8 6.4 20l1.6-6.5-5-4.3 6.4-.6z' },
     { href: '/counters',     label: 'Counters',     icon: 'M4 5h16M4 12h16M4 19h16M8 3v18M16 3v18' },
+    { href: '/pity',         label: 'Pity',         icon: 'M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z' },
+    { href: '/streak',       label: 'Streak',       icon: 'M13 2L4.5 13H11l-1 9 8.5-11H12z' },
     { href: '/automod',      label: 'AutoMod',      icon: 'M12 2l8 4v6c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6z' },
     { href: '/translate',    label: 'Translate',    icon: 'M4 5h7M9 3v2c0 4-2 7-5 8M5 9c0 3 3 5 6 6M13 19l4-9 4 9M14.5 16h5' },
     { href: '/clipper',      label: 'Auto-Clipper', icon: 'M6 4v16M18 4v16M6 8h12M6 16h12M2 8h4M2 16h4M18 8h4M18 16h4' },
