@@ -62,6 +62,7 @@ func (h *Connections) List(w http.ResponseWriter, r *http.Request) {
 func connectionJSON(id auth.OAuthIdentity) map[string]any {
 	expired := !id.ExpiresAt.IsZero() && !id.ExpiresAt.After(time.Now().UTC())
 	return map[string]any{
+		"id":              id.ID,
 		"provider":        id.Provider,
 		"provider_login":  id.ProviderLogin,
 		"purpose":         id.Purpose,

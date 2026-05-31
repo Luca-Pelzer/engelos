@@ -4,6 +4,7 @@
   import { api, toast, API_BASE } from '@engelos/shared/lib';
 
   type Connection = {
+    id: string;
     provider: string;
     provider_login: string;
     purpose: string;
@@ -13,6 +14,8 @@
     expired: boolean;
     updated_at: string;
   };
+
+  let unlinking = $state('');
 
   let connections = $state<Connection[]>([]);
   let loading = $state(true);

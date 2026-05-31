@@ -261,6 +261,7 @@ func NewRouter(deps Deps) chi.Router {
 				r.Use(apimw.RequireSession)
 			}
 			r.Get("/", connectionsH.List)
+			r.Delete("/{id}", connectionsH.Delete)
 		})
 		// Live operational data (event stream, dashboard stats, the
 		// WebSocket feed) is owner-only: it exposes real chat activity and
