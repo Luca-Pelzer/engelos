@@ -65,10 +65,13 @@ type OAuth struct {
 	cfg      *oauth2.Config
 	clientID string
 
-	// ownerLogins is the set of Twitch logins (lowercased) permitted to
-	// hold a dashboard session. Empty enables trust-on-first-use bootstrap:
-	// the first ever login becomes the owner, after which the door closes.
-	ownerLogins map[string]bool
+	// ownerLogins maps a provider ("twitch"/"discord") to the set of
+	// logins (lowercased) permitted to hold a dashboard session for that
+	// provider. An absent/empty per-provider set enables trust-on-first-use
+	// bootstrap: the first ever login becomes the owner, after which the
+	// door closes. Logins are provider-scoped because a Twitch login is not
+	// the same identity as a Discord username.
+	ownerLogins map[string]map[string]bool
 
 	// newHelix is a test seam. Production callers leave it nil and the
 	// Callback handler builds a real *helix.Client. Tests inject a fake
@@ -156,9 +159,22 @@ func (o *OAuth) WithOnLogin(fn func(ev LoginEvent)) *OAuth {
 	return o
 }
 
-// WithOwnerLogins restricts dashboard access to the given Twitch logins.
-// An empty list keeps trust-on-first-use bootstrap enabled.
+// WithOwnerLogins restricts dashboard access via Twitch to the given
+// Twitch logins. An empty list keeps trust-on-first-use bootstrap enabled.
 func (o *OAuth) WithOwnerLogins(logins []string) *OAuth {
+	o.setOwnerLogins(auth.ProviderTwitch, logins)
+	return o
+}
+
+// WithOwnerDiscordLogins restricts dashboard access via Discord to the
+// given Discord usernames. An empty list keeps bootstrap enabled.
+func (o *OAuth) WithOwnerDiscordLogins(logins []string) *OAuth {
+	o.setOwnerLogins(auth.ProviderDiscord, logins)
+	return o
+}
+
+// setOwnerLogins normalises and stores the per-provider owner allowlist.
+func (o *OAuth) setOwnerLogins(provider string, logins []string) {
 	set := make(map[string]bool, len(logins))
 	for _, l := range logins {
 		l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "#")))
@@ -166,8 +182,10 @@ func (o *OAuth) WithOwnerLogins(logins []string) *OAuth {
 			set[l] = true
 		}
 	}
-	o.ownerLogins = set
-	return o
+	if o.ownerLogins == nil {
+		o.ownerLogins = make(map[string]map[string]bool, 2)
+	}
+	o.ownerLogins[provider] = set
 }
 
 // isOwnerLogin reports whether the given Twitch identity is permitted to
@@ -180,8 +198,8 @@ func (o *OAuth) WithOwnerLogins(logins []string) *OAuth {
 //  3. With an empty allowlist, trust-on-first-use applies: the login is the
 //     owner only while NO user exists yet, so exactly one account can
 //     bootstrap itself and every later stranger is refused.
-func (o *OAuth) isOwnerLogin(ctx context.Context, providerUserID, login string) bool {
-	if identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, providerUserID); err == nil {
+func (o *OAuth) isOwnerLogin(ctx context.Context, provider, providerUserID, login string) bool {
+	if identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, provider, providerUserID); err == nil {
 		if u, uErr := o.store.GetUserByID(ctx, identity.TenantID, identity.UserID); uErr == nil {
 			if u.Role == auth.RoleOwner || u.Role == auth.RoleAdmin {
 				return true
@@ -190,8 +208,8 @@ func (o *OAuth) isOwnerLogin(ctx context.Context, providerUserID, login string) 
 	}
 
 	login = strings.ToLower(strings.TrimSpace(login))
-	if len(o.ownerLogins) > 0 {
-		return o.ownerLogins[login]
+	if set := o.ownerLogins[provider]; len(set) > 0 {
+		return set[login]
 	}
 	users, err := o.store.ListUsers(ctx, o.tenantID)
 	if err != nil {
@@ -428,7 +446,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 	// bot account can grant its channel token, but it must already be linked
 	// to an existing user and never auto-creates a new account or a session.
 	// This is what stops any stranger's Twitch login from becoming an account.
-	owner := o.isOwnerLogin(ctx, providerUserID, login)
+	owner := o.isOwnerLogin(ctx, auth.ProviderTwitch, providerUserID, login)
 	if !owner {
 		if purpose != auth.OAuthPurposeBot {
 			o.logger.WarnContext(ctx, "oauth: login refused, not an owner",
@@ -448,7 +466,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	user, err := o.findOrCreateUser(ctx, providerUserID, login, tu.Email, owner)
+	user, err := o.findOrCreateUser(ctx, auth.ProviderTwitch, providerUserID, login, tu.Email, owner)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "internal_error",
@@ -495,31 +513,36 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := o.mintSessionCookie(ctx, w, r, user); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "internal_error",
+		})
+		return
+	}
+	http.Redirect(w, r, "/?login=success", http.StatusSeeOther)
+}
+
+// mintSessionCookie creates and persists a dashboard session for user,
+// stamps last-login, and writes the session cookie. It is shared by the
+// Twitch and Discord callbacks so both providers issue identical sessions.
+// Errors are logged here; the caller maps them to a 500 response.
+func (o *OAuth) mintSessionCookie(ctx context.Context, w http.ResponseWriter, r *http.Request, user auth.User) error {
 	token, sess, err := auth.NewSession(
 		user.TenantID, user.ID,
 		r.UserAgent(), r.RemoteAddr,
 		o.sessionTTL,
 	)
 	if err != nil {
-		o.logger.ErrorContext(ctx, "oauth: session mint failed",
-			slog.Any("err", err))
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "internal_error",
-		})
-		return
+		o.logger.ErrorContext(ctx, "oauth: session mint failed", slog.Any("err", err))
+		return err
 	}
 	if err := o.store.CreateSession(ctx, sess); err != nil {
-		o.logger.ErrorContext(ctx, "oauth: session persist failed",
-			slog.Any("err", err))
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"error": "internal_error",
-		})
-		return
+		o.logger.ErrorContext(ctx, "oauth: session persist failed", slog.Any("err", err))
+		return err
 	}
 	user.LastLoginAt = time.Now().UTC()
 	if err := o.store.UpdateUser(ctx, user); err != nil {
-		o.logger.WarnContext(ctx, "oauth: update last_login_at failed",
-			slog.Any("err", err))
+		o.logger.WarnContext(ctx, "oauth: update last_login_at failed", slog.Any("err", err))
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     o.cookieName,
@@ -531,7 +554,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		Secure:   o.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
-	http.Redirect(w, r, "/?login=success", http.StatusSeeOther)
+	return nil
 }
 
 // findOrCreateUser returns the dashboard auth.User linked to the given
@@ -545,8 +568,8 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 // requires a non-empty unique email). PasswordHash is filled with a
 // random 32-byte un-loginable blob because these users will never
 // authenticate via password.
-func (o *OAuth) findOrCreateUser(ctx context.Context, providerUserID, login, providerEmail string, owner bool) (auth.User, error) {
-	identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, providerUserID)
+func (o *OAuth) findOrCreateUser(ctx context.Context, provider, providerUserID, login, providerEmail string, owner bool) (auth.User, error) {
+	identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, provider, providerUserID)
 	switch {
 	case err == nil:
 		u, getErr := o.store.GetUserByID(ctx, identity.TenantID, identity.UserID)
@@ -565,12 +588,11 @@ func (o *OAuth) findOrCreateUser(ctx context.Context, providerUserID, login, pro
 
 	email := strings.TrimSpace(providerEmail)
 	if email == "" {
-		// Twitch users may decline to share their email with the OAuth
-		// app. The users table requires a unique non-empty email per
-		// tenant, so we synthesise a stable placeholder rooted in the
-		// Twitch login. It is never used for delivery and is replaceable
-		// by the user later via a settings endpoint.
-		email = login + "@twitch.local"
+		// Providers may decline to share an email. The users table
+		// requires a unique non-empty email per tenant, so we synthesise
+		// a stable placeholder rooted in the provider login. It is never
+		// used for delivery and is replaceable later via settings.
+		email = login + "@" + provider + ".local"
 	}
 	// Generate an unloginable password hash. PasswordHash is required by
 	// User.Validate; we just need 32 random bytes that won't compare

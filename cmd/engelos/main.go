@@ -580,7 +580,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 					}
 				}
 			}).
-			WithOwnerLogins(splitCSV(os.Getenv("ENGELOS_OWNER_TWITCH_LOGINS")))
+			WithOwnerLogins(splitCSV(os.Getenv("ENGELOS_OWNER_TWITCH_LOGINS"))).
+			WithOwnerDiscordLogins(splitCSV(os.Getenv("ENGELOS_OWNER_DISCORD_LOGINS")))
 		// Twitch user-access tokens expire ~4h after issuance; without
 		// proactive refresh the stored bot token goes stale and Helix
 		// calls 401. Live re-application to the connected adapter is
@@ -620,6 +621,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			}()
 			logger.Info("oauth token refresher started")
 		}
+	}
+
+	// Discord "Login with Discord" dashboard SSO. It shares an OAuth core
+	// (store, cookie settings, owner allowlist) so Discord and Twitch issue
+	// identical owner-gated sessions. When Twitch is disabled there is no
+	// shared core, so build a dedicated one carrying just the Discord owner
+	// allowlist.
+	discordOAuthCfg := buildDiscordOAuthConfig(logger)
+	var oauthDiscord *handlers.DiscordOAuth
+	if discordOAuthCfg != nil {
+		core := oauthTwitch
+		if core == nil {
+			core = handlers.NewOAuth(authStore, defaultTenantID, logger, nil).
+				WithCookieSecure(envBoolDefault("ENGELOS_COOKIE_SECURE", true)).
+				WithOwnerDiscordLogins(splitCSV(os.Getenv("ENGELOS_OWNER_DISCORD_LOGINS")))
+		}
+		oauthDiscord = handlers.NewDiscordOAuth(core, discordOAuthCfg)
 	}
 
 	// Spotify song-request token refresher: keeps the bot's stored Spotify
@@ -664,6 +682,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Streak:           streakSystem,
 		StatsProvider:    dispatcherStatsAdapter{d: dispatcher},
 		OAuthTwitch:      oauthTwitch,
+		OAuthDiscord:     oauthDiscord,
 		OAuthSpotify:     oauthSpotify,
 		RedemptionStore:  redemptionStore,
 		CommandStore:     customStore,
@@ -728,6 +747,40 @@ func envBoolDefault(name string, def bool) bool {
 // encryption box (so tokens can be stored encrypted) and the three
 // ENGELOS_TWITCH_CLIENT_ID/SECRET/REDIRECT_URL env vars; absence of any is a
 // normal, non-fatal "feature off" state, not an error.
+// discordOAuthEndpoint pins Discord's OAuth2 authorize and token URLs.
+// Discord's token endpoint only accepts application/x-www-form-urlencoded
+// and HTTP Basic client auth, which AuthStyleInHeader selects.
+var discordOAuthEndpoint = oauth2.Endpoint{
+	AuthURL:   "https://discord.com/oauth2/authorize",
+	TokenURL:  "https://discord.com/api/oauth2/token",
+	AuthStyle: oauth2.AuthStyleInHeader,
+}
+
+// buildDiscordOAuthConfig assembles the Discord "Login with Discord"
+// dashboard SSO config from env, or returns nil (feature disabled) when
+// any required value is missing. Only identify+email scopes are requested
+// because this flow just identifies the operator; the Discord BOT uses a
+// separate static token, not this OAuth app.
+func buildDiscordOAuthConfig(logger *slog.Logger) *oauth2.Config {
+	clientID := os.Getenv("ENGELOS_DISCORD_CLIENT_ID")
+	clientSecret := os.Getenv("ENGELOS_DISCORD_CLIENT_SECRET")
+	redirectURL := os.Getenv("ENGELOS_DISCORD_REDIRECT_URL")
+	if clientID == "" || clientSecret == "" || redirectURL == "" {
+		logger.Info("discord oauth disabled",
+			"has_client_id", clientID != "",
+			"has_secret", clientSecret != "", "has_redirect", redirectURL != "")
+		return nil
+	}
+	logger.Info("discord oauth enabled", "redirect_url", redirectURL)
+	return &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Scopes:       []string{"identify", "email"},
+		Endpoint:     discordOAuthEndpoint,
+	}
+}
+
 func buildTwitchOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Config {
 	clientID := os.Getenv("ENGELOS_TWITCH_CLIENT_ID")
 	clientSecret := os.Getenv("ENGELOS_TWITCH_CLIENT_SECRET")

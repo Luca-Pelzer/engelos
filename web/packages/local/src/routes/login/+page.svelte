@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
 
   const twitchLoginUrl = `${API_BASE}/api/v1/auth/twitch/login?purpose=user`;
+  const discordLoginUrl = `${API_BASE}/api/v1/auth/discord/login?purpose=user`;
 
   let email = $state('');
   let password = $state('');
@@ -89,6 +90,13 @@
           <span>Login with Twitch</span>
         </a>
 
+        <a href={discordLoginUrl} class="discord-btn" data-sveltekit-reload>
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+            <path d="M20.3 4.4A19.8 19.8 0 0015.4 3l-.2.4a14 14 0 014.4 2.2 13.4 13.4 0 00-11.2 0A14 14 0 018.8 3.4L8.6 3a19.8 19.8 0 00-4.9 1.4C1.6 8.5.9 12.5 1.2 16.4a20 20 0 006 3l.5-.7a13.6 13.6 0 01-2.1-1l.5-.3a14.2 14.2 0 0012 0l.5.3a13 13 0 01-2.1 1l.4.7a20 20 0 006-3c.4-4.6-.7-8.5-2.9-12zM8.5 14.1c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2zm7 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2z"/>
+          </svg>
+          <span>Login with Discord</span>
+        </a>
+
         <div class="mt-6 pt-5 border-t border-soft text-center">
           <p class="text-[12.5px] text-fg-soft">
             First time?
@@ -132,6 +140,26 @@
   }
   .twitch-btn:hover {
     background: #7c2fff;
+    transform: translateY(-1px);
+  }
+  .discord-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 11px 14px;
+    border-radius: var(--radius-md);
+    background: #5865f2;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    transition: background var(--duration-fast) var(--ease-out-quad), transform var(--duration-fast);
+  }
+  .discord-btn:hover {
+    background: #4752c4;
     transform: translateY(-1px);
   }
   .aura {
