@@ -24,6 +24,7 @@
     if (path.startsWith('/cohost'))       return 'AI Co-Host';
     if (path.startsWith('/contextmod'))   return 'AI Moderation';
     if (path.startsWith('/clipper'))      return 'Auto-Clipper';
+    if (path.startsWith('/songrequests')) return 'Song Requests';
     if (path.startsWith('/pity'))         return 'Pity';
     if (path.startsWith('/streak'))       return 'Streak';
     if (path.startsWith('/wrapped'))      return 'Stream Wrapped';

@@ -20,6 +20,7 @@
     { href: '/cohost',       label: 'AI Co-Host',   icon: 'M12 2a5 5 0 015 5v2a5 5 0 01-10 0V7a5 5 0 015-5zM5 21v-1a7 7 0 0114 0v1M9 9h.01M15 9h.01' },
     { href: '/contextmod',   label: 'AI Moderation', icon: 'M12 3l8 4v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V7zM9.5 12l1.8 1.8L15 10' },
     { href: '/clipper',      label: 'Auto-Clipper', icon: 'M6 4v16M18 4v16M6 8h12M6 16h12M2 8h4M2 16h4M18 8h4M18 16h4' },
+    { href: '/songrequests', label: 'Song Requests', icon: 'M9 18V5l12-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z' },
     { href: '/connections',  label: 'Connections',  icon: 'M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M8 12h8' },
     { href: '/integrations', label: 'Integrations', icon: 'M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z' },
     { href: '/settings',     label: 'Settings',     icon: 'M12 8a4 4 0 100 8 4 4 0 000-8zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3h.1a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z' },
