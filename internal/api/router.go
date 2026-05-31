@@ -254,9 +254,19 @@ func NewRouter(deps Deps) chi.Router {
 			}
 			r.Get("/", connectionsH.List)
 		})
-		r.Get("/events", events.Stream)
-		r.Get("/stats", statsH.Get)
-		r.HandleFunc("/ws", wsh.ServeHTTP)
+		// Live operational data (event stream, dashboard stats, the
+		// WebSocket feed) is owner-only: it exposes real chat activity and
+		// metrics, so it must sit behind a session like every other
+		// dashboard surface. Gated only when an auth store is configured,
+		// matching the rest of the API's bootstrap-time behaviour.
+		r.Group(func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/events", events.Stream)
+			r.Get("/stats", statsH.Get)
+			r.HandleFunc("/ws", wsh.ServeHTTP)
+		})
 
 		r.Route("/pity", func(r chi.Router) {
 			if deps.AuthStore != nil {

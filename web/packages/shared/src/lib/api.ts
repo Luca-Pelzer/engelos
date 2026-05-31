@@ -103,8 +103,10 @@ export const api = {
 
 export type LoginRequest = { email: string; password: string };
 export type LoginResponse = { token: string; user: { id: string; email: string; role: string } };
+export type CurrentUser = { id: string; email: string; username: string; role: string };
 
 export const auth = {
   login: (body: LoginRequest) => api.post<LoginResponse>('/api/v1/auth/login', body),
   logout: () => api.post('/api/v1/auth/logout'),
+  me: () => api.get<CurrentUser>('/api/v1/users/me'),
 };

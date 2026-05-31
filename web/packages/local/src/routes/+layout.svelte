@@ -2,16 +2,43 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { Sidebar, TopBar } from '@engelos/shared/components';
-  import { ws, toasts } from '@engelos/shared/lib';
+  import { ws, toasts, auth, ApiException } from '@engelos/shared/lib';
 
   let { children } = $props();
 
   const path = $derived($page.url.pathname);
 
-  const isChromeless = $derived(
+  // Public routes render without an auth check. Everything else is the
+  // owner-only dashboard and must not render until /users/me confirms a
+  // session; otherwise an anonymous visitor briefly sees real data.
+  const isPublic = $derived(
     path === '/login' || path === '/setup' || path.startsWith('/setup/'),
   );
+
+  const isChromeless = $derived(isPublic);
+
+  // 'checking' until /users/me resolves, then 'in' or 'out'. The dashboard
+  // tree is gated on 'in' so there is no flash of authed content for anon
+  // users, and the redirect to /login only fires once, avoiding loops.
+  let authState = $state<'checking' | 'in' | 'out'>('checking');
+
+  async function verifySession() {
+    if (isPublic) {
+      authState = 'in';
+      return;
+    }
+    try {
+      await auth.me();
+      authState = 'in';
+    } catch (err) {
+      authState = 'out';
+      if (err instanceof ApiException && err.status === 401) {
+        void goto('/login');
+      }
+    }
+  }
 
   const pageTitle = $derived.by(() => {
     if (path === '/')              return 'Dashboard';
@@ -36,8 +63,16 @@
   });
 
   onMount(() => {
-    ws.connect();
-    return () => ws.disconnect();
+    void verifySession();
+  });
+
+  // Connect the live WebSocket only once a session is confirmed, since the
+  // /ws endpoint is now owner-gated and an anonymous connect would just fail.
+  $effect(() => {
+    if (authState === 'in' && !isPublic) {
+      ws.connect();
+      return () => ws.disconnect();
+    }
   });
 </script>
 
@@ -45,7 +80,7 @@
   <main class="min-h-screen grid-noise">
     {@render children()}
   </main>
-{:else}
+{:else if authState === 'in'}
   <div class="flex min-h-screen bg-[var(--color-bg)]">
     <Sidebar current={path} />
     <div class="flex-1 flex flex-col min-w-0">
@@ -54,6 +89,10 @@
         {@render children()}
       </main>
     </div>
+  </div>
+{:else}
+  <div class="min-h-screen grid-noise flex items-center justify-center">
+    <span class="auth-spinner" aria-label="Loading"></span>
   </div>
 {/if}
 
@@ -64,6 +103,17 @@
 </div>
 
 <style>
+  .auth-spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-accent);
+    animation: auth-spin 0.7s linear infinite;
+  }
+  @keyframes auth-spin {
+    to { transform: rotate(360deg); }
+  }
   .toasts {
     position: fixed;
     bottom: 20px;

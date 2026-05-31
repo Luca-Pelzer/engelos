@@ -579,7 +579,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 						logger.Info("twitch bot token applied live", "login", ev.Login)
 					}
 				}
-			})
+			}).
+			WithOwnerLogins(splitCSV(os.Getenv("ENGELOS_OWNER_TWITCH_LOGINS")))
 		// Twitch user-access tokens expire ~4h after issuance; without
 		// proactive refresh the stored bot token goes stale and Helix
 		// calls 401. Live re-application to the connected adapter is

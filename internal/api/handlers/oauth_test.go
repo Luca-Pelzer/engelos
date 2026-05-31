@@ -391,7 +391,8 @@ func TestOAuth_Callback_NewUser_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ninja@example.com", user.Email)
 	assert.Equal(t, "ninjalogin", user.Username)
-	assert.Equal(t, auth.RoleViewer, user.Role)
+	// Empty store + empty allowlist: bootstrap makes the first login the owner.
+	assert.Equal(t, auth.RoleOwner, user.Role)
 	assert.False(t, user.LastLoginAt.IsZero())
 
 	identity, err := store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, "tw-42")
@@ -847,4 +848,82 @@ func TestOAuth_Callback_TamperedPurpose_RejectsAsInvalidState(t *testing.T) {
 	var body map[string]string
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	assert.Equal(t, "invalid_state", body["error"])
+}
+
+// seedExistingUser inserts a user so the store is no longer empty, which
+// disables trust-on-first-use bootstrap for subsequent logins.
+func seedExistingUser(t *testing.T, store auth.Store, email, username string, role auth.Role) auth.User {
+	t.Helper()
+	pw := make([]byte, 32)
+	u, err := store.CreateUser(context.Background(), auth.User{
+		ID:           auth.NewUserID(),
+		TenantID:     oauthTestTenant,
+		Email:        email,
+		Username:     username,
+		PasswordHash: pw,
+		Role:         role,
+	})
+	require.NoError(t, err)
+	return u
+}
+
+func TestOAuth_Callback_RejectsStrangerWhenNotBootstrap(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	// An owner already exists, so bootstrap is closed and there is no allowlist
+	// entry for the stranger.
+	seedExistingUser(t, store, "owner@example.com", "owner", auth.RoleOwner)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+	tok := &oauth2.Token{AccessToken: "atk", RefreshToken: "rtk", Expiry: time.Now().Add(time.Hour)}
+	fake := newFakeHelix("tw-stranger", "randomstranger", "s@example.com", "Stranger")
+
+	resp := runCallbackHappyPath(t, h, fake, tok)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "stranger must be refused")
+	for _, c := range resp.Cookies() {
+		require.NotEqual(t, DefaultCookieName, c.Name, "no session cookie for a stranger")
+	}
+	// And no account should have been created for the stranger.
+	_, err := store.GetUserByEmail(context.Background(), oauthTestTenant, "s@example.com")
+	require.Error(t, err, "stranger must not get an account")
+}
+
+func TestOAuth_Callback_AllowlistAdmitsOwner(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	seedExistingUser(t, store, "owner@example.com", "owner", auth.RoleOwner)
+	h := newOAuthHandler(t, store, newOAuthCfg()).WithOwnerLogins([]string{"secondowner"})
+	tok := &oauth2.Token{AccessToken: "atk", RefreshToken: "rtk", Expiry: time.Now().Add(time.Hour)}
+	fake := newFakeHelix("tw-2nd", "secondowner", "2nd@example.com", "Second")
+
+	resp := runCallbackHappyPath(t, h, fake, tok)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	var sess *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == DefaultCookieName {
+			sess = c
+		}
+	}
+	require.NotNil(t, sess, "allowlisted login must get a session")
+	u, err := store.GetUserByEmail(context.Background(), oauthTestTenant, "2nd@example.com")
+	require.NoError(t, err)
+	require.Equal(t, auth.RoleOwner, u.Role)
+}
+
+func TestOAuth_Callback_BotPurposeStrangerRefusedWithoutPriorLink(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	seedExistingUser(t, store, "owner@example.com", "owner", auth.RoleOwner)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+	tok := &oauth2.Token{AccessToken: "atk", RefreshToken: "rtk", Expiry: time.Now().Add(time.Hour)}
+	fake := newFakeHelix("tw-botstranger", "botstranger", "b@example.com", "BotStranger")
+
+	resp := runCallbackWithPurpose(t, h, fake, tok, auth.OAuthPurposeBot)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusForbidden, resp.StatusCode,
+		"a bot-purpose login with no pre-existing identity link must be refused")
 }

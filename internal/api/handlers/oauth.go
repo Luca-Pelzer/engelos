@@ -65,6 +65,11 @@ type OAuth struct {
 	cfg      *oauth2.Config
 	clientID string
 
+	// ownerLogins is the set of Twitch logins (lowercased) permitted to
+	// hold a dashboard session. Empty enables trust-on-first-use bootstrap:
+	// the first ever login becomes the owner, after which the door closes.
+	ownerLogins map[string]bool
+
 	// newHelix is a test seam. Production callers leave it nil and the
 	// Callback handler builds a real *helix.Client. Tests inject a fake
 	// that returns a canned helix.UsersResponse.
@@ -149,6 +154,52 @@ func (o *OAuth) WithCookieSecure(secure bool) *OAuth {
 func (o *OAuth) WithOnLogin(fn func(ev LoginEvent)) *OAuth {
 	o.onLogin = fn
 	return o
+}
+
+// WithOwnerLogins restricts dashboard access to the given Twitch logins.
+// An empty list keeps trust-on-first-use bootstrap enabled.
+func (o *OAuth) WithOwnerLogins(logins []string) *OAuth {
+	set := make(map[string]bool, len(logins))
+	for _, l := range logins {
+		l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "#")))
+		if l != "" {
+			set[l] = true
+		}
+	}
+	o.ownerLogins = set
+	return o
+}
+
+// isOwnerLogin reports whether the given Twitch identity is permitted to
+// hold a dashboard session. Precedence:
+//
+//  1. An identity already linked to an existing RoleOwner/RoleAdmin user is
+//     always allowed, so a returning owner keeps access regardless of the
+//     allowlist or how many users now exist.
+//  2. With a configured allowlist, the login must be a member.
+//  3. With an empty allowlist, trust-on-first-use applies: the login is the
+//     owner only while NO user exists yet, so exactly one account can
+//     bootstrap itself and every later stranger is refused.
+func (o *OAuth) isOwnerLogin(ctx context.Context, providerUserID, login string) bool {
+	if identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, providerUserID); err == nil {
+		if u, uErr := o.store.GetUserByID(ctx, identity.TenantID, identity.UserID); uErr == nil {
+			if u.Role == auth.RoleOwner || u.Role == auth.RoleAdmin {
+				return true
+			}
+		}
+	}
+
+	login = strings.ToLower(strings.TrimSpace(login))
+	if len(o.ownerLogins) > 0 {
+		return o.ownerLogins[login]
+	}
+	users, err := o.store.ListUsers(ctx, o.tenantID)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: owner bootstrap user-count failed",
+			slog.Any("err", err))
+		return false
+	}
+	return len(users) == 0
 }
 
 // disabled reports whether the OAuth feature is turned off - either
@@ -371,7 +422,33 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := o.findOrCreateUser(ctx, providerUserID, login, tu.Email)
+	// Access control. A dashboard session is only ever minted for an owner
+	// login (the allowlist, or the bootstrap account when none exists yet).
+	// A purpose=bot flow is allowed to proceed WITHOUT owner rights so the
+	// bot account can grant its channel token, but it must already be linked
+	// to an existing user and never auto-creates a new account or a session.
+	// This is what stops any stranger's Twitch login from becoming an account.
+	owner := o.isOwnerLogin(ctx, providerUserID, login)
+	if !owner {
+		if purpose != auth.OAuthPurposeBot {
+			o.logger.WarnContext(ctx, "oauth: login refused, not an owner",
+				slog.String("login", login), slog.String("purpose", purpose))
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "not_authorized",
+			})
+			return
+		}
+		if _, err := o.store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, providerUserID); err != nil {
+			o.logger.WarnContext(ctx, "oauth: bot login refused, account not pre-linked",
+				slog.String("login", login))
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "not_authorized",
+			})
+			return
+		}
+	}
+
+	user, err := o.findOrCreateUser(ctx, providerUserID, login, tu.Email, owner)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "internal_error",
@@ -408,6 +485,14 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 			AccessToken: tok.AccessToken,
 			Scopes:      scopes,
 		})
+	}
+
+	// Only an owner login mints a dashboard session. A non-owner bot login
+	// has now granted/refreshed its channel token (above) and is done; it
+	// gets no session cookie and no dashboard access.
+	if !owner {
+		http.Redirect(w, r, "/login?bot=linked", http.StatusSeeOther)
+		return
 	}
 
 	token, sess, err := auth.NewSession(
@@ -460,7 +545,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 // requires a non-empty unique email). PasswordHash is filled with a
 // random 32-byte un-loginable blob because these users will never
 // authenticate via password.
-func (o *OAuth) findOrCreateUser(ctx context.Context, providerUserID, login, providerEmail string) (auth.User, error) {
+func (o *OAuth) findOrCreateUser(ctx context.Context, providerUserID, login, providerEmail string, owner bool) (auth.User, error) {
 	identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, providerUserID)
 	switch {
 	case err == nil:
@@ -494,13 +579,17 @@ func (o *OAuth) findOrCreateUser(ctx context.Context, providerUserID, login, pro
 	if _, err := rand.Read(noPass); err != nil {
 		return auth.User{}, err
 	}
+	role := auth.RoleViewer
+	if owner {
+		role = auth.RoleOwner
+	}
 	newUser := auth.User{
 		ID:           auth.NewUserID(),
 		TenantID:     o.tenantID,
 		Email:        email,
 		Username:     login,
 		PasswordHash: noPass,
-		Role:         auth.RoleViewer,
+		Role:         role,
 	}
 	created, err := o.store.CreateUser(ctx, newUser)
 	if err == nil {
