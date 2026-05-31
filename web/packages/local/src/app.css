@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "@engelos/shared/styles/tokens.css";
 
+/*
+ * Tailwind v4 auto-detects content from the app package but does not follow
+ * the @engelos/shared workspace symlink, so utility classes that only appear
+ * inside shared components (Button variants, Badge tones, etc.) were being
+ * purged, leaving primary buttons with no background. Explicitly register the
+ * shared component sources so their classes are generated.
+ */
+@source "../../shared/src";
+
 @layer base {
   html, body {
     height: 100%;

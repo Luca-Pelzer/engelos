@@ -1,6 +1,12 @@
+// The dashboard is served by the engelOS daemon on the same origin, so API
+// calls and OAuth redirects use same-origin relative URLs by default. A blank
+// base resolves "/api/v1/..." against whatever host served the page (for
+// example https://bot.engels.wtf), which is exactly what we want in production
+// and behind the reverse proxy. Set VITE_API_BASE to target a different host
+// during local development where the SPA and daemon run on separate ports.
 export const API_BASE =
   (typeof import.meta !== 'undefined' && (import.meta as ImportMeta & { env?: Record<string, string> }).env?.VITE_API_BASE) ||
-  'http://localhost:8080';
+  '';
 
 export type ApiError = {
   status: number;
