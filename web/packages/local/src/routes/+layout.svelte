@@ -22,6 +22,7 @@
     if (path.startsWith('/automod'))      return 'AutoMod';
     if (path.startsWith('/translate'))    return 'Translation';
     if (path.startsWith('/clipper'))      return 'Auto-Clipper';
+    if (path.startsWith('/connections'))  return 'Connections';
     if (path.startsWith('/integrations')) return 'Integrations';
     if (path.startsWith('/settings'))     return 'Settings';
     if (path.startsWith('/upgrade'))      return 'Upgrade to Cloud';

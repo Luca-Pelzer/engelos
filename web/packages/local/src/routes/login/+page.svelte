@@ -1,8 +1,10 @@
 <script lang="ts">
   import { Card, Button, Input, Logo } from '@engelos/shared/components';
-  import { auth, ApiException, setAuthToken } from '@engelos/shared/lib';
+  import { auth, ApiException, setAuthToken, API_BASE } from '@engelos/shared/lib';
   import { toast } from '@engelos/shared/lib';
   import { goto } from '$app/navigation';
+
+  const twitchLoginUrl = `${API_BASE}/api/v1/auth/twitch/login?purpose=user`;
 
   let email = $state('');
   let password = $state('');
@@ -74,6 +76,19 @@
           {#snippet children()}Sign in{/snippet}
         </Button>
 
+        <div class="my-5 flex items-center gap-3">
+          <span class="h-px flex-1 bg-[var(--color-border-soft)]"></span>
+          <span class="text-[11.5px] text-fg-soft">or</span>
+          <span class="h-px flex-1 bg-[var(--color-border-soft)]"></span>
+        </div>
+
+        <a href={twitchLoginUrl} class="twitch-btn" data-sveltekit-reload>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <path d="M4 2L2.5 5.5v13H7V22h3l3-3h4l5-5V2zm15 11l-3 3h-4l-3 3v-3H7V4h12zM15 7h-2v5h2zm-5 0H8v5h2z"/>
+          </svg>
+          <span>Login with Twitch</span>
+        </a>
+
         <div class="mt-6 pt-5 border-t border-soft text-center">
           <p class="text-[12.5px] text-fg-soft">
             First time?
@@ -100,6 +115,25 @@
 </div>
 
 <style>
+  .twitch-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: var(--radius-md);
+    background: #9146ff;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    transition: background var(--duration-fast) var(--ease-out-quad), transform var(--duration-fast);
+  }
+  .twitch-btn:hover {
+    background: #7c2fff;
+    transform: translateY(-1px);
+  }
   .aura {
     position: absolute;
     border-radius: 50%;

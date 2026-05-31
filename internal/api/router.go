@@ -196,6 +196,7 @@ func NewRouter(deps Deps) chi.Router {
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
 	translateH := handlers.NewTranslate(deps.TranslateStore, deps.TenantID, logger)
 	clipperH := handlers.NewClipper(deps.ClipperStore, deps.TenantID, logger)
+	connectionsH := handlers.NewConnections(deps.AuthStore, deps.TenantID, logger)
 	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
 	wrappedH := handlers.NewWrapped(deps.WrappedStore, deps.WrappedRanker, deps.TenantID, logger)
 
@@ -234,6 +235,12 @@ func NewRouter(deps Deps) chi.Router {
 		})
 		r.Route("/users", func(r chi.Router) {
 			r.Get("/me", authH.Me)
+		})
+		r.Route("/connections", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", connectionsH.List)
 		})
 		r.Get("/events", events.Stream)
 		r.Get("/stats", statsH.Get)

@@ -699,6 +699,7 @@ var defaultTwitchScopes = []string{
 	"chat:edit",                      // send chat messages
 	"moderator:manage:banned_users",  // ban / timeout actions
 	"moderator:manage:chat_messages", // delete-message action
+	"clips:edit",                     // create clips for the auto-clipper
 	"channel:read:redemptions",       // observe channel-point redemptions
 	"channel:manage:redemptions",     // create rewards + fulfill/refund redemptions
 	"moderator:read:followers",       // read follower dates for !followage
