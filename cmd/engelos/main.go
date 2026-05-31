@@ -537,8 +537,31 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	twitchOAuthCfg := buildTwitchOAuthConfig(cryptoBox, logger)
 	var oauthTwitch *handlers.OAuth
 	if twitchOAuthCfg != nil {
+		// Behind the public HTTPS reverse proxy the session cookie must be
+		// Secure; for a plain-HTTP LAN deployment it must not be (or the
+		// browser drops it). ENGELOS_COOKIE_SECURE controls this, defaulting
+		// to true so the safe, production-behind-TLS setting needs no env.
 		oauthTwitch = handlers.NewOAuth(authStore, defaultTenantID, logger, twitchOAuthCfg).
-			WithCookieSecure(false)
+			WithCookieSecure(envBoolDefault("ENGELOS_COOKIE_SECURE", true)).
+			WithOnLogin(func(ev handlers.LoginEvent) {
+				// Live-apply a freshly authorized BOT token to the running
+				// adapter so "Login with Twitch" takes effect immediately,
+				// with no restart and nothing to paste. The broadcaster
+				// (purpose=user) token is only persisted for Helix calls.
+				logger.Info("oauth login",
+					"provider", ev.Provider, "purpose", ev.Purpose,
+					"login", ev.Login, "scopes", len(ev.Scopes))
+				if ev.Provider == auth.ProviderTwitch &&
+					ev.Purpose == auth.OAuthPurposeBot &&
+					twitchAdapter != nil {
+					if err := twitchAdapter.SetToken(ev.AccessToken); err != nil {
+						logger.Warn("twitch live token apply failed",
+							"login", ev.Login, "err", err)
+					} else {
+						logger.Info("twitch bot token applied live", "login", ev.Login)
+					}
+				}
+			})
 		// Twitch user-access tokens expire ~4h after issuance; without
 		// proactive refresh the stored bot token goes stale and Helix
 		// calls 401. Live re-application to the connected adapter is
@@ -661,6 +684,20 @@ func envBool(name string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// envBoolDefault parses a boolean env var, returning def when the var is
+// unset or empty so security-sensitive defaults (like Secure cookies) hold
+// without requiring the operator to set anything.
+func envBoolDefault(name string, def bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return def
 	}
 }
 

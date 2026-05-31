@@ -82,6 +82,67 @@ func newFakeHelix(id, login, email, display string) *fakeHelix {
 	}
 }
 
+// runCallbackWithPurpose drives a happy-path callback whose state cookie
+// encodes the given purpose, so tests can exercise the bot-vs-user branch.
+func runCallbackWithPurpose(t *testing.T, h *OAuth, fake *fakeHelix, tok *oauth2.Token, purpose string) *http.Response {
+	t.Helper()
+	h.exchange = func(context.Context, string) (*oauth2.Token, error) { return tok, nil }
+	h.newHelix = func(string, string) (helixUserGetter, error) { return fake, nil }
+	stateVal := buildStateValue("randomXYZ", purpose)
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/auth/twitch/callback?state="+stateVal+"&code=xyz", nil)
+	req.AddCookie(&http.Cookie{Name: OAuthStateCookieName, Value: stateVal})
+	w := httptest.NewRecorder()
+	h.Callback(w, req)
+	return w.Result()
+}
+
+func TestOAuth_Callback_OnLogin_FiresForBotPurpose(t *testing.T) {
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+	var got LoginEvent
+	var fired int
+	h.WithOnLogin(func(ev LoginEvent) { got = ev; fired++ })
+
+	tok := &oauth2.Token{AccessToken: "BOT-ATK", RefreshToken: "rtk", Expiry: time.Now().Add(time.Hour)}
+	fake := newFakeHelix("tw-bot", "engelguard", "bot@example.com", "EngelGuard")
+	resp := runCallbackWithPurpose(t, h, fake, tok, auth.OAuthPurposeBot)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	require.Equal(t, 1, fired, "hook must fire exactly once")
+	assert.Equal(t, auth.OAuthPurposeBot, got.Purpose)
+	assert.Equal(t, auth.ProviderTwitch, got.Provider)
+	assert.Equal(t, "engelguard", got.Login)
+	assert.Equal(t, "BOT-ATK", got.AccessToken, "hook must carry the access token for live apply")
+}
+
+func TestOAuth_Callback_OnLogin_FiresForUserPurpose(t *testing.T) {
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+	var got LoginEvent
+	h.WithOnLogin(func(ev LoginEvent) { got = ev })
+
+	tok := &oauth2.Token{AccessToken: "USR-ATK", RefreshToken: "rtk", Expiry: time.Now().Add(time.Hour)}
+	fake := newFakeHelix("tw-usr", "engelswtf", "broadcaster@example.com", "engelswtf")
+	resp := runCallbackWithPurpose(t, h, fake, tok, auth.OAuthPurposeUser)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	assert.Equal(t, auth.OAuthPurposeUser, got.Purpose,
+		"user-purpose login still fires the hook; the daemon decides what to do with it")
+}
+
+func TestOAuth_Callback_NilOnLogin_NoPanic(t *testing.T) {
+	store := newOAuthTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg())
+	tok := &oauth2.Token{AccessToken: "atk", RefreshToken: "rtk", Expiry: time.Now().Add(time.Hour)}
+	fake := newFakeHelix("tw-nohook", "someone", "s@example.com", "Someone")
+	resp := runCallbackWithPurpose(t, h, fake, tok, auth.OAuthPurposeBot)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
+}
+
 // TestOAuth_Disabled_NilStore covers the bootstrap-time degraded state
 // where the OAuth feature is wired but no Store is available: both
 // handlers must return 501 so the router can still be built.

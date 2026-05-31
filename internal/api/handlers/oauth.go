@@ -74,6 +74,24 @@ type OAuth struct {
 	// leave it nil and the Callback handler calls o.cfg.Exchange directly.
 	// Tests inject a fake that bypasses the real Twitch token endpoint.
 	exchange func(ctx context.Context, code string) (*oauth2.Token, error)
+
+	// onLogin, when set, is invoked after an identity is persisted so the
+	// daemon can live-apply a freshly authorized bot token to the running
+	// platform adapter. This is what makes "Login with Twitch" take effect
+	// without a restart or any manual token paste. It runs on the request
+	// goroutine; keep it fast and non-blocking. nil disables the hook.
+	onLogin func(ev LoginEvent)
+}
+
+// LoginEvent is delivered to the OnLogin hook after a successful OAuth
+// callback. It carries only what the daemon needs to route the token to
+// the right adapter; it deliberately omits the refresh token.
+type LoginEvent struct {
+	Provider    string
+	Purpose     string
+	Login       string
+	AccessToken string
+	Scopes      []string
 }
 
 // NewOAuth constructs the OAuth handler bundle.
@@ -122,6 +140,14 @@ func (o *OAuth) WithSessionTTL(d time.Duration) *OAuth {
 // Tests typically pass false because httptest serves plain HTTP.
 func (o *OAuth) WithCookieSecure(secure bool) *OAuth {
 	o.cookieSecure = secure
+	return o
+}
+
+// WithOnLogin registers a hook fired after a successful OAuth callback,
+// letting the daemon live-apply a freshly authorized bot token to the
+// running adapter. A nil hook is ignored.
+func (o *OAuth) WithOnLogin(fn func(ev LoginEvent)) *OAuth {
+	o.onLogin = fn
 	return o
 }
 
@@ -372,6 +398,16 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 			"error": "internal_error",
 		})
 		return
+	}
+
+	if o.onLogin != nil {
+		o.onLogin(LoginEvent{
+			Provider:    auth.ProviderTwitch,
+			Purpose:     purpose,
+			Login:       login,
+			AccessToken: tok.AccessToken,
+			Scopes:      scopes,
+		})
 	}
 
 	token, sess, err := auth.NewSession(
