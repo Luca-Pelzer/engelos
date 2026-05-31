@@ -21,6 +21,7 @@
     if (path.startsWith('/counters'))     return 'Counters';
     if (path.startsWith('/automod'))      return 'AutoMod';
     if (path.startsWith('/translate'))    return 'Translation';
+    if (path.startsWith('/cohost'))       return 'AI Co-Host';
     if (path.startsWith('/clipper'))      return 'Auto-Clipper';
     if (path.startsWith('/pity'))         return 'Pity';
     if (path.startsWith('/streak'))       return 'Streak';
