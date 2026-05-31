@@ -12,6 +12,7 @@ import (
 	apimw "github.com/Luca-Pelzer/engelos/internal/api/middleware"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
 	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/clipper"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/featureflags"
@@ -148,6 +149,10 @@ type Deps struct {
 	// under /api/v1/translate. Nil makes those endpoints return 501.
 	TranslateStore translate.Store
 
+	// ClipperStore, when non-nil, exposes per-channel auto-clipper tuning
+	// under /api/v1/clipper. Nil makes those endpoints return 501.
+	ClipperStore clipper.Store
+
 	// SongQueueStore, when non-nil, exposes the bot-managed YouTube song queue
 	// to the player overlay at /api/v1/songqueue/next (intentionally NOT
 	// session-protected; an OBS browser source cannot log in). Nil returns 501.
@@ -190,6 +195,7 @@ func NewRouter(deps Deps) chi.Router {
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
 	translateH := handlers.NewTranslate(deps.TranslateStore, deps.TenantID, logger)
+	clipperH := handlers.NewClipper(deps.ClipperStore, deps.TenantID, logger)
 	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
 	wrappedH := handlers.NewWrapped(deps.WrappedStore, deps.WrappedRanker, deps.TenantID, logger)
 
@@ -324,6 +330,14 @@ func NewRouter(deps Deps) chi.Router {
 			}
 			r.Get("/", translateH.Get)
 			r.Put("/", translateH.Set)
+		})
+
+		r.Route("/clipper", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", clipperH.Get)
+			r.Put("/", clipperH.Set)
 		})
 
 		// /songqueue is intentionally NOT session-protected: the OBS browser

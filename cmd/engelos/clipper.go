@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Luca-Pelzer/engelos/internal/adapters/twitch"
@@ -30,67 +31,146 @@ type clipAnnouncer interface {
 	Send(ctx context.Context, channel, message string) error
 }
 
-// autoClipper adapts the clipper.Detector to runtime.ClipDetector. It feeds
-// chat/sub/raid signals to the detector and, on a fire, asynchronously captures
-// a Twitch clip, generates a Claude title, and announces the link. The async
-// capture keeps the dispatcher hot path unblocked; clip creation polling can
-// take up to 15 seconds.
-type autoClipper struct {
+// clipSettingsStore is the narrow per-channel-config surface the auto-clipper
+// reads. clipper.Store satisfies it. It is optional: a nil store keeps the
+// detector on env/base options for every allowed channel (the prior behaviour).
+type clipSettingsStore interface {
+	Get(ctx context.Context, tenantID, channel string) (clipper.Config, error)
+}
+
+// channelDetector caches a per-channel detector together with the moment it was
+// (re)built, so settings edits from the dashboard are picked up after a short
+// TTL without restarting and without a store read on every chat message.
+type channelDetector struct {
 	det      *clipper.Detector
+	enabled  bool
+	loadedAt time.Time
+}
+
+// settingsTTL bounds how stale a cached per-channel detector may be before the
+// next event reloads it from the store. Tuning is infrequent, so a coarse TTL
+// keeps the chat hot path free of per-message database reads.
+const settingsTTL = 30 * time.Second
+
+// autoClipper adapts the clipper.Detector to runtime.ClipDetector. It feeds
+// chat/sub/raid signals to a PER-CHANNEL detector and, on a fire, asynchronously
+// captures a Twitch clip, generates a Claude title, and announces the link. The
+// async capture keeps the dispatcher hot path unblocked; clip creation polling
+// can take up to 15 seconds.
+//
+// Each channel gets its own clipper.Detector built from a base [clipper.Options]
+// with that channel's stored [clipper.Settings] merged on top, so a small
+// channel can lower the unique-user thresholds (for example to 3) while a busy
+// channel keeps the higher production defaults. Detectors are cached and
+// refreshed every settingsTTL so dashboard edits apply without a restart.
+type autoClipper struct {
+	store    clipSettingsStore // optional; nil means base options for all
+	base     clipper.Options
+	tenantID string
 	creator  clipCreator
 	titler   clipTitler
 	sender   clipAnnouncer
 	logger   *slog.Logger
 	now      func() time.Time
 	channels map[string]bool // logins allowed to auto-clip; empty means all
+
+	mu   sync.Mutex
+	byCh map[string]*channelDetector
 }
 
-func newAutoClipper(creator clipCreator, titler clipTitler, sender clipAnnouncer, channels []string, logger *slog.Logger) *autoClipper {
+func newAutoClipper(store clipSettingsStore, base clipper.Options, tenantID string, creator clipCreator, titler clipTitler, sender clipAnnouncer, channels []string, logger *slog.Logger) *autoClipper {
 	allow := make(map[string]bool, len(channels))
 	for _, c := range channels {
 		allow[strings.ToLower(strings.TrimPrefix(strings.TrimSpace(c), "#"))] = true
 	}
 	return &autoClipper{
-		det:      clipper.New(clipper.DefaultOptions()),
+		store:    store,
+		base:     base,
+		tenantID: tenantID,
 		creator:  creator,
 		titler:   titler,
 		sender:   sender,
 		logger:   logger,
 		now:      time.Now,
 		channels: allow,
+		byCh:     make(map[string]*channelDetector),
 	}
 }
 
-func (a *autoClipper) enabled(channel string) bool {
+// allowedByEnv reports whether the env allow-list permits this channel. An empty
+// allow-list means every channel is permitted, matching the prior behaviour.
+func (a *autoClipper) allowedByEnv(channel string) bool {
 	if len(a.channels) == 0 {
 		return true
 	}
 	return a.channels[strings.ToLower(strings.TrimPrefix(channel, "#"))]
 }
 
-func (a *autoClipper) Message(_ context.Context, channel, userID, _, text string) {
-	if !a.enabled(channel) {
+// resolve returns the per-channel detector and whether auto-clipping is enabled
+// for the channel, (re)building the detector from stored settings when the cache
+// is cold or older than settingsTTL.
+//
+// Gating layers: the env allow-list is the master switch (an unlisted channel is
+// always off). When a stored config row exists it additionally supplies the
+// per-channel enable flag and threshold overrides; with no row (or no store) the
+// channel runs on the base options and is enabled by the env allow-list alone.
+func (a *autoClipper) resolve(ctx context.Context, channel string) (*clipper.Detector, bool) {
+	if !a.allowedByEnv(channel) {
+		return nil, false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if cd := a.byCh[channel]; cd != nil && a.now().Sub(cd.loadedAt) < settingsTTL {
+		return cd.det, cd.enabled
+	}
+
+	opts := a.base
+	enabled := true
+	if a.store != nil {
+		cfg, err := a.store.Get(ctx, a.tenantID, channel)
+		switch {
+		case err == nil:
+			opts = cfg.Settings.ApplyTo(a.base)
+			enabled = cfg.Settings.Enabled
+		case errors.Is(err, clipper.ErrNotFound):
+			// No per-channel row: keep base options, enabled by env allow-list.
+		default:
+			a.logger.WarnContext(ctx, "autoclip: settings load failed, using base options",
+				"channel", channel, "err", err)
+		}
+	}
+
+	cd := &channelDetector{det: clipper.New(opts), enabled: enabled, loadedAt: a.now()}
+	a.byCh[channel] = cd
+	return cd.det, cd.enabled
+}
+
+func (a *autoClipper) Message(ctx context.Context, channel, userID, _, text string) {
+	det, enabled := a.resolve(ctx, channel)
+	if !enabled {
 		return
 	}
-	if fired, reason := a.det.Message(channel, userID, text, a.now()); fired {
+	if fired, reason := det.Message(channel, userID, text, a.now()); fired {
 		a.capture(channel, reason)
 	}
 }
 
-func (a *autoClipper) Sub(_ context.Context, channel string) {
-	if !a.enabled(channel) {
+func (a *autoClipper) Sub(ctx context.Context, channel string) {
+	det, enabled := a.resolve(ctx, channel)
+	if !enabled {
 		return
 	}
-	if fired, reason := a.det.Sub(channel, a.now()); fired {
+	if fired, reason := det.Sub(channel, a.now()); fired {
 		a.capture(channel, reason)
 	}
 }
 
-func (a *autoClipper) Raid(_ context.Context, channel string, viewers int) {
-	if !a.enabled(channel) {
+func (a *autoClipper) Raid(ctx context.Context, channel string, viewers int) {
+	det, enabled := a.resolve(ctx, channel)
+	if !enabled {
 		return
 	}
-	if fired, reason := a.det.Raid(channel, viewers, a.now()); fired {
+	if fired, reason := det.Raid(channel, viewers, a.now()); fired {
 		a.capture(channel, reason)
 	}
 }
@@ -98,6 +178,9 @@ func (a *autoClipper) Raid(_ context.Context, channel string, viewers int) {
 // capture runs the clip creation, titling and announcement in its own
 // goroutine with an independent timeout so it never blocks the dispatcher.
 func (a *autoClipper) capture(channel string, reason clipper.Reason) {
+	if a.creator == nil {
+		return
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

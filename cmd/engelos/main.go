@@ -33,6 +33,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/automod"
 	"github.com/Luca-Pelzer/engelos/internal/automodstate"
 	"github.com/Luca-Pelzer/engelos/internal/channelpoints"
+	"github.com/Luca-Pelzer/engelos/internal/clipper"
 	"github.com/Luca-Pelzer/engelos/internal/cohost"
 	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/Luca-Pelzer/engelos/internal/contextmod"
@@ -321,6 +322,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("translate store opened", "dsn", translateDSN)
 
+	clipperDSN := filepath.Join(dataDir, "clipper.db")
+	clipperStore, err := clipper.OpenSQLiteStore(ctx, clipperDSN)
+	if err != nil {
+		return fmt.Errorf("open clipper store %s: %w", clipperDSN, err)
+	}
+	defer func() {
+		if cerr := clipperStore.Close(); cerr != nil {
+			logger.Warn("clipper store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("clipper store opened", "dsn", clipperDSN)
+
 	cohostDSN := filepath.Join(dataDir, "cohost.db")
 	cohostStore, err := cohost.OpenSQLiteStore(ctx, cohostDSN)
 	if err != nil {
@@ -450,7 +463,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	msgTranslator := newMessageTranslator(translateStore, claudeClient, defaultTenantID, logger)
 	cohostCfg := cohostConfigAdapter{store: cohostStore, tenantID: defaultTenantID, logger: logger}
 	coHost := newCoHostResponder(cohostStore, claudeClient, defaultTenantID, logger)
-	autoClip := newAutoClipper(twitchAdapter, claudeClient, platformSender{platforms: platforms},
+	autoClip := newAutoClipper(clipperStore, clipper.DefaultOptions(), defaultTenantID,
+		twitchAdapter, claudeClient, platformSender{platforms: platforms},
 		splitCSV(os.Getenv("ENGELOS_CLIPPER_CHANNELS")), logger)
 
 	// Context-AI moderation is opt-in: it only runs when the streamer supplies
@@ -617,6 +631,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		FeatureStore:     featureFlagStore,
 		SongRequestStore: songRequestStore,
 		TranslateStore:   translateStore,
+		ClipperStore:     clipperStore,
 		SongQueueStore:   songQueueStore,
 		WrappedStore:     wrappedStore,
 		WrappedRanker:    wrappedRankerAdapter{loyalty: loyaltyStore, streak: streakSystem, tenantID: defaultTenantID},
