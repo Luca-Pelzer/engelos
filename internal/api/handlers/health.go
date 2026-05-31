@@ -49,3 +49,13 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(body)
 }
+
+// writeNoStore marks a response as never-cacheable. It is used on OAuth
+// login redirects, whose Location embeds a one-time state and a current
+// redirect_uri: a cached 302 from an earlier deploy would replay a stale
+// redirect_uri and be rejected by the provider with redirect_mismatch.
+func writeNoStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+}

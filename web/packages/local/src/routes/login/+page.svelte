@@ -1,11 +1,27 @@
 <script lang="ts">
   import { Card, Button, Input, Logo } from '@engelos/shared/components';
-  import { auth, ApiException, setAuthToken, API_BASE } from '@engelos/shared/lib';
+  import { auth, api, ApiException, setAuthToken, API_BASE } from '@engelos/shared/lib';
   import { toast } from '@engelos/shared/lib';
   import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
 
-  const twitchLoginUrl = `${API_BASE}/api/v1/auth/twitch/login?purpose=user`;
-  const discordLoginUrl = `${API_BASE}/api/v1/auth/discord/login?purpose=user`;
+  let providers = $state<{ twitch: boolean; discord: boolean }>({ twitch: true, discord: false });
+
+  // A fresh cache-busting nonce per page load defeats any 302 a browser cached
+  // from an earlier deploy whose redirect_uri differed (the localhost-mismatch
+  // bug): the unique query forces the click to reach the server for a current
+  // authorize URL instead of replaying a stale Location.
+  const nonce = Date.now().toString(36);
+  const twitchLoginUrl = `${API_BASE}/api/v1/auth/twitch/login?purpose=user&_=${nonce}`;
+  const discordLoginUrl = `${API_BASE}/api/v1/auth/discord/login?purpose=user&_=${nonce}`;
+
+  onMount(async () => {
+    try {
+      providers = await api.get<{ twitch: boolean; discord: boolean }>('/api/v1/auth/providers');
+    } catch {
+      providers = { twitch: true, discord: false };
+    }
+  });
 
   let email = $state('');
   let password = $state('');
@@ -83,19 +99,23 @@
           <span class="h-px flex-1 bg-[var(--color-border-soft)]"></span>
         </div>
 
-        <a href={twitchLoginUrl} class="twitch-btn" data-sveltekit-reload>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
-            <path d="M4 2L2.5 5.5v13H7V22h3l3-3h4l5-5V2zm15 11l-3 3h-4l-3 3v-3H7V4h12zM15 7h-2v5h2zm-5 0H8v5h2z"/>
-          </svg>
-          <span>Login with Twitch</span>
-        </a>
+        {#if providers.twitch}
+          <a href={twitchLoginUrl} class="twitch-btn" data-sveltekit-reload>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+              <path d="M4 2L2.5 5.5v13H7V22h3l3-3h4l5-5V2zm15 11l-3 3h-4l-3 3v-3H7V4h12zM15 7h-2v5h2zm-5 0H8v5h2z"/>
+            </svg>
+            <span>Login with Twitch</span>
+          </a>
+        {/if}
 
-        <a href={discordLoginUrl} class="discord-btn" data-sveltekit-reload>
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
-            <path d="M20.3 4.4A19.8 19.8 0 0015.4 3l-.2.4a14 14 0 014.4 2.2 13.4 13.4 0 00-11.2 0A14 14 0 018.8 3.4L8.6 3a19.8 19.8 0 00-4.9 1.4C1.6 8.5.9 12.5 1.2 16.4a20 20 0 006 3l.5-.7a13.6 13.6 0 01-2.1-1l.5-.3a14.2 14.2 0 0012 0l.5.3a13 13 0 01-2.1 1l.4.7a20 20 0 006-3c.4-4.6-.7-8.5-2.9-12zM8.5 14.1c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2zm7 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2z"/>
-          </svg>
-          <span>Login with Discord</span>
-        </a>
+        {#if providers.discord}
+          <a href={discordLoginUrl} class="discord-btn" data-sveltekit-reload>
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+              <path d="M20.3 4.4A19.8 19.8 0 0015.4 3l-.2.4a14 14 0 014.4 2.2 13.4 13.4 0 00-11.2 0A14 14 0 018.8 3.4L8.6 3a19.8 19.8 0 00-4.9 1.4C1.6 8.5.9 12.5 1.2 16.4a20 20 0 006 3l.5-.7a13.6 13.6 0 01-2.1-1l.5-.3a14.2 14.2 0 0012 0l.5.3a13 13 0 01-2.1 1l.4.7a20 20 0 006-3c.4-4.6-.7-8.5-2.9-12zM8.5 14.1c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2zm7 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2z"/>
+            </svg>
+            <span>Login with Discord</span>
+          </a>
+        {/if}
 
         <div class="mt-6 pt-5 border-t border-soft text-center">
           <p class="text-[12.5px] text-fg-soft">

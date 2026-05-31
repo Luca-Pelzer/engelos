@@ -92,6 +92,7 @@ func (d *DiscordOAuth) Login(w http.ResponseWriter, r *http.Request) {
 		Secure:   d.core.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
+	writeNoStore(w)
 	http.Redirect(w, r, d.cfg.AuthCodeURL(state), http.StatusSeeOther)
 }
 

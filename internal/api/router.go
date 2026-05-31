@@ -240,6 +240,13 @@ func NewRouter(deps Deps) chi.Router {
 		r.Route("/auth", func(r chi.Router) {
 			r.With(apimw.RateLimit(loginRPS, loginBurst)).Post("/login", authH.Login)
 			r.Post("/logout", authH.Logout)
+			// Public capability discovery so the login page only renders the
+			// OAuth buttons whose routes are actually mounted; an unconfigured
+			// provider would otherwise 404 on click and surface as an error.
+			r.Get("/providers", handlers.AuthProviders(handlers.AuthProviderFlags{
+				Twitch:  deps.OAuthTwitch != nil,
+				Discord: deps.OAuthDiscord != nil,
+			}))
 			if deps.OAuthTwitch != nil {
 				r.Get("/twitch/login", deps.OAuthTwitch.Login)
 				r.Get("/twitch/callback", deps.OAuthTwitch.Callback)

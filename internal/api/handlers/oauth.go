@@ -314,6 +314,13 @@ func (o *OAuth) Login(w http.ResponseWriter, r *http.Request) {
 		// Lax (not Strict) - see OAuthStateCookieName doc comment.
 		SameSite: http.SameSiteLaxMode,
 	})
+	// The authorize URL embeds a one-time state and a moment-in-time
+	// redirect_uri; it must NEVER be cached. Without this header a browser
+	// can replay a previously cached 302 (e.g. from an earlier deploy that
+	// used a different redirect_uri), sending the user to a stale authorize
+	// URL that the provider then rejects with redirect_mismatch. no-store
+	// forces a fresh server round-trip on every login click.
+	writeNoStore(w)
 	http.Redirect(w, r, o.cfg.AuthCodeURL(stateVal), http.StatusFound)
 }
 
