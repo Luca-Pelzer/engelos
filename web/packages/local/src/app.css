@@ -11,6 +11,27 @@
  */
 @source "../../shared/src";
 
+/*
+ * Accent bridge: the older pages (automod, clipper, pity, streak, wrapped,
+ * counters, etc.) were built against the legacy --color-accent token family,
+ * which @theme hardcodes to teal. The accent picker only drives --brand /
+ * --brand-2, so those pages ignored the chosen accent and stayed teal. Re-map
+ * the legacy accent tokens onto --brand here so every old page follows the
+ * picker (Magma by default) exactly like the new pages. Declared after the
+ * token import so this cascade wins in both dark and light themes.
+ */
+:root {
+  --color-accent:        var(--brand);
+  --color-accent-hover:  color-mix(in srgb, var(--brand) 82%, #fff);
+  --color-accent-active: color-mix(in srgb, var(--brand) 82%, #000);
+  --color-accent-soft:   color-mix(in srgb, var(--brand) 14%, transparent);
+  --color-accent-glow:   color-mix(in srgb, var(--brand) 32%, transparent);
+  --color-accent-2:      var(--brand-2);
+  --color-accent-2-hover: color-mix(in srgb, var(--brand-2) 82%, #fff);
+  --color-accent-2-soft: color-mix(in srgb, var(--brand-2) 14%, transparent);
+  --color-accent-2-glow: color-mix(in srgb, var(--brand-2) 32%, transparent);
+}
+
 @layer base {
   html, body {
     height: 100%;
