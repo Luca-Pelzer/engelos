@@ -21,6 +21,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/liveops"
+	"github.com/Luca-Pelzer/engelos/internal/loyalty"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
@@ -205,6 +206,11 @@ type Deps struct {
 	// LiveOpsStore, when non-nil, exposes the per-channel event-plan CRUD
 	// under /api/v1/liveops/*. Nil makes those endpoints return 501.
 	LiveOpsStore liveops.Store
+
+	// LoyaltyStore, when non-nil, exposes the points leaderboard and manual
+	// grant/deduct controls under /api/v1/loyalty/*. Nil makes those
+	// endpoints return 501.
+	LoyaltyStore loyalty.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -234,6 +240,7 @@ func NewRouter(deps Deps) chi.Router {
 	rewardsH := handlers.NewRewards(deps.RewardStore, deps.TenantID, logger)
 	timersH := handlers.NewTimers(deps.TimersStore, deps.TenantID, logger)
 	liveopsH := handlers.NewLiveOps(deps.LiveOpsStore, deps.TenantID, logger)
+	loyaltyH := handlers.NewLoyalty(deps.LoyaltyStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
@@ -413,6 +420,14 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/", liveopsH.List)
 			r.Post("/", liveopsH.Create)
 			r.Delete("/{number}", liveopsH.Delete)
+		})
+
+		r.Route("/loyalty", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/leaderboard", loyaltyH.Leaderboard)
+			r.Post("/adjust", loyaltyH.Adjust)
 		})
 
 		r.Route("/automod", func(r chi.Router) {
