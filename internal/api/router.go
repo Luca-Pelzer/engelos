@@ -23,6 +23,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
+	"github.com/Luca-Pelzer/engelos/internal/rewards"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
@@ -190,6 +191,10 @@ type Deps struct {
 	// QuoteStore, when non-nil, exposes the per-channel quotes CRUD under
 	// /api/v1/quotes/*. Nil makes those endpoints return 501 (feature off).
 	QuoteStore quotes.Store
+
+	// RewardStore, when non-nil, exposes the per-channel rewards catalog CRUD
+	// under /api/v1/rewards/*. Nil makes those endpoints return 501.
+	RewardStore rewards.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -216,6 +221,7 @@ func NewRouter(deps Deps) chi.Router {
 	migrateH := handlers.NewMigrate(deps.CommandStore, deps.TimerStore, deps.TenantID, logger)
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
 	quotesH := handlers.NewQuotes(deps.QuoteStore, deps.TenantID, logger)
+	rewardsH := handlers.NewRewards(deps.RewardStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
@@ -366,6 +372,16 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/", quotesH.List)
 			r.Post("/", quotesH.Create)
 			r.Delete("/{number}", quotesH.Delete)
+		})
+
+		r.Route("/rewards", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", rewardsH.List)
+			r.Post("/", rewardsH.Create)
+			r.Put("/{name}", rewardsH.Update)
+			r.Delete("/{name}", rewardsH.Delete)
 		})
 
 		r.Route("/automod", func(r chi.Router) {
