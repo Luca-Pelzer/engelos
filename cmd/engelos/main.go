@@ -702,6 +702,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		QuoteStore:       quoteStore,
 		RewardStore:      rewardsStore,
 		TimersStore:      timerStore,
+		LiveOpsStore:     eventStoreLO,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")

@@ -20,6 +20,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/featureflags"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/liveops"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
@@ -200,6 +201,10 @@ type Deps struct {
 	// timers CRUD under /api/v1/timers/*. Nil makes those endpoints
 	// return 501. (Distinct from TimerStore, used only for migration import.)
 	TimersStore timers.Store
+
+	// LiveOpsStore, when non-nil, exposes the per-channel event-plan CRUD
+	// under /api/v1/liveops/*. Nil makes those endpoints return 501.
+	LiveOpsStore liveops.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -228,6 +233,7 @@ func NewRouter(deps Deps) chi.Router {
 	quotesH := handlers.NewQuotes(deps.QuoteStore, deps.TenantID, logger)
 	rewardsH := handlers.NewRewards(deps.RewardStore, deps.TenantID, logger)
 	timersH := handlers.NewTimers(deps.TimersStore, deps.TenantID, logger)
+	liveopsH := handlers.NewLiveOps(deps.LiveOpsStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
@@ -398,6 +404,15 @@ func NewRouter(deps Deps) chi.Router {
 			r.Post("/", timersH.Create)
 			r.Put("/{name}", timersH.Update)
 			r.Delete("/{name}", timersH.Delete)
+		})
+
+		r.Route("/liveops", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", liveopsH.List)
+			r.Post("/", liveopsH.Create)
+			r.Delete("/{number}", liveopsH.Delete)
 		})
 
 		r.Route("/automod", func(r chi.Router) {
