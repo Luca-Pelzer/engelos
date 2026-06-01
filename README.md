@@ -2,9 +2,14 @@
 
 <div align="center">
 
-<img src=".github/assets/banner.svg" alt="EngelOS - the open-source streaming bot that does what the paid ones do, and the things they won't." width="100%" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lockup-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset=".github/assets/lockup-light.svg" />
+  <img src=".github/assets/lockup-light.svg" alt="EngelOS" width="420" />
+</picture>
 
-<br/>
+### The open-source streaming bot that does what the paid ones do, and the things they won't.
+
 <br/>
 
 [![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go&logoColor=white&labelColor=0b0e14)](https://go.dev)
