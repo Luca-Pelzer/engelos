@@ -96,7 +96,7 @@ Plus a few things the big bots simply don't offer:
 
 <div align="center">
 
-<img src=".github/assets/comparison.png" alt="Feature comparison: EngelOS vs Nightbot, StreamElements and EngelGuard" width="100%" />
+<img src=".github/assets/comparison.svg" alt="Feature comparison: EngelOS vs Nightbot, StreamElements and EngelGuard" width="100%" />
 
 </div>
 
@@ -128,7 +128,7 @@ Plus a few things the big bots simply don't offer:
 
 <div align="center">
 
-<img src=".github/assets/features.png" alt="EngelOS feature set: what ships today and what is on the roadmap" width="100%" />
+<img src=".github/assets/features.svg" alt="EngelOS feature set: what ships today and what is on the roadmap" width="100%" />
 
 </div>
 
@@ -259,6 +259,20 @@ All configuration is via environment variables:
 
 ## 🏗️ Architecture
 
+<div align="center">
+
+<img src=".github/assets/architecture.svg" alt="EngelOS architecture: platform adapters fan into a dispatcher and the action engine, through feature modules, into an event-sourcing engine and the API, out to clients. Live parts solid, roadmap parts dashed." width="100%" />
+
+</div>
+
+One Go binary. Platform events fan in through the dispatcher, flow through the feature modules, and
+are persisted by an append-only event-sourcing engine. Clients attach over HTTP / WebSocket / SSE.
+Solid blocks are live today; dashed blocks (action engine, OBS control, AI modules, companion app)
+are on the roadmap.
+
+<details>
+<summary>Text version of the diagram</summary>
+
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  EngelOS Core Daemon (Go, single static binary)          │
@@ -294,6 +308,8 @@ All configuration is via environment variables:
    │         │    │                │    │ on-machine actions│
    └─────────┘    └────────────────┘    └───────────────────┘
 ```
+
+</details>
 
 ---
 
