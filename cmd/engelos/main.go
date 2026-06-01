@@ -699,6 +699,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		WrappedStore:     wrappedStore,
 		WrappedRanker:    wrappedRankerAdapter{loyalty: loyaltyStore, streak: streakSystem, tenantID: defaultTenantID},
 		Chat:             newChatController(platforms),
+		QuoteStore:       quoteStore,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")

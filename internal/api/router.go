@@ -21,6 +21,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
+	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests"
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
@@ -185,6 +186,10 @@ type Deps struct {
 	// moderate a user) under /api/v1/chat/*. Nil leaves those routes
 	// unmounted so the dashboard composer/mod actions degrade to 404.
 	Chat *handlers.ChatController
+
+	// QuoteStore, when non-nil, exposes the per-channel quotes CRUD under
+	// /api/v1/quotes/*. Nil makes those endpoints return 501 (feature off).
+	QuoteStore quotes.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -210,6 +215,7 @@ func NewRouter(deps Deps) chi.Router {
 	commandsH := handlers.NewCommands(deps.CommandStore, deps.TenantID, logger)
 	migrateH := handlers.NewMigrate(deps.CommandStore, deps.TimerStore, deps.TenantID, logger)
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
+	quotesH := handlers.NewQuotes(deps.QuoteStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
@@ -351,6 +357,15 @@ func NewRouter(deps Deps) chi.Router {
 			r.Put("/{name}", countersH.Set)
 			r.Post("/{name}/add", countersH.Add)
 			r.Delete("/{name}", countersH.Delete)
+		})
+
+		r.Route("/quotes", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", quotesH.List)
+			r.Post("/", quotesH.Create)
+			r.Delete("/{number}", quotesH.Delete)
 		})
 
 		r.Route("/automod", func(r chi.Router) {
