@@ -39,13 +39,13 @@ Wrapped recap cards, and OBS overlays. Self-host it free forever, your data on y
 
 ---
 
-> [!NOTE]
-> **Screenshot placeholder.** A dashboard screenshot or short demo GIF goes here, this is the single
-> biggest visual win for the page. Drop an image into a GitHub issue comment to get a permanent
-> `user-attachments` URL, then replace this note with:
-> `<div align="center"><img src="PASTED_URL" alt="EngelOS dashboard" width="100%" /></div>`
-> The public `/login` page (the redesigned glass-over-dashboard scene) is a great candidate since it
-> needs no auth.
+<div align="center">
+
+<img src=".github/assets/login-demo.gif" alt="EngelOS login, a glass sign-in card floating over a live faux-dashboard scene with an animated magma equalizer" width="100%" />
+
+<sub>The redesigned sign-in, a glass card over a live dashboard scene. A full dashboard tour is coming.</sub>
+
+</div>
 
 ---
 
