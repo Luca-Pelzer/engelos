@@ -420,7 +420,7 @@ against it without AGPL obligations.
 <div align="center">
 
 <a href="https://star-history.com/#Luca-Pelzer/engelos&Date">
-  <img src="https://api.star-history.com/svg?repos=Luca-Pelzer/engelos&type=Date" alt="EngelOS star history chart" width="70%" />
+  <img src=".github/assets/star-history.svg" alt="EngelOS star history chart" width="70%" />
 </a>
 
 </div>
