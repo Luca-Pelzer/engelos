@@ -1,27 +1,51 @@
+<a id="readme-top"></a>
+
 <div align="center">
 
-# EngelOS
+<img src=".github/assets/banner.svg" alt="EngelOS - the open-source streaming bot that does what the paid ones do, and the things they won't." width="100%" />
 
-### The open-source streaming bot that does what the paid ones do, and the things they won't.
+<br/>
+<br/>
 
-[![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![SDK: Apache-2.0](https://img.shields.io/badge/SDK-Apache--2.0-green.svg)](pkg/sdk/LICENSE)
-[![Platforms](https://img.shields.io/badge/Linux%20·%20macOS%20·%20Windows-self--hosted-success.svg)](#-quick-start)
-[![Status: Alpha](https://img.shields.io/badge/status-Phase%201%20alpha-orange.svg)](#-project-status)
-[![Successor to EngelGuard](https://img.shields.io/badge/successor%20to-EngelGuard-9146FF.svg)](https://github.com/Luca-Pelzer/engelguard)
-[![GitHub stars](https://img.shields.io/github/stars/Luca-Pelzer/engelos?style=social)](https://github.com/Luca-Pelzer/engelos/stargazers)
+[![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go&logoColor=white&labelColor=0b0e14)](https://go.dev)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-ff5d73?style=flat-square&labelColor=0b0e14)](LICENSE)
+[![SDK: Apache-2.0](https://img.shields.io/badge/SDK-Apache--2.0-ff9e3d?style=flat-square&labelColor=0b0e14)](pkg/sdk/LICENSE)
+[![Platforms](https://img.shields.io/badge/Linux_·_macOS_·_Windows-self--hosted-1fe3b3?style=flat-square&labelColor=0b0e14)](#-quick-start)
+[![Status: Alpha](https://img.shields.io/badge/status-Phase_1_alpha-ff9e3d?style=flat-square&labelColor=0b0e14)](#-project-status)
+[![GitHub stars](https://img.shields.io/github/stars/Luca-Pelzer/engelos?style=flat-square&logo=github&color=ff5d73&labelColor=0b0e14)](https://github.com/Luca-Pelzer/engelos/stargazers)
+
+<p>
+  <a href="#-why-engelos">Why EngelOS?</a>
+  &nbsp;·&nbsp;
+  <a href="#-features">Features</a>
+  &nbsp;·&nbsp;
+  <a href="#-quick-start">Quick Start</a>
+  &nbsp;·&nbsp;
+  <a href="#%EF%B8%8F-configuration">Configuration</a>
+  &nbsp;·&nbsp;
+  <a href="#%EF%B8%8F-architecture">Architecture</a>
+  &nbsp;·&nbsp;
+  <a href="#-project-status">Status</a>
+</p>
 
 **One fast, self-hosted binary for Twitch and Discord.**
 Moderation, custom commands, Channel-Points triggers and native Twitch Predictions, a points economy
 with mini-games, provably-fair giveaways, multi-provider song requests (Spotify and YouTube), Stream
 Wrapped recap cards, and OBS overlays. Self-host it free forever, your data on your machine.
 
-[Why EngelOS?](#-why-engelos) • [Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Architecture](#-architecture) • [Status](#-project-status)
-
 ⭐ **If this looks useful, [star the repo](https://github.com/Luca-Pelzer/engelos)** to follow along and help it grow.
 
 </div>
+
+---
+
+> [!NOTE]
+> **Screenshot placeholder.** A dashboard screenshot or short demo GIF goes here, this is the single
+> biggest visual win for the page. Drop an image into a GitHub issue comment to get a permanent
+> `user-attachments` URL, then replace this note with:
+> `<div align="center"><img src="PASTED_URL" alt="EngelOS dashboard" width="100%" /></div>`
+> The public `/login` page (the redesigned glass-over-dashboard scene) is a great candidate since it
+> needs no auth.
 
 ---
 
@@ -387,10 +411,35 @@ The dual license follows the [Grafana model](https://grafana.com/licensing/): th
 from cloud reselling (AGPL), while the SDK stays permissive (Apache) so anyone can build integrations
 against it without AGPL obligations.
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## 📈 Star history
+
 <div align="center">
 
-**EngelOS**, built in the open, the successor to [EngelGuard](https://github.com/Luca-Pelzer/engelguard).
+<a href="https://star-history.com/#Luca-Pelzer/engelos&Date">
+  <img src="https://api.star-history.com/svg?repos=Luca-Pelzer/engelos&type=Date" alt="EngelOS star history chart" width="70%" />
+</a>
+
+</div>
+
+---
+
+<div align="center">
+
+<img src=".github/assets/banner.svg" alt="EngelOS" width="60%" />
+
+<br/>
+<br/>
+
+**Built in the open, the successor to [EngelGuard](https://github.com/Luca-Pelzer/engelguard).**
 
 If you made it this far, a ⭐ would mean a lot. Thanks for reading.
+
+<br/>
+
+<sub>Made with care in the open. AGPL-3.0 core · Apache-2.0 SDK.</sub>
 
 </div>

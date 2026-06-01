@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" fill="none" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b0e14"/>
+      <stop offset="1" stop-color="#10131c"/>
+    </linearGradient>
+    <linearGradient id="magma" x1="120" y1="110" x2="232" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff5d73"/>
+      <stop offset="1" stop-color="#ff9e3d"/>
+    </linearGradient>
+    <linearGradient id="magmatext" x1="300" y1="120" x2="640" y2="200" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff7a6b"/>
+      <stop offset="1" stop-color="#ffb04d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop stop-color="#ff5d73" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ff5d73" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.5" cy="0.5" r="0.5">
+      <stop stop-color="#ff9e3d" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ff9e3d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="320" rx="24" fill="url(#bg)"/>
+  <circle cx="176" cy="160" r="280" fill="url(#glow)"/>
+  <circle cx="1080" cy="80" r="320" fill="url(#glow2)"/>
+
+  <!-- play-mark logo, matching favicon -->
+  <g transform="translate(96,96)">
+    <rect width="128" height="128" rx="30" fill="#0b0e14" stroke="#1c2230" stroke-width="1.5"/>
+    <path d="M50 38 L98 64 L50 90 Z" fill="url(#magma)" stroke="url(#magma)" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="272" y="158" font-size="76" font-weight="800" letter-spacing="-1.5" fill="#f4f6fb">Engel<tspan fill="url(#magmatext)">OS</tspan></text>
+  <text x="274" y="206" font-size="25" font-weight="500" letter-spacing="0.2" fill="#aeb6c6">The open-source streaming bot that does what the paid ones do,</text>
+  <text x="274" y="240" font-size="25" font-weight="500" letter-spacing="0.2" fill="#aeb6c6">and the things they won't.</text>
+
+  <!-- tag pills -->
+  <g transform="translate(274,268)" font-size="15" font-weight="600">
+    <g>
+      <rect x="0" y="0" width="118" height="32" rx="16" fill="#161b26" stroke="#252c3b" stroke-width="1"/>
+      <circle cx="20" cy="16" r="4" fill="#ff5d73"/>
+      <text x="34" y="21" fill="#cdd4e0">Self-hosted</text>
+    </g>
+    <g transform="translate(130,0)">
+      <rect x="0" y="0" width="132" height="32" rx="16" fill="#161b26" stroke="#252c3b" stroke-width="1"/>
+      <circle cx="20" cy="16" r="4" fill="#ff9e3d"/>
+      <text x="34" y="21" fill="#cdd4e0">One Go binary</text>
+    </g>
+    <g transform="translate(274,0)">
+      <rect x="0" y="0" width="104" height="32" rx="16" fill="#161b26" stroke="#252c3b" stroke-width="1"/>
+      <circle cx="20" cy="16" r="4" fill="#1fe3b3"/>
+      <text x="34" y="21" fill="#cdd4e0">AGPL-3.0</text>
+    </g>
+    <g transform="translate(390,0)">
+      <rect x="0" y="0" width="150" height="32" rx="16" fill="#161b26" stroke="#252c3b" stroke-width="1"/>
+      <circle cx="20" cy="16" r="4" fill="#34c7ff"/>
+      <text x="34" y="21" fill="#cdd4e0">Twitch + Discord</text>
+    </g>
+  </g>
+</svg>
