@@ -296,17 +296,35 @@ open-source work, not to cripple the free one.
 
 **🚧 Planned (roadmap):**
 
+- **Action engine** (the core): a visual flow editor (Streamer.bot / n8n style) where any event
+  (sub, raid, channel-point, command, donation, streak milestone) triggers a chain of actions
+  (OBS scene, sound, overlay, chat, Discord, TTS, points). It sits on the memory layer and the
+  cross-platform bus, so a trigger can fire across Twitch/YouTube/Kick and know the viewer's history.
+- **OBS control** via obs-websocket (scenes, sources, recording) wired into the action engine
 - Full YouTube and Kick chat adapters (YouTube song requests already work)
-- AI features: Auto-Clipper, real-time Translator, context-aware AI-Mod, AI Co-Host, AI-Voice/TTS
+- **Smarter moderation, two tiers:** a rule-based mod (scam-block toggle with a bundled, curated
+  scam list, plus domain-accurate link allow/deny lists) that is always free and runs locally,
+  and an optional, person-aware AI-Mod (BYOK) that uses viewer history and context for the grey
+  areas a wordlist can never catch (e.g. poaching / "can I join?" lures from cold accounts)
+- **Other AI features:** Auto-Clipper (hype-moment detection), chat translation (over your own
+  Claude subscription, no extra cost), AI Co-Host / AI-Voice (TTS in your own voice), and an
+  optional "what did I miss?" chat summary
+- **Sponsor & ad tools for small streamers:** ad-read reminders, sponsor-slot planning, and
+  affiliate-link click tracking (the number sponsors actually want)
+- Going-live auto-post to Discord; Twitch-sub → Discord-role sync; donation alerts via Ko-fi /
+  StreamElements (we never touch the money)
 - Plugin/addon ecosystem and marketplace
 - Downloadable companion client: a desktop app that manages the OBS browser-source overlays (set
   them up and tweak them without editing config) and lets the bot trigger on-machine actions from
   events, for example a channel-point redemption firing an on-screen effect
 - TUI (Bubble Tea), native GUI (Wails v2)
 - Managed Cloud tier: a paid, hosted option for non-self-hosters (flat monthly price, easier setup,
-  some cloud-only AI features), Netdata-style. The self-hosted build stays free forever. (Phase 2+, not in this repo.)
+  some cloud-only AI features like restream/multistreaming and the full voice co-host), Netdata-style.
+  The self-hosted build stays free forever. (Phase 2+, not in this repo.)
 
-See [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) for the full multi-year roadmap.
+See [`docs/MASTER-VISION.md`](docs/MASTER-VISION.md) for the full multi-year roadmap, and
+[`docs/BUILD-VS-INTEGRATE.md`](docs/BUILD-VS-INTEGRATE.md) for the build-vs-integrate strategy
+behind each feature.
 
 ---
 
