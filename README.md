@@ -94,6 +94,15 @@ Plus a few things the big bots simply don't offer:
 
 ### Quick comparison
 
+<div align="center">
+
+<img src=".github/assets/comparison.png" alt="Feature comparison: EngelOS vs Nightbot, StreamElements and EngelGuard" width="100%" />
+
+</div>
+
+<details>
+<summary>Same comparison as a text table</summary>
+
 | | EngelOS | Nightbot | StreamElements | EngelGuard (Python) |
 |---|:---:|:---:|:---:|:---:|
 | Cost | **Free self-hosted** (optional paid Cloud later) | Free + Premium | Free + Premium | Free |
@@ -111,9 +120,17 @@ Plus a few things the big bots simply don't offer:
 | Single binary | ✅ Go | n/a | n/a | ❌ Python |
 | Multi-platform | Twitch + Discord, YouTube/Kick 🚧 | Twitch/YT | Twitch/YT | Twitch |
 
+</details>
+
 ---
 
 ## ✨ Features
+
+<div align="center">
+
+<img src=".github/assets/features.png" alt="EngelOS feature set: what ships today and what is on the roadmap" width="100%" />
+
+</div>
 
 ### 🛡️ Moderation (AutoMod)
 Seven configurable filters, each with **per-filter role exemptions**:
