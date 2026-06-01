@@ -1,28 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
   <defs>
-    <linearGradient id="magma" x1="100" y1="76" x2="196" y2="180" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ff5d73"></stop>
-      <stop offset="1" stop-color="#ff9e3d"></stop>
-    </linearGradient>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="256" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ffffff"></stop>
-      <stop offset="1" stop-color="#eef1f7"></stop>
-    </linearGradient>
-    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="256" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ffffff" stop-opacity="0.9"></stop>
-      <stop offset="0.3" stop-color="#ffffff" stop-opacity="0"></stop>
-    </linearGradient>
-    <radialGradient id="iglow" cx="0.55" cy="0.56" r="0.5">
-      <stop stop-color="#ff7a4d" stop-opacity="0.22"></stop>
-      <stop offset="1" stop-color="#ff7a4d" stop-opacity="0"></stop>
-    </radialGradient>
-    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="18"></feGaussianBlur>
-    </filter>
+    <linearGradient id="m" x1="80" y1="60" x2="200" y2="200" gradientUnits="userSpaceOnUse"><stop stop-color="#ff5d73"></stop><stop offset="1" stop-color="#ff9e3d"></stop></linearGradient>
+    <linearGradient id="t" x1="0" y1="0" x2="0" y2="256" gradientUnits="userSpaceOnUse"><stop stop-color="#161b26"></stop><stop offset="1" stop-color="#0b0e14"></stop></linearGradient>
+    <radialGradient id="gl" cx="0.5" cy="0.5" r="0.5"><stop stop-color="#ff5d73" stop-opacity="0.42"></stop><stop offset="1" stop-color="#ff5d73" stop-opacity="0"></stop></radialGradient>
   </defs>
-  <rect width="256" height="256" rx="58" fill="url(#tile)"></rect>
-  <ellipse cx="146" cy="140" rx="78" ry="60" fill="url(#iglow)" filter="url(#blur)"></ellipse>
-  <path d="M100 76 L196 128 L100 180 Z" fill="url(#magma)" stroke="url(#magma)" stroke-width="32" stroke-linejoin="round" stroke-linecap="round"></path>
-  <rect width="256" height="256" rx="58" fill="url(#sheen)"></rect>
-  <rect x="0.75" y="0.75" width="254.5" height="254.5" rx="57.25" fill="none" stroke="#0b0e14" stroke-opacity="0.10"></rect>
+  <rect width="256" height="256" rx="60" fill="url(#t)"></rect>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="58.5" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="3"></rect>
+  <circle cx="140" cy="128" r="68" fill="url(#gl)"></circle>
+  <path d="M92 76 L188 128 L92 180 Z" fill="url(#m)" stroke="url(#m)" stroke-width="30" stroke-linejoin="round" stroke-linecap="round"></path>
 </svg>
