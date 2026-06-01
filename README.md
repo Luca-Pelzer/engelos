@@ -415,6 +415,18 @@ against it without AGPL obligations.
 
 ---
 
+## 📈 Star history
+
+<div align="center">
+
+<a href="https://star-history.com/#Luca-Pelzer/engelos&Date">
+  <img src="https://api.star-history.com/svg?repos=Luca-Pelzer/engelos&type=Date" alt="EngelOS star history chart" width="70%" />
+</a>
+
+</div>
+
+---
+
 <div align="center">
 
 <img src=".github/assets/banner.svg" alt="EngelOS" width="60%" />
