@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@engelos/shared/styles/tokens.css";
+@import "@engelos/shared/styles/engelos-dashboard.css";
 
 /*
  * Tailwind v4 auto-detects content from the app package but does not follow

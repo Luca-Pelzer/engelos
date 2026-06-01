@@ -698,6 +698,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		SongQueueStore:   songQueueStore,
 		WrappedStore:     wrappedStore,
 		WrappedRanker:    wrappedRankerAdapter{loyalty: loyaltyStore, streak: streakSystem, tenantID: defaultTenantID},
+		Chat:             newChatController(platforms),
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")
@@ -1732,6 +1733,15 @@ func parseRole(s string) commands.Role {
 // so the scheduler can post auto-announcements. It posts to every connected
 // platform and reports success when at least one delivered; per-platform
 // channel routing is future work (the live deployment is Twitch-only).
+func newChatController(platforms []adapters.Platform) *handlers.ChatController {
+	channels := splitCSV(os.Getenv("ENGELOS_TWITCH_CHANNELS"))
+	channel := ""
+	if len(channels) > 0 {
+		channel = channels[0]
+	}
+	return &handlers.ChatController{Platforms: platforms, Channel: channel}
+}
+
 type platformSender struct{ platforms []adapters.Platform }
 
 func (s platformSender) Send(ctx context.Context, channel, message string) error {

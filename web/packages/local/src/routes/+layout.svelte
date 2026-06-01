@@ -56,9 +56,14 @@
     if (path.startsWith('/streak'))       return 'Streak';
     if (path.startsWith('/wrapped'))      return 'Stream Wrapped';
     if (path.startsWith('/connections'))  return 'Connections';
-    if (path.startsWith('/integrations')) return 'Integrations';
-    if (path.startsWith('/settings'))     return 'Settings';
+    if (path.startsWith('/integrations')) return 'Integrationen';
+    if (path.startsWith('/settings'))     return 'Einstellungen';
     if (path.startsWith('/upgrade'))      return 'Upgrade to Cloud';
+    if (path.startsWith('/loyalty'))      return 'Punkte & Games';
+    if (path.startsWith('/rewards'))      return 'Belohnungen';
+    if (path.startsWith('/timers'))       return 'Auto-Ansagen';
+    if (path.startsWith('/quotes'))       return 'Zitate';
+    if (path.startsWith('/liveops'))      return 'Event-Plan';
     return '';
   });
 
@@ -81,13 +86,16 @@
     {@render children()}
   </main>
 {:else if authState === 'in'}
-  <div class="flex min-h-screen bg-[var(--color-bg)]">
+  <div class="scene" aria-hidden="true">
+    <div class="orb a"></div>
+    <div class="orb b"></div>
+    <div class="orb c"></div>
+  </div>
+  <div class="app">
     <Sidebar current={path} />
-    <div class="flex-1 flex flex-col min-w-0">
-      <TopBar title={pageTitle} />
-      <main class="flex-1 px-7 py-7 max-w-[1280px] w-full mx-auto">
-        {@render children()}
-      </main>
+    <div class="main">
+      <TopBar title={pageTitle} path={path} />
+      {@render children()}
     </div>
   </div>
 {:else}

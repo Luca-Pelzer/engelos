@@ -13,6 +13,9 @@
           document.documentElement.setAttribute('data-theme', t);
           var m = document.querySelector('meta[name="theme-color"]');
           if (m) m.setAttribute('content', t === 'light' ? '#f6f8fb' : '#08090c');
+          var a = JSON.parse(localStorage.getItem('engelos-accent') || '["#ff5d73","#ff9e3d"]');
+          document.documentElement.style.setProperty('--brand', a[0]);
+          document.documentElement.style.setProperty('--brand-2', a[1]);
         } catch (e) {}
       })();
     </script>

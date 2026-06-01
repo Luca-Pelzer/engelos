@@ -180,6 +180,11 @@ type Deps struct {
 	// WrappedRanker, when non-nil, supplies the loyalty/streak extras on a
 	// viewer Wrapped card. Optional; nil omits those fields.
 	WrappedRanker handlers.WrappedRanker
+
+	// Chat, when non-nil, exposes outbound chat control (send a message,
+	// moderate a user) under /api/v1/chat/*. Nil leaves those routes
+	// unmounted so the dashboard composer/mod actions degrade to 404.
+	Chat *handlers.ChatController
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -282,6 +287,10 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/events", events.Stream)
 			r.Get("/stats", statsH.Get)
 			r.HandleFunc("/ws", wsh.ServeHTTP)
+			if deps.Chat != nil {
+				r.Post("/chat/send", deps.Chat.Send)
+				r.Post("/chat/moderate", deps.Chat.Moderate)
+			}
 		})
 
 		r.Route("/pity", func(r chi.Router) {

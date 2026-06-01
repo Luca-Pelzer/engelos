@@ -50,3 +50,50 @@ export function toggleTheme(): void {
     return next;
   });
 }
+
+// --- Accent palette (shared across login + dashboard) ---
+// Each accent is a [primary, secondary] gradient pair written to the
+// --brand / --brand-2 custom properties. Magma is the default brand color.
+export type Accent = { id: string; name: string; v: [string, string] };
+
+export const ACCENTS: Accent[] = [
+  { id: 'magma', name: 'Magma', v: ['#ff5d73', '#ff9e3d'] },
+  { id: 'aurora', name: 'Aurora', v: ['#1fe3b3', '#34c7ff'] },
+  { id: 'violet', name: 'Violet', v: ['#8b5cff', '#43a6ff'] },
+  { id: 'lime', name: 'Lime', v: ['#b6f23d', '#19d3a2'] },
+];
+
+const ACCENT_KEY = 'engelos-accent';
+
+function readAccent(): Accent {
+  if (typeof document === 'undefined') return ACCENTS[0];
+  try {
+    const saved = localStorage.getItem(ACCENT_KEY);
+    if (saved) {
+      const v = JSON.parse(saved) as [string, string];
+      const match = ACCENTS.find((a) => a.v[0] === v[0]);
+      if (match) return match;
+    }
+  } catch {
+    /* localStorage unavailable; fall through to default */
+  }
+  return ACCENTS[0];
+}
+
+function applyAccent(a: Accent): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.style.setProperty('--brand', a.v[0]);
+  document.documentElement.style.setProperty('--brand-2', a.v[1]);
+  try {
+    localStorage.setItem(ACCENT_KEY, JSON.stringify(a.v));
+  } catch {
+    /* ignore persistence failure */
+  }
+}
+
+export const accent = writable<Accent>(readAccent());
+
+export function setAccent(next: Accent): void {
+  applyAccent(next);
+  accent.set(next);
+}
