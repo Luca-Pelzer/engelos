@@ -701,6 +701,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Chat:             newChatController(platforms),
 		QuoteStore:       quoteStore,
 		RewardStore:      rewardsStore,
+		TimersStore:      timerStore,
 	})
 
 	addr := os.Getenv("ENGELOS_ADDR")

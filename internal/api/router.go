@@ -195,6 +195,11 @@ type Deps struct {
 	// RewardStore, when non-nil, exposes the per-channel rewards catalog CRUD
 	// under /api/v1/rewards/*. Nil makes those endpoints return 501.
 	RewardStore rewards.Store
+
+	// TimersStore, when non-nil, exposes the per-channel auto-announcement
+	// timers CRUD under /api/v1/timers/*. Nil makes those endpoints
+	// return 501. (Distinct from TimerStore, used only for migration import.)
+	TimersStore timers.Store
 }
 
 // NewRouter builds the full chi router with middleware and routes mounted.
@@ -222,6 +227,7 @@ func NewRouter(deps Deps) chi.Router {
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
 	quotesH := handlers.NewQuotes(deps.QuoteStore, deps.TenantID, logger)
 	rewardsH := handlers.NewRewards(deps.RewardStore, deps.TenantID, logger)
+	timersH := handlers.NewTimers(deps.TimersStore, deps.TenantID, logger)
 	automodH := handlers.NewAutoMod(deps.Moderation, logger)
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
@@ -382,6 +388,16 @@ func NewRouter(deps Deps) chi.Router {
 			r.Post("/", rewardsH.Create)
 			r.Put("/{name}", rewardsH.Update)
 			r.Delete("/{name}", rewardsH.Delete)
+		})
+
+		r.Route("/timers", func(r chi.Router) {
+			if deps.AuthStore != nil {
+				r.Use(apimw.RequireSession)
+			}
+			r.Get("/", timersH.List)
+			r.Post("/", timersH.Create)
+			r.Put("/{name}", timersH.Update)
+			r.Delete("/{name}", timersH.Delete)
 		})
 
 		r.Route("/automod", func(r chi.Router) {
