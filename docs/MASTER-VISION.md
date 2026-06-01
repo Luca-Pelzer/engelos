@@ -424,7 +424,7 @@ User-Flow im Dashboard:
 
 ---
 
-## 🏆 DIE 12 KILLER-FEATURES + Overlay-System
+## 🏆 DIE 16 KILLER-FEATURES + Overlay-System
 
 ### TIER A - Build First (Foundation + Quick Wins)
 
@@ -582,6 +582,24 @@ User-Flow im Dashboard:
 - **Competitor-Status:** Streamlabs Cloudbot hat TTS, aber generische Stimmen ohne Persönlichkeit/Clone. Kein Bot bietet einfaches natives Voice-Clone + Persönlichkeits-Setup.
 - **Effort:** ~4-5 Wochen Solo-Dev (ElevenLabs-Integration + Voice-Management-UI + Audio-Routing nach OBS).
 - **Tech:** ElevenLabs API/WebSocket, Audio-Output via Virtual-Audio-Cable/WebRTC nach OBS, BYOK-Key-Storage (verschlüsselt).
+
+#### 16. **Multistreaming / Restream (Simulcast auf mehrere Plattformen)** (Cloud-only) 📡⚠️
+- Idee (Luca, 2026-05): Der Streamer sendet **einmal** und engelOS verteilt den Stream **gleichzeitig** auf mehrere Plattformen (Twitch + YouTube + Kick + Facebook + Custom-RTMP) - wie Restream.io / Streamlabs Multistream / OBS-Multi-RTMP, aber als integrierter Teil des Bots statt als separater Drittanbieter.
+- **Warum es strategisch passt:** engelOS ist eh schon der **Cross-Platform-Layer** (Unified Chat #10, Adapter für alle Plattformen). Wenn der Stream selbst auch über uns läuft, wird engelOS vom "Bot daneben" zur **zentralen Streaming-Kommandozentrale**: ein Login, ein Dashboard, das den Output UND die Community über alle Plattformen steuert. Maximaler Lock-in, klares Premium-Verkaufsargument.
+- **Funktionen (Zielbild):**
+  - Ein RTMP/SRT-Ingest-Endpoint, in den OBS sendet; Fan-out an N Plattform-Ziele (eigene Stream-Keys hinterlegt, verschlüsselt).
+  - Pro-Ziel an/aus, pro-Ziel-Bitrate/Auflösung-Limits (Plattform-Caps respektieren).
+  - Status-Dashboard: pro Ziel live/offline, Health, Dropped-Frames, Zuschauer (wo API verfügbar).
+  - Optionale Aufnahme/VOD-Kopie.
+  - Spätere Kür: server-seitiges **Transcoding** (eine Auflösung rein, mehrere raus) - nur wenn wir die Compute-Kosten tragen wollen.
+- **⚠️ Ehrliche Einordnung - das ist ein anderes Tier als die Chat-Features:**
+  - **Bandbreite/Compute:** Video-Fan-out ist teuer. Pass-Through (gleicher Stream 1:1 an alle Ziele) ist machbar mit moderater Egress-Bandbreite. Echtes **Transcoding** pro Ziel kostet ernsthaft CPU/GPU und Geld - das ist eine bewusste Infra-Investition, kein Solo-Dev-Nachmittag.
+  - **Self-Hosting-Konflikt:** Multistreaming aus einem Heim-Upload ist durch die **Upstream-Bandbreite** des Streamers begrenzt (genau deshalb existiert Restream als Cloud-Dienst). Darum **Cloud-only** und NICHT OSS-Core - der OSS-Daemon eines Heim-Self-Hosters kann das physisch oft nicht leisten. Für Self-Hoster bleibt OBS-Multi-RTMP die Alternative; wir dokumentieren das ehrlich.
+  - **Scope-Disziplin:** Das berührt unser Anti-Pattern "wir bauen keinen Video-Encoder/keine OBS-Alternative". Restream bleibt **Output-Distribution** (RTMP-Relay), NICHT Szenen-Komposition/Encoding. Klare Grenze ziehen.
+- **Competitor-Status:** Restream.io, Streamlabs Ultra (Multistream), Castr, OBS Multi-RTMP-Plugin. Alle sind **entweder** ein reiner Multistream-Dienst **oder** ein Bot - **keiner** verbindet Multistream + Cross-Platform-Bot + Unified-Chat + Loyalty in einem Produkt. Genau da liegt unsere Lücke.
+- **Effort:** Hoch und infra-lastig. MVP "Pass-Through-Relay" (kein Transcode): ~4-6 Wochen + laufende Bandbreitenkosten. Transcoding-Ausbaustufe: deutlich mehr (eigene Media-Server-Flotte).
+- **Tech (zu evaluieren):** Media-Server als Relay - **MediaMTX** (Go, RTMP/SRT/WebRTC, passt zum Stack), **nginx-rtmp**, oder **LiveKit/SRS**; Stream-Key-Storage verschlüsselt (wie OAuth-Tokens, `ENGELOS_SECRETS_KEY`); pro-Ziel-Health via RTMP-Stats; Transcoding später via ffmpeg/GPU-Worker.
+- **Roadmap-Einordnung:** Frühestens **Phase 3-4** (nach Unified-Chat + Cloud-Infra steht). Bis dahin als **dokumentierte Vision** geparkt - Anti-Premature-Build. Vorher validieren: wollen genug Cloud-User Multistream genug, um die Bandbreiten-/Transcode-Kosten zu rechtfertigen?
 
 ### OVERLAY-SYSTEM (eigene Feature-Klasse)
 

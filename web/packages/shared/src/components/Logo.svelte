@@ -8,9 +8,9 @@
     <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="engel-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#a78bfa" />
-          <stop offset="60%" stop-color="#8b5cf6" />
-          <stop offset="100%" stop-color="#6d28d9" />
+          <stop offset="0%" stop-color="#45f0d6" />
+          <stop offset="50%" stop-color="#0fe0c0" />
+          <stop offset="100%" stop-color="#ff2e97" />
         </linearGradient>
       </defs>
       <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#engel-grad)" />

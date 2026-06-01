@@ -7,3 +7,4 @@ export { default as StatusDot } from './StatusDot.svelte';
 export { default as EmptyState } from './EmptyState.svelte';
 export { default as Sidebar } from './Sidebar.svelte';
 export { default as TopBar } from './TopBar.svelte';
+export { default as ThemeToggle } from './ThemeToggle.svelte';

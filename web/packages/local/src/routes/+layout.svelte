@@ -77,7 +77,7 @@
 </script>
 
 {#if isChromeless}
-  <main class="min-h-screen grid-noise">
+  <main class="min-h-screen">
     {@render children()}
   </main>
 {:else if authState === 'in'}
