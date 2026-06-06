@@ -125,6 +125,18 @@ type ClipDetector interface {
 	Raid(ctx context.Context, channel string, viewers int)
 }
 
+// TTSNotifier is the narrow contract the dispatcher feeds celebration events
+// (subs, resubs, gift subs, raids) so a text-to-speech feature can speak an
+// alert. A thin adapter over the internal/tts service satisfies it (wired in
+// main), keeping the runtime free of any tts import. Every method must be safe
+// for concurrent use and never block.
+type TTSNotifier interface {
+	OnSubscribe(channel, username string)
+	OnResubscribe(channel, username string, months int)
+	OnGiftSubscribe(channel, gifter string)
+	OnRaid(channel, fromUsername string, viewers int)
+}
+
 // Economy is the narrow contract the dispatcher uses to award loyalty points
 // for chat activity. The adapter wired in main applies a per-viewer earn
 // cooldown (anti-farming) so idle or bot accounts cannot accumulate points by
@@ -257,6 +269,11 @@ type Config struct {
 	// Activity, when non-nil, is notified of every chat message so the
 	// timers scheduler can gate auto-announcements behind chat activity.
 	Activity ActivityRecorder
+
+	// TTS, when non-nil, is notified of subscription events so the
+	// text-to-speech feature can speak an alert. Best-effort and
+	// non-blocking.
+	TTS TTSNotifier
 
 	// Actions, when non-nil, is fed every chat message, sub and raid so the
 	// user-defined Action-Engine can fire automation rules. Best-effort and
@@ -561,6 +578,16 @@ func (d *Dispatcher) handle(ctx context.Context, p adapters.Platform, ev adapter
 		if d.cfg.ClipDetector != nil && ev.Channel != "" {
 			d.cfg.ClipDetector.Sub(ctx, ev.Channel)
 		}
+		if d.cfg.TTS != nil && ev.Channel != "" && ev.Subscription != nil {
+			switch {
+			case ev.Subscription.IsGift:
+				d.cfg.TTS.OnGiftSubscribe(ev.Channel, ev.Subscription.GiftedBy)
+			case ev.Type == adapters.EventUserResubscribed:
+				d.cfg.TTS.OnResubscribe(ev.Channel, ev.Subscription.Username, ev.Subscription.MonthsTotal)
+			default:
+				d.cfg.TTS.OnSubscribe(ev.Channel, ev.Subscription.Username)
+			}
+		}
 		if d.cfg.Actions != nil && ev.Channel != "" {
 			d.cfg.Actions.OnEvent(ev.Platform, ev.Channel, string(ev.Type), subEventData(ev))
 		}
@@ -573,6 +600,9 @@ func (d *Dispatcher) handle(ctx context.Context, p adapters.Platform, ev adapter
 		}
 		if d.cfg.ClipDetector != nil && ev.Raid != nil && ev.Channel != "" {
 			d.cfg.ClipDetector.Raid(ctx, ev.Channel, ev.Raid.ViewerCount)
+		}
+		if d.cfg.TTS != nil && ev.Raid != nil && ev.Channel != "" {
+			d.cfg.TTS.OnRaid(ev.Channel, ev.Raid.FromUsername, ev.Raid.ViewerCount)
 		}
 		if d.cfg.Actions != nil && ev.Channel != "" {
 			d.cfg.Actions.OnEvent(ev.Platform, ev.Channel, string(ev.Type), raidEventData(ev))

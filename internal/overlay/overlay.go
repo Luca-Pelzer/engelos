@@ -20,6 +20,7 @@ var pages = map[string]string{
 	"song-player": "assets/song-player.html",
 	"wrapped":     "assets/wrapped.html",
 	"moment":      "assets/moment.html",
+	"tts":         "assets/tts.html",
 }
 
 // Handler serves OBS browser-source overlay pages from an embedded asset

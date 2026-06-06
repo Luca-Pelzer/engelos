@@ -47,6 +47,9 @@ const (
 	ActionCounterReset = "counter_reset"
 	// ActionNone records the reward but does nothing; ActionParam is ignored.
 	ActionNone = "none"
+	// ActionTTS speaks text through the AI-voice overlay; ActionParam is the
+	// template, defaulting to the redeemer's input when blank.
+	ActionTTS = "tts_speak"
 )
 
 // knownActions is the closed set membership-checked by validate. Adding a
@@ -56,6 +59,7 @@ var knownActions = map[string]struct{}{
 	ActionCounterIncr:  {},
 	ActionCounterReset: {},
 	ActionNone:         {},
+	ActionTTS:          {},
 }
 
 // Field length bounds.

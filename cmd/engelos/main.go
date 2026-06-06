@@ -66,6 +66,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/youtube"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/translate"
+	"github.com/Luca-Pelzer/engelos/internal/tts"
 	"github.com/Luca-Pelzer/engelos/internal/web"
 	"github.com/Luca-Pelzer/engelos/internal/workspaces"
 	"github.com/Luca-Pelzer/engelos/internal/wrapped"
@@ -353,6 +354,18 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}()
 	logger.Info("cohost store opened", "dsn", cohostDSN)
 
+	ttsDSN := filepath.Join(dataDir, "tts.db")
+	ttsStore, err := tts.OpenSQLiteStore(ctx, ttsDSN)
+	if err != nil {
+		return fmt.Errorf("open tts store %s: %w", ttsDSN, err)
+	}
+	defer func() {
+		if cerr := ttsStore.Close(); cerr != nil {
+			logger.Warn("tts store close failed", "err", cerr)
+		}
+	}()
+	logger.Info("tts store opened", "dsn", ttsDSN)
+
 	actionsDSN := filepath.Join(dataDir, "actions.db")
 	actionsStore, err := actions.OpenSQLiteStore(ctx, actionsDSN, logger)
 	if err != nil {
@@ -556,11 +569,20 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// case it logs the reason and stays a no-op, so anonymous/non-affiliate
 	// deployments boot cleanly with the rest of the bot unaffected. It runs
 	// after the Action-Engine so a redemption can also fire dashboard rules.
+	var ttsService *tts.Service
+	if cryptoBox != nil {
+		ttsService = tts.NewService(ttsStore, cryptoBox,
+			runtime.NewWSBroadcaster(hub, logger), defaultTenantID, logger)
+	} else {
+		logger.Info("tts disabled: no secrets key configured")
+	}
+
 	startChannelPoints(ctx, logger, twitchAdapter, redemptionStore,
 		platformSender{platforms: platforms},
 		channelPointsCounters{admin: counterAdmin{tenantID: defaultTenantID, store: counterStore}},
 		actionsEngine,
 		overlayRedemptionNotifier{bc: runtime.NewWSBroadcaster(hub, logger)},
+		channelPointsSpeaker(ttsService),
 		defaultTenantID, splitCSV(os.Getenv("ENGELOS_TWITCH_CHANNELS")))
 
 	dispatcher := runtime.New(runtime.Config{
@@ -570,6 +592,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		PointsPerMessage: pitySystem.Config().PointsPerMessage,
 		Streak:           streakTickAdapter{sys: streakSystem},
 		Broadcaster:      runtime.NewWSBroadcaster(hub, logger),
+		TTS:              ttsNotifier(ttsService),
 		Commands:         cmdRouter,
 		Moderator:        moderationAdapter{svc: moderationSvc},
 		Economy:          economy,
@@ -586,6 +609,12 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			logger.Error("dispatcher exited", "err", err)
 		}
 	}()
+
+	if ttsService != nil {
+		ttsService.Start(ctx)
+		defer ttsService.Stop()
+		logger.Info("tts service started")
+	}
 
 	webHandler := web.Handler(http.HandlerFunc(handlers.Index))
 	if webHandler != nil {
@@ -756,6 +785,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		FeatureStore:     featureFlagStore,
 		SongRequestStore: songRequestStore,
 		TranslateStore:   translateStore,
+		TTSStore:         ttsStore,
+		TTSSecrets:       ttsSecrets(cryptoBox),
 		ClipperStore:     clipperStore,
 		CoHostStore:      cohostStore,
 		SongQueueStore:   songQueueStore,
@@ -1859,6 +1890,27 @@ func newChatController(platforms []adapters.Platform) *handlers.ChatController {
 	return &handlers.ChatController{Platforms: platforms, Channel: channel}
 }
 
+func ttsNotifier(s *tts.Service) runtime.TTSNotifier {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+func ttsSecrets(box *secrets.Box) handlers.TTSSecrets {
+	if box == nil {
+		return nil
+	}
+	return box
+}
+
+func channelPointsSpeaker(s *tts.Service) channelpoints.Speaker {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
 func webhookProviders(platforms []adapters.Platform) []api.WebhookProvider {
 	var out []api.WebhookProvider
 	for _, p := range platforms {
@@ -2049,6 +2101,7 @@ func startChannelPoints(
 	counters channelpoints.CounterAdmin,
 	rules channelpoints.RuleEngine,
 	overlay channelpoints.OverlayNotifier,
+	speaker channelpoints.Speaker,
 	tenantID string,
 	channels []string,
 ) {
@@ -2089,6 +2142,7 @@ func startChannelPoints(
 		Chat:      chat,
 		Counters:  counters,
 		Fulfiller: tw,
+		Speaker:   speaker,
 		Logger:    logger,
 	})
 

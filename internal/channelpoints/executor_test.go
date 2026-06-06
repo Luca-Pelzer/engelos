@@ -193,6 +193,83 @@ func TestHandle_DisabledBinding_ActionNotRun(t *testing.T) {
 	assert.Empty(t, ful.recorded())
 }
 
+type spokenCall struct{ channel, text string }
+
+type fakeSpeaker struct{ spoken []spokenCall }
+
+func (s *fakeSpeaker) Speak(channel, text string) {
+	s.spoken = append(s.spoken, spokenCall{channel: channel, text: text})
+}
+
+func TestHandle_TTS_DefaultsToInputAndFulfills(t *testing.T) {
+	spk := &fakeSpeaker{}
+	ful := &fakeFulfiller{}
+	e := New(Config{
+		TenantID: testTenant,
+		Store: fakeStore{binding: redemptions.Binding{
+			RewardID:    "reward-1",
+			ActionType:  redemptions.ActionTTS,
+			ActionParam: "",
+			Enabled:     true,
+			AutoFulfill: true,
+		}},
+		Speaker:   spk,
+		Fulfiller: ful,
+		Logger:    discardLogger(),
+	})
+
+	e.Handle(context.Background(), sampleEvent())
+
+	require.Len(t, spk.spoken, 1)
+	assert.Equal(t, "somechannel", spk.spoken[0].channel)
+	assert.Equal(t, "hello there", spk.spoken[0].text)
+
+	settle := ful.recorded()
+	require.Len(t, settle, 1)
+	assert.Equal(t, "fulfill", settle[0].op)
+}
+
+func TestHandle_TTS_ExpandsTemplate(t *testing.T) {
+	spk := &fakeSpeaker{}
+	e := New(Config{
+		TenantID: testTenant,
+		Store: fakeStore{binding: redemptions.Binding{
+			RewardID:    "reward-1",
+			ActionType:  redemptions.ActionTTS,
+			ActionParam: "$user says $input",
+			Enabled:     true,
+		}},
+		Speaker: spk,
+		Logger:  discardLogger(),
+	})
+
+	e.Handle(context.Background(), sampleEvent())
+
+	require.Len(t, spk.spoken, 1)
+	assert.Equal(t, "Viewer1 says hello there", spk.spoken[0].text)
+}
+
+func TestHandle_TTS_NilSpeaker_AutoFulfill_Cancels(t *testing.T) {
+	ful := &fakeFulfiller{}
+	e := New(Config{
+		TenantID: testTenant,
+		Store: fakeStore{binding: redemptions.Binding{
+			RewardID:    "reward-1",
+			ActionType:  redemptions.ActionTTS,
+			Enabled:     true,
+			AutoFulfill: true,
+		}},
+		Fulfiller: ful,
+		Logger:    discardLogger(),
+	})
+
+	e.Handle(context.Background(), sampleEvent())
+
+	settle := ful.recorded()
+	require.Len(t, settle, 1)
+	assert.Equal(t, "cancel", settle[0].op)
+}
+
 func TestHandle_ChatMessage_ExpandsTemplateAndFulfills(t *testing.T) {
 	chat := &fakeChat{}
 	ful := &fakeFulfiller{}

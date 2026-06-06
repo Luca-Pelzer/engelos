@@ -34,6 +34,13 @@ type Fulfiller interface {
 	CancelRedemption(ctx context.Context, login, rewardID, redemptionID string) error
 }
 
+// Speaker speaks text aloud on a channel through the AI-voice overlay.
+// Satisfied by *tts.Service. It is fire-and-forget; synthesis happens
+// asynchronously, so a redemption never blocks on audio.
+type Speaker interface {
+	Speak(channel, text string)
+}
+
 // BindingStore reads the reward->action binding. Satisfied by
 // *redemptions.Store.
 type BindingStore interface {
@@ -47,6 +54,7 @@ type Config struct {
 	Chat      ChatSender   // may be nil -> chat actions are no-ops with a logged warning
 	Counters  CounterAdmin // may be nil -> counter actions error
 	Fulfiller Fulfiller    // may be nil -> auto-fulfill skipped
+	Speaker   Speaker      // may be nil -> tts actions error
 	Logger    *slog.Logger
 }
 
@@ -58,6 +66,7 @@ type Executor struct {
 	chat      ChatSender
 	counters  CounterAdmin
 	fulfiller Fulfiller
+	speaker   Speaker
 	logger    *slog.Logger
 }
 
@@ -74,6 +83,7 @@ func New(cfg Config) *Executor {
 		chat:      cfg.Chat,
 		counters:  cfg.Counters,
 		fulfiller: cfg.Fulfiller,
+		speaker:   cfg.Speaker,
 		logger:    logger.With("component", "channelpoints"),
 	}
 }
@@ -145,6 +155,21 @@ func (e *Executor) runAction(ctx context.Context, channel string, b redemptions.
 		}
 		_, err := e.counters.Reset(ctx, channel, b.ActionParam)
 		return err
+	case redemptions.ActionTTS:
+		if e.speaker == nil {
+			e.logger.Warn("tts action but no speaker configured", "channel", channel, "reward_id", evt.RewardID)
+			return errors.New("channelpoints: speaker unavailable")
+		}
+		tmpl := b.ActionParam
+		if strings.TrimSpace(tmpl) == "" {
+			tmpl = "$input"
+		}
+		text := expandTemplate(tmpl, evt)
+		if text == "" {
+			return nil
+		}
+		e.speaker.Speak(channel, text)
+		return nil
 	default:
 		e.logger.Error("unknown action type", "channel", channel, "action_type", b.ActionType)
 		return errors.New("channelpoints: unknown action type")

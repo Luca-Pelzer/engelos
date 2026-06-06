@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+  engelOS overlay: tts (text-to-speech audio player)
+  ==============================================================
+  Audio-only browser source. It connects to the bot WebSocket and plays
+  base64 MP3 clips pushed as {"type":"tts.play","data":{"audio","format"}}.
+  Clips are queued and played one at a time so alerts never overlap.
+
+  The ElevenLabs key never reaches this page: the bot synthesizes
+  server-side and ships only the finished audio.
+
+  Example: /overlay/tts
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / tts</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;overflow:hidden;width:100%;height:100%}
+  #conn{position:fixed;top:8px;right:10px;font-size:10px;letter-spacing:.08em;opacity:.4;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+</style>
+</head>
+<body>
+<div id="conn">●</div>
+<script>
+(() => {
+  const conn = document.getElementById("conn");
+  const queue = [];
+  let playing = false;
+
+  async function playNext() {
+    if (playing) return;
+    const b64 = queue.shift();
+    if (b64 === undefined) return;
+    playing = true;
+    try {
+      const audio = new Audio("data:audio/mp3;base64," + b64);
+      await new Promise((resolve) => {
+        audio.onended = resolve;
+        audio.onerror = resolve;
+        const p = audio.play();
+        if (p && typeof p.catch === "function") p.catch(() => resolve());
+      });
+    } catch {
+      // ignore a single bad clip and continue draining the queue
+    } finally {
+      playing = false;
+      playNext();
+    }
+  }
+
+  function handle(envelope) {
+    if (!envelope || envelope.type !== "tts.play") return;
+    const data = envelope.data || {};
+    if (typeof data.audio !== "string" || data.audio === "") return;
+    queue.push(data.audio);
+    playNext();
+  }
+
+  let backoff = 500;
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    let ws;
+    try {
+      ws = new WebSocket(proto + location.host + "/api/v1/ws");
+    } catch {
+      schedule();
+      return;
+    }
+    ws.onopen = () => { backoff = 500; conn.style.opacity = ".7"; };
+    ws.onclose = () => { conn.style.opacity = ".25"; schedule(); };
+    ws.onerror = () => {};
+    ws.onmessage = ev => {
+      try { handle(JSON.parse(ev.data)); } catch { /* ignore */ }
+    };
+  }
+  function schedule() {
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 10000);
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

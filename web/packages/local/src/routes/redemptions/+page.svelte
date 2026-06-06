@@ -19,7 +19,7 @@
 
   // ActionType is the closed set validated by knownActions in
   // internal/redemptions/store.go. A new action means adding it here AND there.
-  type ActionType = 'chat_message' | 'counter_increment' | 'counter_reset' | 'none';
+  type ActionType = 'chat_message' | 'counter_increment' | 'counter_reset' | 'tts_speak' | 'none';
 
   type ListResponse = { channel: string; bindings: Binding[] };
 
@@ -41,6 +41,12 @@
       label: 'Reset a counter',
       paramLabel: 'Counter name',
       paramHint: 'The counter to reset to 0 (e.g. deaths).',
+    },
+    {
+      value: 'tts_speak',
+      label: 'Speak with AI voice',
+      paramLabel: 'Spoken text template',
+      paramHint: 'Use $user, $input, $reward, $cost. Leave blank to read the redeemer input.',
     },
     {
       value: 'none',

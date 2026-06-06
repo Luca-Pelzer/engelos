@@ -24,6 +24,7 @@
     { href: '/liveops', label: 'Event-Plan', icon: '<rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>' },
     { href: '/automod', label: 'AutoMod', icon: '<path d="M12 2l8 4v6c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6z"/>' },
     { href: '/cohost', label: 'AI Co-Host', icon: '<circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/>' },
+    { href: '/tts', label: 'AI Voice', icon: '<path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>' },
     { href: '/clipper', label: 'Auto-Clipper', icon: '<path d="M6 4v16M18 4v16M6 8h12M6 16h12M2 8h4M18 8h4"/>' },
     { href: '/translate', label: 'Translate', icon: '<path d="M4 5h7M9 3v2c0 4-2 7-5 8M5 9c0 3 3 5 6 6M13 19l4-9 4 9M14.5 16h5"/>' },
     { href: '/songrequests', label: 'Song Requests', icon: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>' },

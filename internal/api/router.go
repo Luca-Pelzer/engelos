@@ -30,6 +30,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/songrequests/queue"
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 	"github.com/Luca-Pelzer/engelos/internal/translate"
+	"github.com/Luca-Pelzer/engelos/internal/tts"
 	"github.com/Luca-Pelzer/engelos/internal/workspaces"
 	"github.com/Luca-Pelzer/engelos/internal/wrapped"
 )
@@ -179,6 +180,12 @@ type Deps struct {
 	// under /api/v1/translate. Nil makes those endpoints return 501.
 	TranslateStore translate.Store
 
+	// TTSStore and TTSSecrets, when both non-nil, expose per-channel
+	// text-to-speech config under /api/v1/tts. TTSSecrets encrypts the stored
+	// ElevenLabs key. Either nil makes those endpoints return 501.
+	TTSStore   tts.Store
+	TTSSecrets handlers.TTSSecrets
+
 	// ClipperStore, when non-nil, exposes per-channel auto-clipper tuning
 	// under /api/v1/clipper. Nil makes those endpoints return 501.
 	ClipperStore clipper.Store
@@ -293,6 +300,7 @@ func NewRouter(deps Deps) chi.Router {
 	featuresH := handlers.NewFeatures(deps.FeatureStore, deps.TenantID, logger)
 	songRequestsH := handlers.NewSongRequests(deps.SongRequestStore, deps.TenantID, logger)
 	translateH := handlers.NewTranslate(deps.TranslateStore, deps.TenantID, logger)
+	ttsH := handlers.NewTTS(deps.TTSStore, deps.TTSSecrets, deps.TenantID, logger)
 	clipperH := handlers.NewClipper(deps.ClipperStore, deps.TenantID, logger)
 	cohostH := handlers.NewCoHost(deps.CoHostStore, deps.TenantID, logger)
 	connectionsH := handlers.NewConnections(deps.AuthStore, deps.TenantID, logger)
@@ -512,6 +520,11 @@ func NewRouter(deps Deps) chi.Router {
 			r.Route("/translate", func(r chi.Router) {
 				r.Get("/", translateH.Get)
 				r.Put("/", translateH.Set)
+			})
+			r.Route("/tts", func(r chi.Router) {
+				r.Get("/", ttsH.Get)
+				r.Put("/", ttsH.Set)
+				r.Get("/voices", ttsH.Voices)
 			})
 			r.Route("/clipper", func(r chi.Router) {
 				r.Get("/", clipperH.Get)
