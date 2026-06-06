@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#120e13"></stop>
+      <stop offset="0.55" stop-color="#08090e"></stop>
+      <stop offset="1" stop-color="#050709"></stop>
+    </linearGradient>
+    <radialGradient id="glowMagma" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(150 -10) scale(640)">
+      <stop stop-color="#ff6a4d" stop-opacity="0.22"></stop>
+      <stop offset="1" stop-color="#ff6a4d" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="glowBlue" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1180 350) scale(660)">
+      <stop stop-color="#34c7ff" stop-opacity="0.18"></stop>
+      <stop offset="1" stop-color="#34c7ff" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="glowAur" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(980 40) scale(420)">
+      <stop stop-color="#1fe3b3" stop-opacity="0.10"></stop>
+      <stop offset="1" stop-color="#1fe3b3" stop-opacity="0"></stop>
+    </radialGradient>
+    <linearGradient id="eqGrad" x1="0" y1="108" x2="0" y2="320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff9e3d"></stop>
+      <stop offset="0.5" stop-color="#ff5d73"></stop>
+      <stop offset="1" stop-color="#ff5d73" stop-opacity="0.25"></stop>
+    </linearGradient>
+    <linearGradient id="wmMagma" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ff5d73"></stop>
+      <stop offset="1" stop-color="#ff9e3d"></stop>
+    </linearGradient>
+    <linearGradient id="mTile" x1="0" y1="44" x2="0" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#151a26"></stop>
+      <stop offset="1" stop-color="#0b0e14"></stop>
+    </linearGradient>
+    <linearGradient id="mSheen" x1="0" y1="44" x2="0" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.10"></stop>
+      <stop offset="0.32" stop-color="#ffffff" stop-opacity="0"></stop>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0 H0 V48" fill="none" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"></path>
+    </pattern>
+    <radialGradient id="gridFade" cx="0.42" cy="0.3" r="0.8">
+      <stop stop-color="#ffffff"></stop>
+      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0.25"></stop>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"></stop>
+    </radialGradient>
+    <mask id="gridMask"><rect width="1280" height="320" fill="url(#gridFade)"></rect></mask>
+    <linearGradient id="eqFadeX" x1="826" y1="0" x2="1100" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000000"></stop>
+      <stop offset="0.42" stop-color="#ffffff"></stop>
+    </linearGradient>
+    <linearGradient id="eqFadeY" x1="0" y1="108" x2="0" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000000"></stop>
+      <stop offset="1" stop-color="#ffffff"></stop>
+    </linearGradient>
+    <mask id="eqMask">
+      <rect x="800" y="80" width="460" height="240" fill="url(#eqFadeX)"></rect>
+      <rect x="800" y="80" width="460" height="240" fill="url(#eqFadeY)" style="mix-blend-mode:multiply"></rect>
+    </mask>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="60"></feGaussianBlur></filter>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"></feTurbulence></filter>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"></rect>
+  <rect width="1280" height="320" fill="url(#grid)" mask="url(#gridMask)"></rect>
+  <rect width="1280" height="320" fill="url(#glowMagma)"></rect>
+  <rect width="1280" height="320" fill="url(#glowBlue)"></rect>
+  <rect width="1280" height="320" fill="url(#glowAur)"></rect>
+
+  
+  <g mask="url(#eqMask)" opacity="0.9">
+    <rect x="826" y="256" width="12" height="64" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="845" y="222" width="12" height="98" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="864" y="189" width="12" height="131" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="883" y="231" width="12" height="89" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="902" y="163" width="12" height="157" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="921" y="203" width="12" height="117" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="940" y="133" width="12" height="187" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="959" y="178" width="12" height="142" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="978" y="214" width="12" height="106" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="997" y="155" width="12" height="165" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1016" y="119" width="12" height="201" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1035" y="172" width="12" height="148" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1054" y="197" width="12" height="123" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1073" y="144" width="12" height="176" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1092" y="184" width="12" height="136" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1111" y="218" width="12" height="102" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1130" y="167" width="12" height="153" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1149" y="201" width="12" height="119" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1168" y="235" width="12" height="85" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1187" y="193" width="12" height="127" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1206" y="225" width="12" height="95" rx="5" fill="url(#eqGrad)"></rect>
+    <rect x="1225" y="248" width="12" height="72" rx="5" fill="url(#eqGrad)"></rect>
+  </g>
+
+  
+  <rect width="1280" height="320" filter="url(#grain)" opacity="0.04"></rect>
+  
+  <rect width="1280" height="1" fill="#ffffff" fill-opacity="0.05"></rect>
+
+  
+  <svg x="72" y="44" width="76" height="76" viewBox="0 0 128 128" overflow="visible">
+    <rect width="128" height="128" rx="30" fill="url(#mTile)"></rect>
+    <path d="M50 38 L98 64 L50 90 Z" fill="#ff7a52" stroke="#ff7a52" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"></path>
+    <rect width="128" height="128" rx="30" fill="url(#mSheen)"></rect>
+    <rect x="0.6" y="0.6" width="126.8" height="126.8" rx="29.4" fill="none" stroke="#ffffff" stroke-opacity="0.08"></rect>
+  </svg>
+  <text x="170" y="104" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="60" letter-spacing="-1.7">
+    <tspan fill="#f4f6fb">Engel</tspan><tspan fill="url(#wmMagma)">OS</tspan>
+  </text>
+
+  
+  <text x="73" y="178" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="28" letter-spacing="-0.3" fill="#f4f6fb">Your whole stream, one self-hosted control room.</text>
+  <text x="73" y="216" font-family="Inter, system-ui, sans-serif" font-weight="500" font-size="22" letter-spacing="-0.1" fill="#aeb6c6">Chat, mods, alerts, points and AI. Live.</text>
+
+  
+    <g>
+      <rect x="72" y="256" width="140" height="42" rx="21" fill="#1fe3b3" fill-opacity="0.12" stroke="#1fe3b3" stroke-opacity="0.42"></rect>
+      <circle cx="91" cy="277" r="4.5" fill="#1fe3b3"></circle>
+      <text x="109" y="277.5" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="16" letter-spacing="0.1" fill="#f4f6fb" dominant-baseline="middle">Self-hosted</text>
+    </g>
+    <g>
+      <rect x="226" y="256" width="129" height="42" rx="21" fill="#8b5cff" fill-opacity="0.12" stroke="#8b5cff" stroke-opacity="0.42"></rect>
+      <circle cx="245" cy="277" r="4.5" fill="#8b5cff"></circle>
+      <text x="263" y="277.5" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="16" letter-spacing="0.1" fill="#f4f6fb" dominant-baseline="middle">Auto-Mod</text>
+    </g>
+    <g>
+      <rect x="369" y="256" width="172" height="42" rx="21" fill="#34c7ff" fill-opacity="0.12" stroke="#34c7ff" stroke-opacity="0.42"></rect>
+      <circle cx="388" cy="277" r="4.5" fill="#34c7ff"></circle>
+      <text x="406" y="277.5" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="16" letter-spacing="0.1" fill="#f4f6fb" dominant-baseline="middle">Loyalty &amp; Points</text>
+    </g>
+    <g>
+      <rect x="555" y="256" width="180" height="42" rx="21" fill="#b6f23d" fill-opacity="0.12" stroke="#b6f23d" stroke-opacity="0.42"></rect>
+      <circle cx="574" cy="277" r="4.5" fill="#b6f23d"></circle>
+      <text x="592" y="277.5" font-family="Inter, system-ui, sans-serif" font-weight="600" font-size="16" letter-spacing="0.1" fill="#f4f6fb" dominant-baseline="middle">Twitch + Discord</text>
+    </g>
+</svg>

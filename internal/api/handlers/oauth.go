@@ -1,0 +1,906 @@
+package handlers
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/nicklaw5/helix/v2"
+	"golang.org/x/oauth2"
+
+	"github.com/Luca-Pelzer/engelos/internal/auth"
+	"github.com/Luca-Pelzer/engelos/internal/workspaces"
+)
+
+// OAuthStateCookieName is the cookie that carries the CSRF state value
+// between the Login redirect and the Callback handler. It is short-lived
+// (10 minutes) and SameSite=Lax - Lax (not Strict) is required because
+// the user returns to the callback URL from id.twitch.tv via a top-level
+// navigation, which Strict would treat as cross-site and drop the cookie.
+// Lax still protects against the relevant CSRF surfaces (forged
+// sub-requests cannot read/replay the state value).
+const OAuthStateCookieName = "engelos_oauth_state"
+
+// oauthStateTTL bounds how long a freshly-issued state value remains
+// acceptable in the callback. Twitch's authorize page is interactive,
+// so 10 minutes is a comfortable upper bound on user latency without
+// giving attackers a long replay window.
+const oauthStateTTL = 10 * time.Minute
+
+// oauthStateBytes is the byte length of the random state value before
+// base64url encoding (32 bytes ≈ 256 bits of entropy).
+const oauthStateBytes = 32
+
+// helixUserGetter is the narrow surface of *helix.Client that the
+// Callback handler needs to fetch the authenticated user's profile.
+// It is an interface so tests can substitute a fake without making
+// real Twitch API calls.
+type helixUserGetter interface {
+	GetUsers(*helix.UsersParams) (*helix.UsersResponse, error)
+}
+
+// helixModGetter is the narrow surface used to check whether a user is a
+// moderator of a broadcaster's channel (Helix GET /moderation/moderators).
+// It is an interface so the auto-verify path can be unit-tested with a fake
+// instead of a live Twitch call that needs a real broadcaster token.
+type helixModGetter interface {
+	GetModerators(*helix.GetModeratorsParams) (*helix.ModeratorsResponse, error)
+}
+
+// OAuth bundles the "Login with Twitch" HTTP handlers (Login, Callback).
+// It is wired in two pieces of state: an auth.Store (must have been
+// opened WithCrypto so OAuth tokens can be encrypted at rest) and an
+// *oauth2.Config that pins the client id/secret/redirect/scopes and the
+// Twitch endpoint. When either is nil the handlers degrade to 501
+// "not_implemented" so the router can still be built in OAuth-disabled
+// deployments.
+//
+// OAuth is safe for concurrent use; all mutable configuration is fixed
+// at construction time.
+type OAuth struct {
+	store        auth.Store
+	tenantID     string
+	logger       *slog.Logger
+	sessionTTL   time.Duration
+	cookieName   string
+	cookieSecure bool
+
+	cfg      *oauth2.Config
+	clientID string
+
+	// ownerLogins maps a provider ("twitch"/"discord") to the set of
+	// logins (lowercased) permitted to hold a dashboard session for that
+	// provider. An absent/empty per-provider set enables trust-on-first-use
+	// bootstrap: the first ever login becomes the owner, after which the
+	// door closes. Logins are provider-scoped because a Twitch login is not
+	// the same identity as a Discord username.
+	ownerLogins map[string]map[string]bool
+
+	// newHelix is a test seam. Production callers leave it nil and the
+	// Callback handler builds a real *helix.Client. Tests inject a fake
+	// that returns a canned helix.UsersResponse.
+	newHelix func(clientID, userAccessToken string) (helixUserGetter, error)
+
+	// newModGetter is the auto-verify test seam. When nil, Twitch moderator
+	// auto-verify is disabled (no broadcaster token plumbing is wired). Tests
+	// and the daemon inject a factory that builds a moderator-list client for a
+	// given workspace; returning ok=false skips a workspace that has no usable
+	// broadcaster token rather than failing the login.
+	newModGetter func(ctx context.Context, ws workspaces.Workspace) (mg helixModGetter, ok bool)
+
+	// exchange is a test seam around o.cfg.Exchange. Production callers
+	// leave it nil and the Callback handler calls o.cfg.Exchange directly.
+	// Tests inject a fake that bypasses the real Twitch token endpoint.
+	exchange func(ctx context.Context, code string) (*oauth2.Token, error)
+
+	// onLogin, when set, is invoked after an identity is persisted so the
+	// daemon can live-apply a freshly authorized bot token to the running
+	// platform adapter. This is what makes "Login with Twitch" take effect
+	// without a restart or any manual token paste. It runs on the request
+	// goroutine; keep it fast and non-blocking. nil disables the hook.
+	onLogin func(ev LoginEvent)
+
+	// workspaces, when set, opens login to any Twitch user: after a session
+	// is minted the callback provisions an owner's default workspace, accepts
+	// any pending invitations addressed to the login, and routes the user to
+	// the right landing page by membership count. nil keeps the legacy
+	// owner-only login (no workspace provisioning, fixed redirect).
+	workspaces workspaces.Store
+}
+
+// LoginEvent is delivered to the OnLogin hook after a successful OAuth
+// callback. It carries only what the daemon needs to route the token to
+// the right adapter; it deliberately omits the refresh token.
+type LoginEvent struct {
+	Provider    string
+	Purpose     string
+	Login       string
+	AccessToken string
+	Scopes      []string
+}
+
+// NewOAuth constructs the OAuth handler bundle.
+//
+// store may be nil; in that case every handler returns 501 (this lets
+// the router be built before OAuth is configured). cfg may also be nil
+// with the same effect - together they let the OAuth feature be turned
+// off entirely without compile-time changes.
+//
+// tenantID is the single-tenant identifier this daemon serves. A nil
+// logger falls back to slog.Default.
+//
+// Defaults: sessionTTL = DefaultSessionTTL (30d), cookieName =
+// DefaultCookieName ("engelos_session"), cookieSecure = true. Use
+// WithCookieSecure / WithSessionTTL to override.
+func NewOAuth(store auth.Store, tenantID string, logger *slog.Logger, cfg *oauth2.Config) *OAuth {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	clientID := ""
+	if cfg != nil {
+		clientID = cfg.ClientID
+	}
+	return &OAuth{
+		store:        store,
+		tenantID:     strings.TrimSpace(tenantID),
+		logger:       logger.With("component", "api.handlers.oauth"),
+		sessionTTL:   DefaultSessionTTL,
+		cookieName:   DefaultCookieName,
+		cookieSecure: true,
+		cfg:          cfg,
+		clientID:     clientID,
+	}
+}
+
+// WithSessionTTL overrides the default session lifetime. Non-positive
+// values are ignored.
+func (o *OAuth) WithSessionTTL(d time.Duration) *OAuth {
+	if d > 0 {
+		o.sessionTTL = d
+	}
+	return o
+}
+
+// WithCookieSecure controls the Secure attribute on the session cookie.
+// Tests typically pass false because httptest serves plain HTTP.
+func (o *OAuth) WithCookieSecure(secure bool) *OAuth {
+	o.cookieSecure = secure
+	return o
+}
+
+// WithOnLogin registers a hook fired after a successful OAuth callback,
+// letting the daemon live-apply a freshly authorized bot token to the
+// running adapter. A nil hook is ignored.
+func (o *OAuth) WithOnLogin(fn func(ev LoginEvent)) *OAuth {
+	o.onLogin = fn
+	return o
+}
+
+// WithWorkspaces opens login to any Twitch user by wiring the workspaces
+// store the callback uses to provision an owner's default workspace, accept
+// pending invitations and route by membership. A nil store keeps owner-only
+// login.
+func (o *OAuth) WithWorkspaces(store workspaces.Store) *OAuth {
+	o.workspaces = store
+	return o
+}
+
+// WithModVerify enables Twitch moderator auto-verify on login by wiring the
+// factory that builds a Helix client for a workspace from the workspace owner's
+// stored broadcaster token. Returning ok=false skips a workspace that has no
+// usable token. A nil factory leaves auto-verify disabled.
+func (o *OAuth) WithModVerify(factory func(ctx context.Context, ws workspaces.Workspace) (*helix.Client, bool)) *OAuth {
+	if factory == nil {
+		o.newModGetter = nil
+		return o
+	}
+	o.newModGetter = func(ctx context.Context, ws workspaces.Workspace) (helixModGetter, bool) {
+		c, ok := factory(ctx, ws)
+		if !ok || c == nil {
+			return nil, false
+		}
+		return c, true
+	}
+	return o
+}
+
+// WithOwnerLogins restricts dashboard access via Twitch to the given
+// Twitch logins. An empty list keeps trust-on-first-use bootstrap enabled.
+func (o *OAuth) WithOwnerLogins(logins []string) *OAuth {
+	o.setOwnerLogins(auth.ProviderTwitch, logins)
+	return o
+}
+
+// WithOwnerDiscordLogins restricts dashboard access via Discord to the
+// given Discord usernames. An empty list keeps bootstrap enabled.
+func (o *OAuth) WithOwnerDiscordLogins(logins []string) *OAuth {
+	o.setOwnerLogins(auth.ProviderDiscord, logins)
+	return o
+}
+
+// setOwnerLogins normalises and stores the per-provider owner allowlist.
+func (o *OAuth) setOwnerLogins(provider string, logins []string) {
+	set := make(map[string]bool, len(logins))
+	for _, l := range logins {
+		l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "#")))
+		if l != "" {
+			set[l] = true
+		}
+	}
+	if o.ownerLogins == nil {
+		o.ownerLogins = make(map[string]map[string]bool, 2)
+	}
+	o.ownerLogins[provider] = set
+}
+
+// isOwnerLogin reports whether the given Twitch identity is permitted to
+// hold a dashboard session. Precedence:
+//
+//  1. An identity already linked to an existing RoleOwner/RoleAdmin user is
+//     always allowed, so a returning owner keeps access regardless of the
+//     allowlist or how many users now exist.
+//  2. With a configured allowlist, the login must be a member.
+//  3. With an empty allowlist, trust-on-first-use applies: the login is the
+//     owner only while NO user exists yet, so exactly one account can
+//     bootstrap itself and every later stranger is refused.
+func (o *OAuth) isOwnerLogin(ctx context.Context, provider, providerUserID, login string) bool {
+	if identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, provider, providerUserID); err == nil {
+		if u, uErr := o.store.GetUserByID(ctx, identity.TenantID, identity.UserID); uErr == nil {
+			if u.Role == auth.RoleOwner || u.Role == auth.RoleAdmin {
+				return true
+			}
+		}
+	}
+
+	login = strings.ToLower(strings.TrimSpace(login))
+	if set := o.ownerLogins[provider]; len(set) > 0 {
+		return set[login]
+	}
+	users, err := o.store.ListUsers(ctx, o.tenantID)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: owner bootstrap user-count failed",
+			slog.Any("err", err))
+		return false
+	}
+	return len(users) == 0
+}
+
+// disabled reports whether the OAuth feature is turned off - either
+// because no Store was supplied or because no oauth2.Config was wired.
+// In both cases handlers respond 501.
+func (o *OAuth) disabled() bool {
+	return o.store == nil || o.cfg == nil
+}
+
+// generateState returns a base64url-encoded cryptographically random
+// state value suitable for use as the OAuth2 state parameter.
+func generateState() (string, error) {
+	buf := make([]byte, oauthStateBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// purposeDelim separates the random CSRF nonce from the OAuth flow
+// purpose ("user" vs "bot") inside the state cookie value. Base64-URL
+// uses only [A-Za-z0-9_-], so "|" is guaranteed not to collide with
+// any byte produced by generateState - keeping the split unambiguous.
+const purposeDelim = "|"
+
+// normalizePurpose coerces an untrusted purpose string (query param or
+// recovered from a tampered cookie) into one of the two allowed values.
+// Anything other than the literal "bot" collapses to the safe default
+// "user" - we never error here because the callsite has already either
+// satisfied CSRF (cookie path) or is at the start of the flow (Login).
+func normalizePurpose(p string) string {
+	if strings.TrimSpace(p) == auth.OAuthPurposeBot {
+		return auth.OAuthPurposeBot
+	}
+	return auth.OAuthPurposeUser
+}
+
+// buildStateValue concatenates the random CSRF nonce and the chosen
+// purpose into the single string that lives in BOTH the state cookie
+// and the OAuth `state` query parameter. Because both sides hold the
+// SAME composite string, the existing constant-time equality check is
+// what binds the purpose to the request - an attacker cannot change
+// just the purpose suffix without breaking the state match. This is
+// what lets Callback safely recover the purpose from the cookie
+// without trusting any callback-side query parameter.
+func buildStateValue(random, purpose string) string {
+	return random + purposeDelim + purpose
+}
+
+// parseStateValue splits a composite state value (as produced by
+// buildStateValue) back into (random, purpose). The split is on the
+// LAST delimiter so a future random implementation that happened to
+// emit a "|" cannot misclassify the suffix. When the value contains
+// no delimiter (legacy cookie or hand-crafted test fixture) the
+// purpose is empty and normalizePurpose will fall back to "user".
+func parseStateValue(v string) (random, purpose string) {
+	i := strings.LastIndex(v, purposeDelim)
+	if i < 0 {
+		return v, normalizePurpose("")
+	}
+	return v[:i], normalizePurpose(v[i+len(purposeDelim):])
+}
+
+// Login handles GET /api/v1/auth/twitch/login.
+//
+// It mints a fresh CSRF state value, stores it in the short-lived
+// engelos_oauth_state cookie (HttpOnly, SameSite=Lax, MaxAge=600), and
+// 302-redirects the user to Twitch's authorize endpoint with the state
+// parameter pinned. The browser will return to /api/v1/auth/twitch/callback
+// after the user grants (or denies) consent.
+func (o *OAuth) Login(w http.ResponseWriter, r *http.Request) {
+	if o.disabled() {
+		notImplemented(w)
+		return
+	}
+	random, err := generateState()
+	if err != nil {
+		o.logger.ErrorContext(r.Context(), "oauth: generate state failed",
+			slog.Any("err", err))
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "internal_error",
+		})
+		return
+	}
+	purpose := normalizePurpose(r.URL.Query().Get("purpose"))
+	stateVal := buildStateValue(random, purpose)
+	http.SetCookie(w, &http.Cookie{
+		Name:     OAuthStateCookieName,
+		Value:    stateVal,
+		Path:     "/",
+		MaxAge:   int(oauthStateTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   o.cookieSecure,
+		// Lax (not Strict) - see OAuthStateCookieName doc comment.
+		SameSite: http.SameSiteLaxMode,
+	})
+	// The authorize URL embeds a one-time state and a moment-in-time
+	// redirect_uri; it must NEVER be cached. Without this header a browser
+	// can replay a previously cached 302 (e.g. from an earlier deploy that
+	// used a different redirect_uri), sending the user to a stale authorize
+	// URL that the provider then rejects with redirect_mismatch. no-store
+	// forces a fresh server round-trip on every login click.
+	writeNoStore(w)
+	http.Redirect(w, r, o.cfg.AuthCodeURL(stateVal), http.StatusFound)
+}
+
+// clearStateCookie writes a Set-Cookie that immediately expires the
+// state cookie. Always emitted after a callback (success or failure)
+// so a leaked state value can't be replayed.
+func (o *OAuth) clearStateCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     OAuthStateCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0).UTC(),
+		HttpOnly: true,
+		Secure:   o.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// Callback handles GET /api/v1/auth/twitch/callback.
+//
+// Flow:
+//  1. Reject the request when Twitch reported an error (?error=...).
+//  2. Validate the state query parameter against the state cookie in
+//     constant time; reject on mismatch and clear the cookie either way.
+//  3. Exchange the authorization code for an *oauth2.Token.
+//  4. Use the access token to fetch the authenticated user's identity
+//     from Helix (GetUsers with empty params returns the bearer's user).
+//  5. Find an existing OAuthIdentity by (provider, provider_user_id) or
+//     create a new dashboard auth.User and link it.
+//  6. Store the encrypted access/refresh tokens via CreateOAuthIdentity
+//     (which upserts on conflict).
+//  7. Mint a session exactly like the password Login handler and set
+//     the engelos_session cookie. Redirect 303 to /?login=success.
+//
+// Error responses are deliberately generic ({"error":"..."}). The
+// handler never logs access or refresh tokens.
+func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
+	if o.disabled() {
+		notImplemented(w)
+		return
+	}
+	ctx := r.Context()
+
+	// Generic redirect on provider-side errors avoids leaking upstream
+	// diagnostic strings into the URL the user lands on.
+	if e := r.URL.Query().Get("error"); e != "" {
+		o.logger.WarnContext(ctx, "oauth: provider returned error",
+			slog.String("provider", auth.ProviderTwitch),
+			slog.String("error", e))
+		o.clearStateCookie(w)
+		http.Redirect(w, r, "/?login=error", http.StatusSeeOther)
+		return
+	}
+
+	state := r.URL.Query().Get("state")
+	cookie, cookieErr := r.Cookie(OAuthStateCookieName)
+	o.clearStateCookie(w)
+	if cookieErr != nil || cookie == nil || cookie.Value == "" || state == "" ||
+		subtle.ConstantTimeCompare([]byte(state), []byte(cookie.Value)) != 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid_state",
+		})
+		return
+	}
+	// Purpose is recovered from the (now CSRF-validated) cookie value,
+	// NOT from any callback query parameter - otherwise an attacker
+	// could downgrade/upgrade the flow without invalidating state.
+	_, purpose := parseStateValue(cookie.Value)
+
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "missing_code",
+		})
+		return
+	}
+
+	exchange := o.exchange
+	if exchange == nil {
+		exchange = func(ctx context.Context, code string) (*oauth2.Token, error) {
+			return o.cfg.Exchange(ctx, code)
+		}
+	}
+	tok, err := exchange(ctx, code)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: token exchange failed",
+			slog.Any("err", err))
+		writeJSON(w, http.StatusBadGateway, map[string]string{
+			"error": "oauth_exchange_failed",
+		})
+		return
+	}
+
+	hxFactory := o.newHelix
+	if hxFactory == nil {
+		hxFactory = defaultHelixUserGetterFactory
+	}
+	hx, err := hxFactory(o.clientID, tok.AccessToken)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: helix client build failed",
+			slog.Any("err", err))
+		writeJSON(w, http.StatusBadGateway, map[string]string{
+			"error": "identity_fetch_failed",
+		})
+		return
+	}
+	usersResp, err := hx.GetUsers(&helix.UsersParams{})
+	if err != nil || usersResp == nil || len(usersResp.Data.Users) == 0 {
+		o.logger.ErrorContext(ctx, "oauth: identity fetch failed",
+			slog.Any("err", err))
+		writeJSON(w, http.StatusBadGateway, map[string]string{
+			"error": "identity_fetch_failed",
+		})
+		return
+	}
+	tu := usersResp.Data.Users[0]
+	providerUserID := strings.TrimSpace(tu.ID)
+	login := strings.TrimSpace(tu.Login)
+	if providerUserID == "" || login == "" {
+		writeJSON(w, http.StatusBadGateway, map[string]string{
+			"error": "identity_fetch_failed",
+		})
+		return
+	}
+
+	// Access control. The owner flag (allowlist, or bootstrap account when no
+	// user exists yet) decides operator rights and whether a default workspace
+	// is provisioned. A purpose=bot flow always proceeds WITHOUT owner rights so
+	// the bot account can grant its channel token, but it must already be linked
+	// to an existing user and never mints a session. A purpose=user (dashboard)
+	// flow is refused for non-owners ONLY in legacy owner-only mode; with the
+	// workspaces store wired, login is open and any Twitch user may sign in, with
+	// access governed afterwards by per-workspace membership, not this gate.
+	owner := o.isOwnerLogin(ctx, auth.ProviderTwitch, providerUserID, login)
+	openLogin := o.workspaces != nil
+	if !owner {
+		switch {
+		case purpose == auth.OAuthPurposeBot:
+			if _, err := o.store.GetOAuthIdentityByProviderUserID(ctx, auth.ProviderTwitch, providerUserID); err != nil {
+				o.logger.WarnContext(ctx, "oauth: bot login refused, account not pre-linked",
+					slog.String("login", login))
+				writeJSON(w, http.StatusForbidden, map[string]string{
+					"error": "not_authorized",
+				})
+				return
+			}
+		case !openLogin:
+			o.logger.WarnContext(ctx, "oauth: login refused, not an owner",
+				slog.String("login", login), slog.String("purpose", purpose))
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "not_authorized",
+			})
+			return
+		}
+	}
+
+	user, err := o.findOrCreateUser(ctx, auth.ProviderTwitch, providerUserID, login, tu.Email, owner)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "internal_error",
+		})
+		return
+	}
+
+	scopes := parseGrantedScopes(tok)
+	if _, err := o.store.CreateOAuthIdentity(ctx, auth.OAuthIdentity{
+		TenantID:       o.tenantID,
+		UserID:         user.ID,
+		Provider:       auth.ProviderTwitch,
+		ProviderUserID: providerUserID,
+		ProviderLogin:  login,
+		Purpose:        purpose,
+		AccessToken:    tok.AccessToken,
+		RefreshToken:   tok.RefreshToken,
+		Scopes:         scopes,
+		ExpiresAt:      tok.Expiry,
+	}); err != nil {
+		o.logger.ErrorContext(ctx, "oauth: persist identity failed",
+			slog.Any("err", err))
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "internal_error",
+		})
+		return
+	}
+
+	if o.onLogin != nil {
+		o.onLogin(LoginEvent{
+			Provider:    auth.ProviderTwitch,
+			Purpose:     purpose,
+			Login:       login,
+			AccessToken: tok.AccessToken,
+			Scopes:      scopes,
+		})
+	}
+
+	// A non-owner that reaches here is either a bot-purpose link (token granted
+	// above, no session) or, in owner-only mode, refused already. Such a login
+	// gets no dashboard session: it has done its job and is redirected back.
+	if !owner && (purpose == auth.OAuthPurposeBot || !openLogin) {
+		http.Redirect(w, r, "/login?bot=linked", http.StatusSeeOther)
+		return
+	}
+
+	if err := o.mintSessionCookie(ctx, w, r, user); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "internal_error",
+		})
+		return
+	}
+
+	if !openLogin {
+		http.Redirect(w, r, "/?login=success", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, o.landingPath(ctx, user, login, providerUserID, owner), http.StatusSeeOther)
+}
+
+// mintSessionCookie creates and persists a dashboard session for user,
+// stamps last-login, and writes the session cookie. It is shared by the
+// Twitch and Discord callbacks so both providers issue identical sessions.
+// Errors are logged here; the caller maps them to a 500 response.
+func (o *OAuth) mintSessionCookie(ctx context.Context, w http.ResponseWriter, r *http.Request, user auth.User) error {
+	token, sess, err := auth.NewSession(
+		user.TenantID, user.ID,
+		r.UserAgent(), r.RemoteAddr,
+		o.sessionTTL,
+	)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: session mint failed", slog.Any("err", err))
+		return err
+	}
+	if err := o.store.CreateSession(ctx, sess); err != nil {
+		o.logger.ErrorContext(ctx, "oauth: session persist failed", slog.Any("err", err))
+		return err
+	}
+	user.LastLoginAt = time.Now().UTC()
+	if err := o.store.UpdateUser(ctx, user); err != nil {
+		o.logger.WarnContext(ctx, "oauth: update last_login_at failed", slog.Any("err", err))
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     o.cookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  sess.ExpiresAt,
+		MaxAge:   int(o.sessionTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   o.cookieSecure,
+		SameSite: http.SameSiteStrictMode,
+	})
+	return nil
+}
+
+// findOrCreateUser returns the dashboard auth.User linked to the given
+// Twitch identity, creating both the User and (implicitly, via the
+// caller) the OAuthIdentity link on first sight.
+//
+// When an OAuthIdentity already exists, the linked User is loaded by
+// (tenant, id). When it does not exist, a new viewer-role User is
+// created with email = providerEmail (or "<login>@twitch.local" when
+// the user has not exposed their email to the OAuth app - the schema
+// requires a non-empty unique email). PasswordHash is filled with a
+// random 32-byte un-loginable blob because these users will never
+// authenticate via password.
+func (o *OAuth) findOrCreateUser(ctx context.Context, provider, providerUserID, login, providerEmail string, owner bool) (auth.User, error) {
+	identity, err := o.store.GetOAuthIdentityByProviderUserID(ctx, provider, providerUserID)
+	switch {
+	case err == nil:
+		u, getErr := o.store.GetUserByID(ctx, identity.TenantID, identity.UserID)
+		if getErr != nil {
+			o.logger.ErrorContext(ctx, "oauth: load linked user failed",
+				slog.Any("err", getErr))
+			return auth.User{}, getErr
+		}
+		return u, nil
+	case errors.Is(err, auth.ErrOAuthIdentityNotFound):
+	default:
+		o.logger.ErrorContext(ctx, "oauth: identity lookup failed",
+			slog.Any("err", err))
+		return auth.User{}, err
+	}
+
+	email := strings.TrimSpace(providerEmail)
+	if email == "" {
+		// Providers may decline to share an email. The users table
+		// requires a unique non-empty email per tenant, so we synthesise
+		// a stable placeholder rooted in the provider login. It is never
+		// used for delivery and is replaceable later via settings.
+		email = login + "@" + provider + ".local"
+	}
+	// Generate an unloginable password hash. PasswordHash is required by
+	// User.Validate; we just need 32 random bytes that won't compare
+	// equal to anything produced by HashPassword.
+	noPass := make([]byte, 32)
+	if _, err := rand.Read(noPass); err != nil {
+		return auth.User{}, err
+	}
+	role := auth.RoleViewer
+	if owner {
+		role = auth.RoleOwner
+	}
+	newUser := auth.User{
+		ID:           auth.NewUserID(),
+		TenantID:     o.tenantID,
+		Email:        email,
+		Username:     login,
+		PasswordHash: noPass,
+		Role:         role,
+	}
+	created, err := o.store.CreateUser(ctx, newUser)
+	if err == nil {
+		return created, nil
+	}
+	if errors.Is(err, auth.ErrUserAlreadyExists) {
+		// An existing dashboard user (created via password or a previous
+		// OAuth flow that since lost its identity row) already owns the
+		// synthesised email/username. Fall back to the existing record
+		// so the OAuth link is attached to that user instead of failing.
+		existing, getErr := o.store.GetUserByEmail(ctx, o.tenantID, email)
+		if getErr == nil {
+			return existing, nil
+		}
+		o.logger.ErrorContext(ctx, "oauth: user-already-exists fallback failed",
+			slog.Any("err", getErr))
+		return auth.User{}, getErr
+	}
+	o.logger.ErrorContext(ctx, "oauth: create user failed",
+		slog.Any("err", err))
+	return auth.User{}, err
+}
+
+// landingPath provisions workspace state for a freshly authenticated user and
+// returns the dashboard path to redirect them to. It is only called in
+// open-login mode (o.workspaces != nil). The steps are best-effort: a failure
+// in any of them is logged and degrades to a safe landing page rather than
+// failing the login, because the session is already valid at this point.
+//
+// Order matters. Owner provisioning runs first so a returning allowlisted owner
+// always has their default workspace, then pending invitations addressed to
+// this Twitch login are accepted into memberships. The final membership count
+// chooses the landing page: none -> onboarding, one -> straight into it, many
+// -> the picker.
+func (o *OAuth) landingPath(ctx context.Context, user auth.User, login, providerUserID string, owner bool) string {
+	if owner {
+		o.provisionOwnerWorkspace(ctx, user, login, providerUserID)
+	}
+	o.acceptPendingInvitations(ctx, user, login)
+	o.verifyTwitchMods(ctx, user, providerUserID)
+
+	views, err := o.workspaces.ListMembershipsForUser(ctx, user.ID)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: list memberships for landing failed",
+			slog.String("user_id", user.ID), slog.Any("err", err))
+		return "/channels"
+	}
+	switch len(views) {
+	case 0:
+		return "/onboard"
+	case 1:
+		return "/channels/" + views[0].Workspace.Slug
+	default:
+		return "/channels"
+	}
+}
+
+// provisionOwnerWorkspace ensures an allowlisted owner has a workspace whose
+// slug is their own Twitch login, with an owner membership. It is idempotent:
+// an existing workspace (created on a prior login) is left untouched and only a
+// missing owner membership is repaired. This is the backward-compatibility path
+// that keeps the existing single-channel deployment working once login opens.
+func (o *OAuth) provisionOwnerWorkspace(ctx context.Context, user auth.User, login, channelID string) {
+	slug := strings.ToLower(strings.TrimSpace(login))
+	if slug == "" {
+		return
+	}
+	ws, err := o.workspaces.GetWorkspaceBySlug(ctx, o.tenantID, slug)
+	switch {
+	case err == nil:
+	case errors.Is(err, workspaces.ErrNotFound):
+		ws, err = o.workspaces.CreateWorkspace(ctx, workspaces.Workspace{
+			TenantID:        o.tenantID,
+			Slug:            slug,
+			TwitchChannelID: strings.TrimSpace(channelID),
+			TwitchLogin:     slug,
+			DisplayName:     user.Username,
+			OwnerUserID:     user.ID,
+			AutoVerifyMods:  true,
+		})
+		if err != nil {
+			o.logger.ErrorContext(ctx, "oauth: provision owner workspace failed",
+				slog.String("slug", slug), slog.Any("err", err))
+			return
+		}
+	default:
+		o.logger.ErrorContext(ctx, "oauth: owner workspace lookup failed",
+			slog.String("slug", slug), slog.Any("err", err))
+		return
+	}
+	if _, err := o.workspaces.UpsertMembership(ctx, workspaces.Membership{
+		WorkspaceID: ws.ID,
+		UserID:      user.ID,
+		Role:        workspaces.RoleOwner,
+		Source:      workspaces.SourceOwner,
+	}); err != nil {
+		o.logger.ErrorContext(ctx, "oauth: upsert owner membership failed",
+			slog.String("workspace", ws.ID), slog.Any("err", err))
+	}
+}
+
+// acceptPendingInvitations turns every pending invitation addressed to this
+// Twitch login into a membership and marks it accepted. Each invitation is
+// independent: one failure does not abort the rest, so a bad row cannot lock a
+// user out of the workspaces they were validly invited to.
+func (o *OAuth) acceptPendingInvitations(ctx context.Context, user auth.User, login string) {
+	invites, err := o.workspaces.ListPendingInvitationsForLogin(ctx, login)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: list pending invitations failed",
+			slog.String("login", login), slog.Any("err", err))
+		return
+	}
+	now := time.Now().UTC()
+	for _, inv := range invites {
+		if inv.ExpiresAt != nil && inv.ExpiresAt.Before(now) {
+			continue
+		}
+		if _, err := o.workspaces.UpsertMembership(ctx, workspaces.Membership{
+			WorkspaceID: inv.WorkspaceID,
+			UserID:      user.ID,
+			Role:        inv.Role,
+			Source:      workspaces.SourceInvite,
+		}); err != nil {
+			o.logger.ErrorContext(ctx, "oauth: accept invitation membership failed",
+				slog.String("invitation", inv.ID), slog.Any("err", err))
+			continue
+		}
+		if err := o.workspaces.MarkInvitationAccepted(ctx, inv.ID, now); err != nil {
+			o.logger.WarnContext(ctx, "oauth: mark invitation accepted failed",
+				slog.String("invitation", inv.ID), slog.Any("err", err))
+		}
+	}
+}
+
+// verifyTwitchMods grants a mod membership in every auto-verify workspace whose
+// channel the logging-in user actually moderates on Twitch. It is a no-op when
+// the auto-verify seam is unwired (newModGetter == nil) or the user has no
+// numeric Twitch id. For each candidate workspace it asks Helix whether this
+// user is a moderator of that broadcaster, using the workspace owner's
+// broadcaster token (moderation:read). The check is positive-only: it never
+// revokes a membership here, so a manual invite or owner grant is never undone
+// by a transient Helix failure. Workspaces the user already belongs to, that
+// have auto-verify off, or that lack a broadcaster id / usable token are
+// skipped. Every step is best-effort and logged.
+func (o *OAuth) verifyTwitchMods(ctx context.Context, user auth.User, providerUserID string) {
+	if o.newModGetter == nil || strings.TrimSpace(providerUserID) == "" {
+		return
+	}
+	all, err := o.workspaces.ListWorkspaces(ctx, o.tenantID)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "oauth: list workspaces for mod-verify failed",
+			slog.Any("err", err))
+		return
+	}
+	for _, ws := range all {
+		if !ws.AutoVerifyMods || strings.TrimSpace(ws.TwitchChannelID) == "" {
+			continue
+		}
+		if _, err := o.workspaces.GetMembership(ctx, ws.ID, user.ID); err == nil {
+			continue
+		}
+		mg, ok := o.newModGetter(ctx, ws)
+		if !ok || mg == nil {
+			continue
+		}
+		resp, err := mg.GetModerators(&helix.GetModeratorsParams{
+			BroadcasterID: ws.TwitchChannelID,
+			UserIDs:       []string{providerUserID},
+		})
+		if err != nil || resp == nil {
+			o.logger.WarnContext(ctx, "oauth: mod-verify helix call failed",
+				slog.String("workspace", ws.ID), slog.Any("err", err))
+			continue
+		}
+		isMod := false
+		for _, m := range resp.Data.Moderators {
+			if m.UserID == providerUserID {
+				isMod = true
+				break
+			}
+		}
+		if !isMod {
+			continue
+		}
+		if _, err := o.workspaces.UpsertMembership(ctx, workspaces.Membership{
+			WorkspaceID: ws.ID,
+			UserID:      user.ID,
+			Role:        workspaces.RoleMod,
+			Source:      workspaces.SourceTwitchVerified,
+		}); err != nil {
+			o.logger.ErrorContext(ctx, "oauth: mod-verify membership upsert failed",
+				slog.String("workspace", ws.ID), slog.Any("err", err))
+		}
+	}
+}
+
+// parseGrantedScopes pulls the space-separated "scope" extra field out
+// of the token (Twitch returns the granted scopes there). Falls back to
+// an empty slice when the token has no scope claim.
+func parseGrantedScopes(tok *oauth2.Token) []string {
+	if tok == nil {
+		return nil
+	}
+	raw, _ := tok.Extra("scope").(string)
+	if raw == "" {
+		return nil
+	}
+	return strings.Fields(raw)
+}
+
+// defaultHelixUserGetterFactory builds the production *helix.Client used
+// to fetch the authenticated user's identity. The same client is used in
+// the twitch adapter (internal/adapters/twitch), but here we only need
+// the GetUsers surface so we expose a narrow helixUserGetter interface.
+func defaultHelixUserGetterFactory(clientID, userAccessToken string) (helixUserGetter, error) {
+	c, err := helix.NewClient(&helix.Options{
+		ClientID:        clientID,
+		UserAccessToken: userAccessToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}

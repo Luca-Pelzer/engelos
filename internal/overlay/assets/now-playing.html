@@ -1,0 +1,185 @@
+<!doctype html>
+<!--
+  engelOS overlay: now-playing
+  ==============================================================
+  Bottom-left "now playing" card for OBS browser sources. Shows the
+  currently playing track on the channel's configured music provider.
+
+  Handled WebSocket envelope types ({type, data}):
+    - song.now_playing  (data.title/artist/is_playing/provider)
+
+  The backend sends no track duration or position, so there is no
+  time-synced progress bar; an indeterminate equalizer animation
+  signals "music playing" honestly instead.
+
+  Query parameters:
+    - theme  : "dark" (default) | "light"
+    - accent : 6-digit hex without # (default: a970ff)
+
+  Example: /overlay/now-playing?theme=dark&accent=1db954
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / now playing</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;overflow:hidden;width:100%;height:100%}
+  :root{
+    --accent:#a970ff;
+    --fg:#ffffff;
+    --fg-dim:rgba(255,255,255,.78);
+    --card:rgba(20,20,28,.78);
+    --card-border:rgba(255,255,255,.08);
+    --shadow:0 6px 22px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.45);
+    --stroke:0 2px 6px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.95);
+    font-family:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  }
+  body.theme-light{
+    --fg:#0c0c12;
+    --fg-dim:rgba(12,12,18,.72);
+    --card:rgba(255,255,255,.86);
+    --card-border:rgba(0,0,0,.08);
+    --stroke:0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.25);
+  }
+  #stage{position:fixed;left:32px;bottom:32px;pointer-events:none}
+  .np{
+    display:flex;align-items:center;gap:16px;
+    padding:14px 22px 14px 14px;border-radius:16px;
+    background:var(--card);
+    border:1px solid var(--card-border);
+    backdrop-filter:blur(6px);
+    box-shadow:var(--shadow);
+    color:var(--fg);
+    opacity:0;transform:translateY(20px) scale(.96);
+    transition:opacity .45s cubic-bezier(.2,.7,.2,1), transform .45s cubic-bezier(.2,.7,.2,1);
+    will-change:transform,opacity;
+  }
+  .np.show{opacity:1;transform:translateY(0) scale(1)}
+  .np .art{
+    width:54px;height:54px;border-radius:12px;flex:none;
+    background:linear-gradient(135deg,var(--accent),rgba(255,255,255,.15));
+    display:flex;align-items:center;justify-content:center;
+    font-size:26px;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,.5);
+  }
+  .np .body{display:flex;flex-direction:column;gap:3px;min-width:0;max-width:420px}
+  .np .ttl{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);text-shadow:var(--stroke);display:flex;align-items:center;gap:8px}
+  .np .track{font-size:24px;font-weight:700;text-shadow:var(--stroke);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .np .artist{font-size:16px;font-weight:500;color:var(--fg-dim);text-shadow:var(--stroke);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .np .swap{animation:swap .4s cubic-bezier(.2,.7,.2,1)}
+
+  /* indeterminate equalizer: honest "music playing" signal (no fake progress) */
+  .eq{display:inline-flex;align-items:flex-end;gap:2px;height:11px}
+  .eq span{width:3px;background:var(--accent);border-radius:1px;height:100%;transform-origin:bottom;animation:eq 1s ease-in-out infinite}
+  .eq span:nth-child(2){animation-delay:.2s}
+  .eq span:nth-child(3){animation-delay:.4s}
+  .eq span:nth-child(4){animation-delay:.6s}
+  .np.paused .eq span{animation-play-state:paused;opacity:.4}
+
+  @keyframes eq{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+  @keyframes swap{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+  #conn{position:fixed;top:8px;right:10px;font-size:10px;letter-spacing:.08em;opacity:.4;color:var(--fg);text-shadow:var(--stroke)}
+</style>
+</head>
+<body>
+<div id="conn">●</div>
+<div id="stage" aria-live="polite">
+  <div class="np" id="np">
+    <div class="art">♪</div>
+    <div class="body">
+      <div class="ttl">Now Playing
+        <span class="eq" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+      </div>
+      <div class="track" id="track"></div>
+      <div class="artist" id="artist"></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const theme = (params.get("theme") || "dark").toLowerCase();
+  const accent = (params.get("accent") || "").replace(/[^0-9a-fA-F]/g, "").slice(0, 6);
+  if (theme === "light") document.body.classList.add("theme-light");
+  if (accent.length === 6) document.documentElement.style.setProperty("--accent", "#" + accent);
+
+  const conn = document.getElementById("conn");
+  const card = document.getElementById("np");
+  const trackEl = document.getElementById("track");
+  const artistEl = document.getElementById("artist");
+  let current = "";
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function swap(el, text) {
+    el.classList.remove("swap");
+    // force reflow so the animation restarts on each change
+    void el.offsetWidth;
+    el.innerHTML = text;
+    el.classList.add("swap");
+  }
+
+  function show(title, artist) {
+    const key = title + "\u0000" + artist;
+    if (key !== current) {
+      current = key;
+      swap(trackEl, esc(title));
+      swap(artistEl, esc(artist));
+    }
+    card.classList.remove("paused");
+    card.classList.add("show");
+  }
+
+  function hide() {
+    current = "";
+    card.classList.remove("show");
+  }
+
+  function handle(envelope) {
+    const data = envelope && envelope.data;
+    if (!data) return;
+    switch (envelope.type) {
+      case "song.now_playing":
+        if (data.is_playing && data.title) {
+          show(data.title, data.artist || "");
+        } else {
+          hide();
+        }
+        break;
+      default:
+        return;
+    }
+  }
+
+  let ws = null;
+  let backoff = 500;
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss://" : "ws://";
+    try {
+      ws = new WebSocket(proto + location.host + "/api/v1/ws");
+    } catch {
+      schedule();
+      return;
+    }
+    ws.onopen = () => { conn.style.opacity = ".7"; backoff = 500; };
+    ws.onclose = () => { conn.style.opacity = ".25"; schedule(); };
+    ws.onerror = () => { conn.style.opacity = ".25"; };
+    ws.onmessage = ev => {
+      try {
+        handle(JSON.parse(ev.data));
+      } catch { /* ignore malformed frames */ }
+    };
+  }
+  function schedule() {
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 10000);
+  }
+  connect();
+})();
+</script>
+</body>
+</html>
