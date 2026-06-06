@@ -49,6 +49,15 @@ type WSHandler interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
 }
 
+// WebhookProvider is a platform adapter that ingests inbound webhooks. The
+// router type-asserts adapters against this interface and mounts the returned
+// handler at /webhooks/{Name}. Kept narrow so the api package never imports
+// the concrete adapter types.
+type WebhookProvider interface {
+	Name() string
+	WebhookHandler() http.HandlerFunc
+}
+
 // Deps bundles the narrow set of dependencies the router needs. Concrete
 // implementations (auth, eventsourcing, etc.) live in their own packages and
 // satisfy these interfaces - the api package never imports them directly.
@@ -114,6 +123,16 @@ type Deps struct {
 	// /api/v1/auth/spotify/*. The callback requires an authenticated session
 	// (it links Spotify to the logged-in user). Nil leaves it unmounted.
 	OAuthSpotify *handlers.SpotifyOAuth
+
+	// OAuthYouTube, when non-nil, mounts the "Connect YouTube" routes under
+	// /api/v1/auth/youtube/*. The callback requires an authenticated session
+	// (it links YouTube to the logged-in user). Nil leaves it unmounted.
+	OAuthYouTube *handlers.YouTubeOAuth
+
+	// OAuthKick, when non-nil, mounts the "Connect Kick" routes under
+	// /api/v1/auth/kick/*. The callback requires an authenticated session
+	// (it links Kick to the logged-in user). Nil leaves it unmounted.
+	OAuthKick *handlers.KickOAuth
 
 	// OAuthDiscord, when non-nil, mounts the "Login with Discord" routes
 	// under /api/v1/auth/discord. Nil leaves them unmounted.
@@ -186,6 +205,12 @@ type Deps struct {
 	// moderate a user) under /api/v1/chat/*. Nil leaves those routes
 	// unmounted so the dashboard composer/mod actions degrade to 404.
 	Chat *handlers.ChatController
+
+	// WebhookProviders are platform adapters that ingest inbound webhooks
+	// (Kick). Each is mounted at /webhooks/{name} OUTSIDE the session-gated
+	// API group: the handler itself verifies authenticity (signatures), so
+	// no session middleware applies. Empty mounts nothing.
+	WebhookProviders []WebhookProvider
 
 	// QuoteStore, when non-nil, exposes the per-channel quotes CRUD under
 	// /api/v1/quotes/*. Nil makes those endpoints return 501 (feature off).
@@ -291,6 +316,14 @@ func NewRouter(deps Deps) chi.Router {
 	r.Get("/readyz", health.Readyz)
 	r.Get("/version", health.VersionHandler)
 
+	for _, wp := range deps.WebhookProviders {
+		if wp == nil {
+			continue
+		}
+		r.Post("/webhooks/"+wp.Name(), wp.WebhookHandler())
+		logger.Info("webhook route mounted", "platform", wp.Name())
+	}
+
 	r.Route("/api/v1", func(r chi.Router) {
 		if deps.AuthStore != nil {
 			r.Use(apimw.SessionAuth(deps.AuthStore, "", logger))
@@ -316,6 +349,14 @@ func NewRouter(deps Deps) chi.Router {
 			if deps.OAuthSpotify != nil {
 				r.With(apimw.RequireGlobalOwner).Get("/spotify/login", deps.OAuthSpotify.Login)
 				r.With(apimw.RequireGlobalOwner).Get("/spotify/callback", deps.OAuthSpotify.Callback)
+			}
+			if deps.OAuthKick != nil {
+				r.With(apimw.RequireGlobalOwner).Get("/kick/login", deps.OAuthKick.Login)
+				r.With(apimw.RequireGlobalOwner).Get("/kick/callback", deps.OAuthKick.Callback)
+			}
+			if deps.OAuthYouTube != nil {
+				r.With(apimw.RequireGlobalOwner).Get("/youtube/login", deps.OAuthYouTube.Login)
+				r.With(apimw.RequireGlobalOwner).Get("/youtube/callback", deps.OAuthYouTube.Callback)
 			}
 		})
 		r.Route("/users", func(r chi.Router) {

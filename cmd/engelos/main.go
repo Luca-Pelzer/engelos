@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,9 +27,11 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/actions"
 	"github.com/Luca-Pelzer/engelos/internal/adapters"
 	"github.com/Luca-Pelzer/engelos/internal/adapters/discord"
+	"github.com/Luca-Pelzer/engelos/internal/adapters/kick"
 	"github.com/Luca-Pelzer/engelos/internal/adapters/obs"
 	"github.com/Luca-Pelzer/engelos/internal/adapters/twitch"
 	"github.com/Luca-Pelzer/engelos/internal/adapters/twitch/eventsub"
+	ytadapter "github.com/Luca-Pelzer/engelos/internal/adapters/youtube"
 	"github.com/Luca-Pelzer/engelos/internal/api"
 	"github.com/Luca-Pelzer/engelos/internal/api/handlers"
 	"github.com/Luca-Pelzer/engelos/internal/api/ws"
@@ -706,6 +709,24 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
+	// YouTube "Connect YouTube" flow: links a Google/YouTube account to the
+	// logged-in dashboard user as the tenant's bot identity so the live-chat
+	// adapter can read and write chat. Off by default until the three
+	// ENGELOS_YOUTUBE_CLIENT_ID/SECRET/REDIRECT_URL env vars are set.
+	youtubeOAuthCfg := buildYouTubeOAuthConfig(cryptoBox, logger)
+	var oauthYouTube *handlers.YouTubeOAuth
+	if youtubeOAuthCfg != nil {
+		oauthYouTube = handlers.NewYouTubeOAuth(authStore, defaultTenantID, logger, youtubeOAuthCfg).
+			WithCookieSecure(false)
+	}
+
+	kickOAuthCfg := buildKickOAuthConfig(cryptoBox, logger)
+	var oauthKick *handlers.KickOAuth
+	if kickOAuthCfg != nil {
+		oauthKick = handlers.NewKickOAuth(authStore, defaultTenantID, logger, kickOAuthCfg).
+			WithCookieSecure(false)
+	}
+
 	router := api.NewRouter(api.Deps{
 		Logger: logger,
 		Version: handlers.Version{
@@ -725,6 +746,8 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		OAuthTwitch:      oauthTwitch,
 		OAuthDiscord:     oauthDiscord,
 		OAuthSpotify:     oauthSpotify,
+		OAuthYouTube:     oauthYouTube,
+		OAuthKick:        oauthKick,
 		RedemptionStore:  redemptionStore,
 		CommandStore:     customStore,
 		TimerStore:       timerStore,
@@ -739,6 +762,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		WrappedStore:     wrappedStore,
 		WrappedRanker:    wrappedRankerAdapter{loyalty: loyaltyStore, streak: streakSystem, tenantID: defaultTenantID},
 		Chat:             newChatController(platforms),
+		WebhookProviders: webhookProviders(platforms),
 		QuoteStore:       quoteStore,
 		RewardStore:      rewardsStore,
 		TimersStore:      timerStore,
@@ -982,6 +1006,94 @@ func buildSpotifyOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Conf
 		RedirectURL:  redirectURL,
 		Scopes:       defaultSpotifyScopes,
 		Endpoint:     spotifyoauth.Endpoint,
+	}
+}
+
+// defaultYouTubeScopes are the OAuth scopes the YouTube live-chat adapter
+// needs: youtube.force-ssl covers reading, sending, and moderating live chat,
+// and userinfo.profile lets the connect callback fetch which Google account
+// was linked.
+var defaultYouTubeScopes = []string{
+	"https://www.googleapis.com/auth/youtube.force-ssl",
+	"https://www.googleapis.com/auth/userinfo.profile",
+}
+
+// googleOAuthEndpoint mirrors golang.org/x/oauth2/google.Endpoint. It is
+// inlined rather than imported because the google subpackage pulls in
+// cloud.google.com/go/compute/metadata, which is not in this module's go.sum.
+var googleOAuthEndpoint = oauth2.Endpoint{
+	AuthURL:       "https://accounts.google.com/o/oauth2/auth",
+	TokenURL:      "https://oauth2.googleapis.com/token",
+	DeviceAuthURL: "https://oauth2.googleapis.com/device/code",
+	AuthStyle:     oauth2.AuthStyleInParams,
+}
+
+// buildYouTubeOAuthConfig assembles the YouTube *oauth2.Config used by the
+// "Connect YouTube" handler, or returns nil (feature off) when its
+// prerequisites are missing. Like the Spotify builder it requires an
+// encryption box plus the three
+// ENGELOS_YOUTUBE_CLIENT_ID/SECRET/REDIRECT_URL env vars; absence of any is a
+// normal, non-fatal "feature off" state.
+func buildYouTubeOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Config {
+	clientID := os.Getenv("ENGELOS_YOUTUBE_CLIENT_ID")
+	clientSecret := os.Getenv("ENGELOS_YOUTUBE_CLIENT_SECRET")
+	redirectURL := os.Getenv("ENGELOS_YOUTUBE_REDIRECT_URL")
+	if box == nil || clientID == "" || clientSecret == "" || redirectURL == "" {
+		logger.Info("youtube oauth disabled",
+			"has_key", box != nil, "has_client_id", clientID != "",
+			"has_secret", clientSecret != "", "has_redirect", redirectURL != "")
+		return nil
+	}
+	logger.Info("youtube oauth enabled", "redirect_url", redirectURL)
+	return &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Scopes:       defaultYouTubeScopes,
+		Endpoint:     googleOAuthEndpoint,
+	}
+}
+
+// defaultKickScopes are the OAuth scopes the Kick adapter needs: read and send
+// chat, register webhook event subscriptions, and moderate (ban/timeout and
+// delete messages).
+var defaultKickScopes = []string{
+	"chat:write",
+	"events:subscribe",
+	"moderation:ban",
+	"moderation:chat_message:manage",
+}
+
+// kickOAuthEndpoint is Kick's OAuth 2.1 authorization server. Kick requires
+// PKCE; the handler supplies the S256 challenge and verifier.
+var kickOAuthEndpoint = oauth2.Endpoint{
+	AuthURL:   "https://id.kick.com/oauth/authorize",
+	TokenURL:  "https://id.kick.com/oauth/token",
+	AuthStyle: oauth2.AuthStyleInParams,
+}
+
+// buildKickOAuthConfig assembles the Kick *oauth2.Config used by the "Connect
+// Kick" handler, or returns nil (feature off) when its prerequisites are
+// missing. It requires an encryption box plus the three
+// ENGELOS_KICK_CLIENT_ID/SECRET/REDIRECT_URL env vars; absence of any is a
+// normal, non-fatal "feature off" state.
+func buildKickOAuthConfig(box *secrets.Box, logger *slog.Logger) *oauth2.Config {
+	clientID := os.Getenv("ENGELOS_KICK_CLIENT_ID")
+	clientSecret := os.Getenv("ENGELOS_KICK_CLIENT_SECRET")
+	redirectURL := os.Getenv("ENGELOS_KICK_REDIRECT_URL")
+	if box == nil || clientID == "" || clientSecret == "" || redirectURL == "" {
+		logger.Info("kick oauth disabled",
+			"has_key", box != nil, "has_client_id", clientID != "",
+			"has_secret", clientSecret != "", "has_redirect", redirectURL != "")
+		return nil
+	}
+	logger.Info("kick oauth enabled", "redirect_url", redirectURL)
+	return &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Scopes:       defaultKickScopes,
+		Endpoint:     kickOAuthEndpoint,
 	}
 }
 
@@ -1747,6 +1859,16 @@ func newChatController(platforms []adapters.Platform) *handlers.ChatController {
 	return &handlers.ChatController{Platforms: platforms, Channel: channel}
 }
 
+func webhookProviders(platforms []adapters.Platform) []api.WebhookProvider {
+	var out []api.WebhookProvider
+	for _, p := range platforms {
+		if wp, ok := p.(api.WebhookProvider); ok {
+			out = append(out, wp)
+		}
+	}
+	return out
+}
+
 type platformSender struct{ platforms []adapters.Platform }
 
 func (s platformSender) Send(ctx context.Context, channel, message string) error {
@@ -2431,6 +2553,82 @@ func startPlatforms(ctx context.Context, logger *slog.Logger, store auth.Store, 
 			})
 			logger.Info("discord adapter connected",
 				"channel_allowlist", len(cfg.Channels))
+		}
+	}
+
+	videoID := strings.TrimSpace(os.Getenv("ENGELOS_YOUTUBE_VIDEO_ID"))
+	liveChatID := strings.TrimSpace(os.Getenv("ENGELOS_YOUTUBE_LIVE_CHAT_ID"))
+	if videoID != "" || liveChatID != "" {
+		botToken := ""
+		if bot, err := store.GetBotIdentity(ctx, tenantID, auth.ProviderYouTube); err == nil {
+			botToken = bot.AccessToken
+			logger.Info("youtube bot token loaded from store", "login", bot.ProviderLogin)
+		} else if !errors.Is(err, auth.ErrOAuthIdentityNotFound) && !errors.Is(err, auth.ErrCryptoRequired) {
+			logger.Warn("youtube bot identity lookup failed", "err", err)
+		}
+		if botToken == "" {
+			logger.Info("youtube adapter disabled (no bot identity)")
+		} else {
+			yt := ytadapter.New(ytadapter.Config{
+				AccessToken: botToken,
+				VideoID:     videoID,
+				LiveChatID:  liveChatID,
+				Logger:      logger.With("platform", "youtube"),
+			})
+			if err := yt.Connect(ctx); err != nil {
+				logger.Error("youtube adapter connect failed", "err", err)
+			} else {
+				started = append(started, yt)
+				closers = append(closers, func() {
+					disconnectCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+					defer c()
+					if err := yt.Disconnect(disconnectCtx); err != nil {
+						logger.Warn("youtube disconnect", "err", err)
+					}
+				})
+				logger.Info("youtube adapter connected",
+					"video_id", videoID, "live_chat_id", liveChatID)
+			}
+		}
+	}
+
+	if bid := strings.TrimSpace(os.Getenv("ENGELOS_KICK_BROADCASTER_USER_ID")); bid != "" {
+		broadcasterID, err := strconv.Atoi(bid)
+		if err != nil {
+			logger.Warn("kick adapter disabled: invalid broadcaster id", "value", bid, "err", err)
+		} else {
+			userToken := os.Getenv("ENGELOS_KICK_USER_TOKEN")
+			if bot, berr := store.GetBotIdentity(ctx, tenantID, auth.ProviderKick); berr == nil {
+				userToken = bot.AccessToken
+				logger.Info("kick user token loaded from store", "login", bot.ProviderLogin)
+			} else if !errors.Is(berr, auth.ErrOAuthIdentityNotFound) && !errors.Is(berr, auth.ErrCryptoRequired) {
+				logger.Warn("kick bot identity lookup failed", "err", berr)
+			}
+			kc, kerr := kick.New(kick.Config{
+				ClientID:          os.Getenv("ENGELOS_KICK_CLIENT_ID"),
+				ClientSecret:      os.Getenv("ENGELOS_KICK_CLIENT_SECRET"),
+				AppAccessToken:    os.Getenv("ENGELOS_KICK_APP_TOKEN"),
+				UserAccessToken:   userToken,
+				BroadcasterUserID: broadcasterID,
+				Channel:           os.Getenv("ENGELOS_KICK_CHANNEL"),
+				WebhookURL:        os.Getenv("ENGELOS_KICK_WEBHOOK_URL"),
+				Logger:            logger.With("platform", "kick"),
+			})
+			if kerr != nil {
+				logger.Error("kick adapter init failed", "err", kerr)
+			} else if err := kc.Connect(ctx); err != nil {
+				logger.Error("kick adapter connect failed", "err", err)
+			} else {
+				started = append(started, kc)
+				closers = append(closers, func() {
+					disconnectCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+					defer c()
+					if err := kc.Disconnect(disconnectCtx); err != nil {
+						logger.Warn("kick disconnect", "err", err)
+					}
+				})
+				logger.Info("kick adapter connected", "broadcaster", broadcasterID)
+			}
 		}
 	}
 
