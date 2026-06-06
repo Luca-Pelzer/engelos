@@ -228,7 +228,7 @@
     {#if showForm}
       <div class="form-card">
         <div class="form-grid">
-          <div><label class="fld">Name</label><div class="input"><input type="text" placeholder="z. B. discord-link" bind:value={fName} disabled={editing !== null} /></div></div>
+          <div><label class="fld" for="action-name">Name</label><div class="input"><input id="action-name" type="text" placeholder="z. B. discord-link" bind:value={fName} disabled={editing !== null} /></div></div>
           <label class="enable-row"><input type="checkbox" bind:checked={fEnabled} /> Aktiviert</label>
         </div>
 
@@ -236,17 +236,17 @@
           <div class="block-head"><span class="badge tr">Trigger</span><span class="muted">Was loest die Regel aus?</span></div>
           <div class="form-grid">
             <div>
-              <label class="fld">Typ</label>
-              <div class="input"><select bind:value={fTriggerKind}>
+              <label class="fld" for="action-trigger-kind">Typ</label>
+              <div class="input"><select id="action-trigger-kind" bind:value={fTriggerKind}>
                 {#each triggerOptions as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
               </select></div>
             </div>
             {#if fTriggerKind === 'event'}
-              <div><label class="fld">Event-Typ (leer = jede Nachricht)</label><div class="input"><input type="text" placeholder="z. B. channel.raided" bind:value={fEventType} /></div></div>
+              <div><label class="fld" for="action-event-type">Event-Typ (leer = jede Nachricht)</label><div class="input"><input id="action-event-type" type="text" placeholder="z. B. channel.raided" bind:value={fEventType} /></div></div>
             {:else if fTriggerKind === 'command'}
-              <div><label class="fld">Command-Wort</label><div class="input"><input type="text" placeholder="z. B. !discord" bind:value={fCommand} /></div></div>
+              <div><label class="fld" for="action-command">Command-Wort</label><div class="input"><input id="action-command" type="text" placeholder="z. B. !discord" bind:value={fCommand} /></div></div>
             {:else if fTriggerKind === 'timer'}
-              <div><label class="fld">Intervall (Minuten)</label><div class="input"><input type="number" min="1" step="1" bind:value={fIntervalMin} /></div><div class="muted small">Mindestens 5 Sekunden zwischen den Ausloesungen.</div></div>
+              <div><label class="fld" for="action-interval">Intervall (Minuten)</label><div class="input"><input id="action-interval" type="number" min="1" step="1" bind:value={fIntervalMin} /></div><div class="muted small">Mindestens 5 Sekunden zwischen den Ausloesungen.</div></div>
             {:else if fTriggerKind === 'manual'}
               <div class="muted small">Diese Regel laeuft nur, wenn du sie per "Ausloesen" von Hand startest.</div>
             {/if}

@@ -91,10 +91,10 @@
     {#if showForm}
       <div class="form-card">
         <div class="form-grid">
-          <div><label class="fld">Name</label><div class="input"><input type="text" placeholder="z. B. Songwunsch" bind:value={fName} disabled={editing !== null} /></div></div>
-          <div><label class="fld">Punkte-Kosten</label><div class="input"><input type="number" min="0" bind:value={fCost} /></div></div>
+          <div><label class="fld" for="reward-name">Name</label><div class="input"><input id="reward-name" type="text" placeholder="z. B. Songwunsch" bind:value={fName} disabled={editing !== null} /></div></div>
+          <div><label class="fld" for="reward-cost">Punkte-Kosten</label><div class="input"><input id="reward-cost" type="number" min="0" bind:value={fCost} /></div></div>
         </div>
-        <div><label class="fld">Beschreibung (optional)</label><div class="input"><input type="text" placeholder="Kurzbeschreibung" bind:value={fDesc} /></div></div>
+        <div><label class="fld" for="reward-desc">Beschreibung (optional)</label><div class="input"><input id="reward-desc" type="text" placeholder="Kurzbeschreibung" bind:value={fDesc} /></div></div>
         <div class="form-actions">
           <button class="btn btn-ghost btn-sm" onclick={() => (showForm = false)}>Abbrechen</button>
           <button class="btn btn-primary btn-sm" onclick={save}>Speichern</button>

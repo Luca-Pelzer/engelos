@@ -13,9 +13,9 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/timers"
 )
 
-// Migrate exposes a one-shot import of Nightbot/StreamElements command and
-// timer exports into the channel's engelOS stores. It is session-protected at
-// the router layer. When the command store is nil the endpoint returns 501 so
+// Migrate exposes a one-shot import of Nightbot/StreamElements/Moobot command
+// and timer exports into the channel's engelOS stores. It is session-protected
+// at the router layer. When the command store is nil the endpoint returns 501 so
 // the router still boots with the feature off.
 type Migrate struct {
 	commands customcommands.Store
@@ -33,10 +33,11 @@ func NewMigrate(commandStore customcommands.Store, timerStore timers.Store, tena
 }
 
 // Import handles POST /api/v1/migrate.
-// Body: {channel, source?, data}. source is "nightbot", "streamelements", or
-// empty for auto-detect; data is the raw JSON export as a string. It parses the
-// export and creates the resulting commands (and timers, when present),
-// returning counts plus any skipped-entry notes.
+// Body: {channel, source?, data}. source is "nightbot", "streamelements",
+// "moobot", or empty to auto-detect nightbot/streamelements (moobot has no
+// reliable signature and must be named explicitly); data is the raw JSON export
+// as a string. It parses the export and creates the resulting commands (and
+// timers, when present), returning counts plus any skipped-entry notes.
 func (h *Migrate) Import(w http.ResponseWriter, r *http.Request) {
 	if h.commands == nil {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "migration_not_enabled"})

@@ -10,6 +10,7 @@
     { href: '/', label: 'Dashboard', icon: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>' },
     { href: '/chat', label: 'Live-Chat', icon: '<path d="M4 5.5h16v10H9.5l-4 3v-3H4z"/>' },
     { href: '/commands', label: 'Commands', icon: '<path d="M4 6h16M4 12h10M4 18h16"/>' },
+    { href: '/import', label: 'Import', icon: '<path d="M12 3v11M8 10l4 4 4-4M4 17v2.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V17"/>' },
     { href: '/actions', label: 'Aktionen', icon: '<circle cx="5" cy="6" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="12" r="2.5"/><path d="M7.5 6H12a4 4 0 0 1 4 4v.5M7.5 18H12a4 4 0 0 0 4-4v-.5"/>' },
     { href: '/loyalty', label: 'Punkte & Games', icon: '<path d="M7 4h10v3a5 5 0 0 1-10 0z"/><path d="M7 5H4v1a3 3 0 0 0 3 3M17 5h3v1a3 3 0 0 1-3 3"/><path d="M12 12v4M8.5 20h7M10 20l.4-2h3.2l.4 2"/>' },
     { href: '/rewards', label: 'Belohnungen', icon: '<rect x="3.5" y="8.5" width="17" height="12" rx="1.6"/><path d="M3.5 12.5h17M12 8.5v12"/>' },

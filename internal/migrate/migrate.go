@@ -16,6 +16,9 @@ const (
 	SourceNightbot Source = "nightbot"
 	// SourceStreamElements is a StreamElements custom-commands export.
 	SourceStreamElements Source = "streamelements"
+	// SourceMoobot is a Moobot dashboard export. Its schema is undocumented, so
+	// it is never auto-detected and must be selected explicitly.
+	SourceMoobot Source = "moobot"
 )
 
 // Role names the minimum role allowed to run an imported command, using
@@ -87,6 +90,8 @@ func Parse(source Source, data []byte) (Result, error) {
 		return ParseNightbot(data)
 	case SourceStreamElements:
 		return ParseStreamElements(data)
+	case SourceMoobot:
+		return ParseMoobot(data)
 	case "":
 		detected, err := detectSource(data)
 		if err != nil {

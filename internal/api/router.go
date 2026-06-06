@@ -134,7 +134,7 @@ type Deps struct {
 	CommandStore customcommands.Store
 
 	// TimerStore, when non-nil, lets the migration import create timers from a
-	// Nightbot/StreamElements export under /api/v1/migrate. Nil imports
+	// Nightbot/StreamElements/Moobot export under /api/v1/migrate. Nil imports
 	// commands only.
 	TimerStore timers.Store
 

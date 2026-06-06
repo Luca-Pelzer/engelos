@@ -69,6 +69,14 @@ type Store interface {
 	// (tenant, provider). Returns ErrOAuthIdentityNotFound when none.
 	GetBotIdentity(ctx context.Context, tenantID, provider string) (OAuthIdentity, error)
 
+	// GetUserIdentityByProvider returns the most recently updated
+	// purpose="user" identity for (tenant, provider). It lets the bot
+	// adapter fall back to the broadcaster's own token when no dedicated
+	// bot identity exists, which is the common case when the broadcaster
+	// and bot are the same Twitch account. Returns ErrOAuthIdentityNotFound
+	// when none.
+	GetUserIdentityByProvider(ctx context.Context, tenantID, provider string) (OAuthIdentity, error)
+
 	// UpdateOAuthTokens replaces the encrypted access/refresh tokens
 	// and the expiry of an existing identity. An empty refresh token
 	// stores SQL NULL. A zero expiresAt stores SQL NULL.

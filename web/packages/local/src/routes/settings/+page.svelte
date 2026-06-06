@@ -117,7 +117,7 @@
 
     {#if tab === 'danger'}
       <div class="spanel">
-        <div class="spanel-head"><h2>Gefahrenzone</h2><p>Irreversible Aktionen. Bitte mit Vorsicht verwenden.</p></div>
+        <div class="spanel-head danger-head"><h2>Gefahrenzone</h2><p>Irreversible Aktionen. Bitte mit Vorsicht verwenden.</p></div>
         <div class="card panel danger-card">
           <div class="frow split">
             <div class="ftext"><div class="t">Daten exportieren</div><div class="d">Lade ein Archiv deiner Einstellungen und Logs als JSON.</div></div>
@@ -163,7 +163,7 @@
   .sess-row .meta .sub { font-size: .8rem; color: var(--text-faint); margin-top: 2px; }
   .this-tag { font-size: .64rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); padding: 2px 7px; border-radius: 5px; }
   .danger-card { border-color: color-mix(in srgb, var(--bad) 30%, transparent); background: color-mix(in srgb, var(--bad) 6%, var(--panel-bg)); }
-  .danger-card .spanel-head h2 { color: var(--bad); }
+  .spanel-head.danger-head h2 { color: var(--bad); }
   .accent-big { display: flex; gap: 12px; }
   .accent-big button { width: 42px; height: 42px; border-radius: 12px; border: 2px solid transparent; cursor: pointer; padding: 0; position: relative; transition: .18s; }
   .accent-big button.on { border-color: var(--text); transform: scale(1.05); }

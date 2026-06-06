@@ -18,7 +18,8 @@
     ...rest
   }: Props = $props();
 
-  const inputId = id ?? `in-${Math.random().toString(36).slice(2, 9)}`;
+  const generatedId = `in-${Math.random().toString(36).slice(2, 9)}`;
+  const inputId = $derived(id ?? generatedId);
 </script>
 
 <label for={inputId} class="block {klass}">

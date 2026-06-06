@@ -2372,7 +2372,17 @@ func startPlatforms(ctx context.Context, logger *slog.Logger, store auth.Store, 
 				username = bot.ProviderLogin
 			}
 			logger.Info("twitch bot token loaded from store", "login", bot.ProviderLogin)
-		} else if !errors.Is(err, auth.ErrOAuthIdentityNotFound) && !errors.Is(err, auth.ErrCryptoRequired) {
+		} else if errors.Is(err, auth.ErrOAuthIdentityNotFound) {
+			if usr, uerr := store.GetUserIdentityByProvider(ctx, tenantID, auth.ProviderTwitch); uerr == nil {
+				oauthToken = usr.AccessToken
+				if usr.ProviderLogin != "" {
+					username = usr.ProviderLogin
+				}
+				logger.Info("twitch user token loaded from store (no bot identity; broadcaster is the bot)", "login", usr.ProviderLogin)
+			} else if !errors.Is(uerr, auth.ErrOAuthIdentityNotFound) && !errors.Is(uerr, auth.ErrCryptoRequired) {
+				logger.Warn("twitch user identity lookup failed", "err", uerr)
+			}
+		} else if !errors.Is(err, auth.ErrCryptoRequired) {
 			logger.Warn("twitch bot identity lookup failed", "err", err)
 		}
 		cfg := twitch.Config{

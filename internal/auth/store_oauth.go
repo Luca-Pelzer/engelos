@@ -176,6 +176,23 @@ func (s *sqliteStore) GetBotIdentity(ctx context.Context, tenantID, provider str
 	return o, nil
 }
 
+func (s *sqliteStore) GetUserIdentityByProvider(ctx context.Context, tenantID, provider string) (OAuthIdentity, error) {
+	if s.crypto == nil {
+		return OAuthIdentity{}, ErrCryptoRequired
+	}
+	row := s.db.QueryRowContext(ctx,
+		oauthSelect+`WHERE tenant_id = ? AND provider = ? AND purpose = ? ORDER BY updated_at DESC LIMIT 1`,
+		tenantID, provider, OAuthPurposeUser)
+	o, err := s.scanOAuthIdentity(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return OAuthIdentity{}, ErrOAuthIdentityNotFound
+	}
+	if err != nil {
+		return OAuthIdentity{}, fmt.Errorf("auth: get user identity: %w", err)
+	}
+	return o, nil
+}
+
 func (s *sqliteStore) UpdateOAuthTokens(ctx context.Context, id string, accessToken, refreshToken string, expiresAt time.Time) error {
 	if s.crypto == nil {
 		return ErrCryptoRequired

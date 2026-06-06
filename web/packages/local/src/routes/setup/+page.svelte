@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, Logo, Badge } from '@engelos/shared/components';
+  import { goto } from '$app/navigation';
 
   type Step = { n: number; title: string; sub: string };
   const steps: Step[] = [
@@ -46,7 +47,7 @@
     </ol>
 
     <div class="mt-10 flex flex-col items-center gap-3 reveal-up reveal-up-delay-3">
-      <Button size="lg" href="/setup/owner">
+      <Button size="lg" onclick={() => goto('/setup/owner')}>
         {#snippet children()}Start setup{/snippet}
       </Button>
       <p class="text-[12.5px] text-muted">

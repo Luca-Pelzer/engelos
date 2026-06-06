@@ -35,8 +35,8 @@
       <h2>Workspace anlegen</h2>
       <p class="muted">Verbinde Deinen Channel, um Deinen Bot einzurichten.</p>
 
-      <div><label class="fld">Channel-Login</label><div class="input"><input type="text" placeholder="z. B. deintwitchname" bind:value={slug} onkeydown={(e) => { if (e.key === 'Enter') create(); }} /></div></div>
-      <div><label class="fld">Anzeigename (optional)</label><div class="input"><input type="text" placeholder="Wird sonst aus dem Login abgeleitet" bind:value={displayName} /></div></div>
+      <div><label class="fld" for="onboard-slug">Channel-Login</label><div class="input"><input id="onboard-slug" type="text" placeholder="z. B. deintwitchname" bind:value={slug} onkeydown={(e) => { if (e.key === 'Enter') create(); }} /></div></div>
+      <div><label class="fld" for="onboard-display">Anzeigename (optional)</label><div class="input"><input id="onboard-display" type="text" placeholder="Wird sonst aus dem Login abgeleitet" bind:value={displayName} /></div></div>
 
       <div class="actions">
         <a class="btn btn-ghost btn-sm" href="/channels">Abbrechen</a>

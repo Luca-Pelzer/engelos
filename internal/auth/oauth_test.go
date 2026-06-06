@@ -275,6 +275,36 @@ func TestGetBotIdentity(t *testing.T) {
 	assert.Equal(t, "bot-tok", found.AccessToken)
 }
 
+func TestGetUserIdentityByProvider(t *testing.T) {
+	s, _, _ := newOAuthTestStore(t)
+	ctx := context.Background()
+	u := mustSeedUser(t, s, "local")
+
+	_, err := s.GetUserIdentityByProvider(ctx, "local", ProviderTwitch)
+	assert.ErrorIs(t, err, ErrOAuthIdentityNotFound)
+
+	bot, err := s.CreateOAuthIdentity(ctx, OAuthIdentity{
+		TenantID: "local", UserID: u.ID, Provider: ProviderTwitch,
+		ProviderUserID: "tw-bot", Purpose: OAuthPurposeBot, AccessToken: "bot-tok",
+	})
+	require.NoError(t, err)
+
+	_, err = s.GetUserIdentityByProvider(ctx, "local", ProviderTwitch)
+	assert.ErrorIs(t, err, ErrOAuthIdentityNotFound, "bot-purpose row must not satisfy GetUserIdentityByProvider")
+	_ = bot
+
+	user, err := s.CreateOAuthIdentity(ctx, OAuthIdentity{
+		TenantID: "local", UserID: u.ID, Provider: ProviderTwitch,
+		ProviderUserID: "tw-user-self", Purpose: OAuthPurposeUser, AccessToken: "user-tok",
+	})
+	require.NoError(t, err)
+
+	found, err := s.GetUserIdentityByProvider(ctx, "local", ProviderTwitch)
+	require.NoError(t, err)
+	assert.Equal(t, user.ID, found.ID)
+	assert.Equal(t, "user-tok", found.AccessToken)
+}
+
 func TestUpdateOAuthTokens(t *testing.T) {
 	s, _, _ := newOAuthTestStore(t)
 	ctx := context.Background()

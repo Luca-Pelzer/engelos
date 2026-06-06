@@ -89,11 +89,11 @@
 
     {#if showForm}
       <div class="form-card">
-        <div><label class="fld">Name</label><div class="input"><input type="text" placeholder="z. B. Subathon" bind:value={fName} /></div></div>
-        <div><label class="fld">Beschreibung (optional)</label><div class="input"><input type="text" placeholder="Kurzbeschreibung" bind:value={fDesc} /></div></div>
+        <div><label class="fld" for="liveops-name">Name</label><div class="input"><input id="liveops-name" type="text" placeholder="z. B. Subathon" bind:value={fName} /></div></div>
+        <div><label class="fld" for="liveops-desc">Beschreibung (optional)</label><div class="input"><input id="liveops-desc" type="text" placeholder="Kurzbeschreibung" bind:value={fDesc} /></div></div>
         <div class="form-grid">
-          <div><label class="fld">Start</label><div class="input"><input type="datetime-local" bind:value={fStart} /></div></div>
-          <div><label class="fld">Ende (optional)</label><div class="input"><input type="datetime-local" bind:value={fEnd} /></div></div>
+          <div><label class="fld" for="liveops-start">Start</label><div class="input"><input id="liveops-start" type="datetime-local" bind:value={fStart} /></div></div>
+          <div><label class="fld" for="liveops-end">Ende (optional)</label><div class="input"><input id="liveops-end" type="datetime-local" bind:value={fEnd} /></div></div>
         </div>
         <div class="form-actions">
           <button class="btn btn-ghost btn-sm" onclick={() => (showForm = false)}>Abbrechen</button>

@@ -35,6 +35,18 @@ individual commits.
     per-channel opt-in are unchanged.
 
 ### Added
+- **Moobot import.** The migration endpoint (`POST /api/v1/migrate`) now accepts
+  `source: "moobot"` alongside the existing Nightbot and StreamElements
+  importers, closing the last gap in the "switch from your old bot" onboarding
+  path. Moobot publishes no schema for its dashboard export and offers no public
+  API, so the parser is deliberately tolerant: it accepts the most likely field
+  spellings drawn from Moobot's own dashboard vocabulary, maps its
+  user-configured (and deprecated) numeric access tiers conservatively to
+  everyone, and converts timer cadences from minutes to seconds. Crucially it
+  returns an error instead of a silent empty success when nothing maps, so an
+  unrecognised file fails loudly rather than looking like a clean import. Because
+  the export has no reliable signature, Moobot is never auto-detected and must be
+  selected explicitly. Covered by parser tests.
 - **Timer and Manual triggers for the Action-Engine.** Rules can now fire on a
   fixed interval, not just on chat events and commands. A new scheduler loads
   every enabled timer rule on startup and reloads automatically when rules
@@ -231,7 +243,9 @@ individual commits.
 ### Added
 - Initial repository skeleton with Go 1.25 daemon and `go build` producing a
   ~7 MB static binary that serves `/healthz` on `127.0.0.1:8080`.
-
+- Long-term roadmap and architecture plan covering the multi-year vision,
+  stack decisions (Go + Wails + Bubble Tea + Svelte), dual-license strategy
+  (AGPL-3.0 core + Apache-2.0 SDK), and 8 architecture principles.
 - **Event-sourcing engine** (`internal/eventsourcing`): SQLite append-only
   store, ULID-based event IDs, multi-tenant isolation, `iter.Seq2` reads,
   embedded migrations, WAL mode, STRICT tables. 11 tests.
@@ -260,7 +274,7 @@ individual commits.
 
 ## Phase milestones (forward-looking)
 
-These are not releases yet - they are the forward-looking roadmap:
+These are not releases yet - they are the long-term roadmap:
 
 ### Phase 1 (June 2026 – December 2026)
 Core daemon with 6+ killer features, OSS public launch.

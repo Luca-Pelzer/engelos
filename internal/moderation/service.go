@@ -145,9 +145,7 @@ func (s *Service) Config() automod.Config {
 	return s.engine.Config()
 }
 
-// DryRun reports whether the engine is in dry-run (shadow) mode, so external
-// moderation paths (e.g. the AI context escalator) can honour the same gate as
-// the built-in filters and avoid enforcing in shadow mode. Safe on a nil
+// DryRun reports whether the engine is in dry-run (shadow) mode. Safe on a nil
 // Service (returns false).
 func (s *Service) DryRun() bool {
 	if s == nil {
@@ -156,18 +154,6 @@ func (s *Service) DryRun() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.engine.Config().Mode == automod.ModeDryRun
-}
-
-// LogExternal records an audit row for a moderation decision made outside the
-// built-in filter engine, tagging it with the "external" filter so it is
-// reviewable alongside the rule-engine actions. It writes only an audit entry
-// and never enforces. Safe on a nil Service or nil audit store (no-op).
-func (s *Service) LogExternal(ctx context.Context, msg Message, dec Decision) {
-	if s == nil {
-		return
-	}
-	result := automod.FilterResult{FilterName: "external", Reason: dec.Reason}
-	s.recordAudit(ctx, msg, result, dec)
 }
 
 // SetConfig validates and atomically swaps in a new filter configuration by
@@ -262,7 +248,7 @@ func (s *Service) Evaluate(ctx context.Context, msg Message) Decision {
 
 // escalActionKind maps an escalation-ladder Action onto the dispatcher's
 // ActionKind. A warn rung carries no enforcement beyond removal, so it maps to
-// ActionDelete; mergeVerdict uses this so the ladder mapping stays in one
+// ActionDelete; mergeVerdict consults it so the ladder mapping stays in one
 // place.
 func escalActionKind(escAction automodstate.Action) ActionKind {
 	switch escAction {

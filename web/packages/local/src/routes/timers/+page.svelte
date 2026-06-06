@@ -92,12 +92,12 @@
     {#if showForm}
       <div class="form-card">
         <div class="form-grid">
-          <div><label class="fld">Name</label><div class="input"><input type="text" placeholder="z. B. discord" bind:value={fName} disabled={editing !== null} /></div></div>
-          <div><label class="fld">Intervall (Minuten)</label><div class="input"><input type="number" min="1" bind:value={fIntervalMin} /></div></div>
+          <div><label class="fld" for="timer-name">Name</label><div class="input"><input id="timer-name" type="text" placeholder="z. B. discord" bind:value={fName} disabled={editing !== null} /></div></div>
+          <div><label class="fld" for="timer-interval">Intervall (Minuten)</label><div class="input"><input id="timer-interval" type="number" min="1" bind:value={fIntervalMin} /></div></div>
         </div>
-        <div><label class="fld">Nachricht</label><div class="input"><input type="text" placeholder="Tritt unserem Discord bei: ..." bind:value={fMessage} /></div></div>
+        <div><label class="fld" for="timer-message">Nachricht</label><div class="input"><input id="timer-message" type="text" placeholder="Tritt unserem Discord bei: ..." bind:value={fMessage} /></div></div>
         <div class="form-grid">
-          <div><label class="fld">Min. Chat-Zeilen seit letztem Post</label><div class="input"><input type="number" min="0" bind:value={fMinLines} /></div></div>
+          <div><label class="fld" for="timer-minlines">Min. Chat-Zeilen seit letztem Post</label><div class="input"><input id="timer-minlines" type="number" min="0" bind:value={fMinLines} /></div></div>
           <label class="enable-row"><input type="checkbox" bind:checked={fEnabled} /> Aktiviert</label>
         </div>
         <div class="form-actions">

@@ -25,7 +25,10 @@
     }
   }
 
-  onMount(() => { void load($page.params.channelSlug); });
+  onMount(() => {
+    const slug = $page.params.channelSlug;
+    if (slug) { void load(slug); } else { errorCode = 'not_found'; loading = false; }
+  });
 </script>
 
 <section class="page" data-screen-label="channel">
