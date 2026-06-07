@@ -18,6 +18,7 @@
     { href: '/counters', label: 'Counters', icon: '<path d="M4 5h16M4 12h16M4 19h16M8 3v18M16 3v18"/>' },
     { href: '/pity', label: 'Pity', icon: '<path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/>' },
     { href: '/streak', label: 'Streak', icon: '<path d="M13 2L4.5 13H11l-1 9 8.5-11H12z"/>' },
+    { href: '/moments', label: 'Moments', icon: '<rect x="3" y="6" width="18" height="14" rx="2.5"/><circle cx="12" cy="13" r="3.5"/><path d="M8.5 6l1.2-2h4.6l1.2 2"/>' },
     { href: '/wrapped', label: 'Wrapped', icon: '<path d="M12 8v13M12 8L8 4M12 8l4-4M4 8h16v3H4zM6 11v10h12V11"/>' },
     { href: '/timers', label: 'Auto-Ansagen', icon: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2.5h6"/>' },
     { href: '/quotes', label: 'Zitate', icon: '<path d="M7 7h4v4a4 4 0 0 1-4 4M13 7h4v4a4 4 0 0 1-4 4"/>' },

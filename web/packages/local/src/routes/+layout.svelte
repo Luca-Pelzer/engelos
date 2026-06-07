@@ -55,6 +55,7 @@
     if (path.startsWith('/songrequests')) return 'Song Requests';
     if (path.startsWith('/pity'))         return 'Pity';
     if (path.startsWith('/streak'))       return 'Streak';
+    if (path.startsWith('/moments'))      return 'Moments';
     if (path.startsWith('/wrapped'))      return 'Stream Wrapped';
     if (path.startsWith('/connections'))  return 'Connections';
     if (path.startsWith('/integrations')) return 'Integrationen';

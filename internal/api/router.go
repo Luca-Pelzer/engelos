@@ -23,6 +23,7 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/liveops"
 	"github.com/Luca-Pelzer/engelos/internal/loyalty"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
+	"github.com/Luca-Pelzer/engelos/internal/moments"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 	"github.com/Luca-Pelzer/engelos/internal/rewards"
@@ -194,6 +195,13 @@ type Deps struct {
 	// under /api/v1/cohost. Nil makes those endpoints return 501.
 	CoHostStore cohost.Store
 
+	// MomentsStore, when non-nil, exposes the BeReal-style moment feature
+	// under /api/v1/moments. Nil makes those endpoints return 501.
+	// MomentsBroadcaster, when non-nil, pushes overlay alerts when a moment
+	// opens or closes from the dashboard.
+	MomentsStore       moments.Store
+	MomentsBroadcaster handlers.MomentBroadcaster
+
 	// SongQueueStore, when non-nil, exposes the bot-managed YouTube song queue
 	// to the player overlay at /api/v1/songqueue/next (intentionally NOT
 	// session-protected; an OBS browser source cannot log in). Nil returns 501.
@@ -303,6 +311,7 @@ func NewRouter(deps Deps) chi.Router {
 	ttsH := handlers.NewTTS(deps.TTSStore, deps.TTSSecrets, deps.TenantID, logger)
 	clipperH := handlers.NewClipper(deps.ClipperStore, deps.TenantID, logger)
 	cohostH := handlers.NewCoHost(deps.CoHostStore, deps.TenantID, logger)
+	momentsH := handlers.NewMoments(deps.MomentsStore, deps.MomentsBroadcaster, deps.TenantID, logger)
 	connectionsH := handlers.NewConnections(deps.AuthStore, deps.TenantID, logger)
 	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
 	wrappedH := handlers.NewWrapped(deps.WrappedStore, deps.WrappedRanker, deps.TenantID, logger)
@@ -535,6 +544,12 @@ func NewRouter(deps Deps) chi.Router {
 			r.Route("/cohost", func(r chi.Router) {
 				r.Get("/", cohostH.Get)
 				r.Put("/", cohostH.Set)
+			})
+			r.Route("/moments", func(r chi.Router) {
+				r.Get("/", momentsH.Get)
+				r.Post("/", momentsH.Open)
+				r.Post("/end", momentsH.End)
+				r.Get("/{momentID}/participants", momentsH.Participants)
 			})
 		})
 
