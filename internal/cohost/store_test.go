@@ -49,6 +49,30 @@ func TestSet_ThenGet(t *testing.T) {
 	assert.Equal(t, time.UTC, got.UpdatedAt.Location())
 }
 
+func TestSet_SpeakRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	stored, err := s.Set(ctx, Config{TenantID: "local", Channel: "c", Speak: true})
+	require.NoError(t, err)
+	assert.True(t, stored.Speak)
+
+	got, err := s.Get(ctx, "local", "c")
+	require.NoError(t, err)
+	assert.True(t, got.Speak)
+
+	updated, err := s.Set(ctx, Config{TenantID: "local", Channel: "c", Speak: false})
+	require.NoError(t, err)
+	assert.False(t, updated.Speak)
+}
+
+func TestGetOrDefault_SpeakFalseWhenMissing(t *testing.T) {
+	s := newTestStore(t)
+	cfg, err := s.GetOrDefault(context.Background(), "local", "missing")
+	require.NoError(t, err)
+	assert.False(t, cfg.Speak)
+}
+
 func TestGet_NotFound(t *testing.T) {
 	s := newTestStore(t)
 	_, err := s.Get(context.Background(), "local", "missing")

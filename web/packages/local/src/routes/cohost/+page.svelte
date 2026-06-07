@@ -9,6 +9,7 @@
     bot_name: string;
     persona: string;
     max_reply_len: number;
+    speak: boolean;
     updated_at: string;
   };
 
@@ -17,6 +18,7 @@
   let botName = $state('');
   let persona = $state('');
   let maxReplyLen = $state(280);
+  let speak = $state(false);
   let loading = $state(false);
   let saving = $state(false);
   let loaded = $state(false);
@@ -53,6 +55,7 @@
       botName = c.bot_name;
       persona = c.persona;
       maxReplyLen = c.max_reply_len;
+      speak = c.speak;
       loaded = true;
     } catch (err) {
       handleError(err, 'load co-host settings');
@@ -70,6 +73,7 @@
         bot_name: botName,
         persona,
         max_reply_len: maxReplyLen,
+        speak,
       });
       toast('Co-Host settings saved.', 'success');
       loaded = true;
@@ -109,6 +113,14 @@
       <label class="flex items-center justify-between py-2 border-b border-soft cursor-pointer">
         <span class="text-[13px] text-fg">Enable co-host</span>
         <input type="checkbox" bind:checked={enabled} class="h-4 w-4 accent-[var(--color-accent)]" />
+      </label>
+
+      <label class="flex items-center justify-between py-2 border-b border-soft cursor-pointer">
+        <span class="text-[13px] text-fg">
+          Speak replies aloud
+          <span class="block text-[11.5px] text-fg-soft">Also voices each reply via AI Voice. Pick the voice on the AI Voice page.</span>
+        </span>
+        <input type="checkbox" bind:checked={speak} class="h-4 w-4 accent-[var(--color-accent)]" />
       </label>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">

@@ -57,6 +57,16 @@ func (a cohostConfigAdapter) SetCoHostPersona(ctx context.Context, channel, pers
 	return err
 }
 
+func (a cohostConfigAdapter) SetCoHostSpeak(ctx context.Context, channel string, speak bool) error {
+	cfg, err := a.store.GetOrDefault(ctx, a.tenantID, channel)
+	if err != nil {
+		return err
+	}
+	cfg.Speak = speak
+	_, err = a.store.Set(ctx, cfg)
+	return err
+}
+
 // coHostResponder adapts the per-channel config store plus a shared
 // cohost.Responder to runtime.CoHost. For each message it looks up the channel
 // config; when the co-host is disabled it returns ok=false so the dispatcher
@@ -69,24 +79,24 @@ type coHostResponder struct {
 	logger   *slog.Logger
 }
 
-func (m coHostResponder) Maybe(ctx context.Context, channel, userID, username, text string) (string, bool) {
+func (m coHostResponder) Maybe(ctx context.Context, channel, userID, username, text string) (string, bool, bool) {
 	cfg, err := m.store.GetOrDefault(ctx, m.tenantID, channel)
 	if err != nil {
 		m.logger.WarnContext(ctx, "cohost: config read failed", "channel", channel, "err", err)
-		return "", false
+		return "", false, false
 	}
 	if !cfg.Enabled {
-		return "", false
+		return "", false, false
 	}
 	reply, answered, err := m.resp.Respond(ctx, cfg, userID, username, text)
 	if err != nil {
 		m.logger.WarnContext(ctx, "cohost: backend failed", "channel", channel, "err", err)
-		return "", false
+		return "", false, false
 	}
 	if !answered {
-		return "", false
+		return "", false, false
 	}
-	return reply, true
+	return reply, cfg.Speak, true
 }
 
 // newCoHostResponder builds the dispatcher-facing co-host around a Claude

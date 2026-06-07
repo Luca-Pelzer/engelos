@@ -73,6 +73,7 @@ func (h *CoHost) Set(w http.ResponseWriter, r *http.Request) {
 		BotName     *string `json:"bot_name"`
 		Persona     *string `json:"persona"`
 		MaxReplyLen *int    `json:"max_reply_len"`
+		Speak       *bool   `json:"speak"`
 	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 16*1024))
 	dec.DisallowUnknownFields()
@@ -102,6 +103,9 @@ func (h *CoHost) Set(w http.ResponseWriter, r *http.Request) {
 	if req.MaxReplyLen != nil {
 		current.MaxReplyLen = *req.MaxReplyLen
 	}
+	if req.Speak != nil {
+		current.Speak = *req.Speak
+	}
 	saved, err := h.store.Set(r.Context(), current)
 	if err != nil {
 		h.writeStoreError(w, r, "cohost set failed", err)
@@ -128,6 +132,7 @@ func cohostJSON(c cohost.Config) map[string]any {
 		"bot_name":      c.BotName,
 		"persona":       c.Persona,
 		"max_reply_len": c.MaxReplyLen,
+		"speak":         c.Speak,
 		"updated_at":    c.UpdatedAt.Format(time.RFC3339),
 	}
 }

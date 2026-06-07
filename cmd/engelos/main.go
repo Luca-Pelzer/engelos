@@ -600,6 +600,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		Wrapped:          newWrappedRecorder(wrappedStore, defaultTenantID, logger),
 		Translator:       msgTranslator,
 		CoHost:           coHost,
+		CoHostSpeaker:    cohostSpeaker(ttsService),
 		ClipDetector:     autoClip,
 		Actions:          actionsEngine,
 		Logger:           logger,
@@ -1905,6 +1906,13 @@ func ttsSecrets(box *secrets.Box) handlers.TTSSecrets {
 }
 
 func channelPointsSpeaker(s *tts.Service) channelpoints.Speaker {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+func cohostSpeaker(s *tts.Service) runtime.CoHostSpeaker {
 	if s == nil {
 		return nil
 	}

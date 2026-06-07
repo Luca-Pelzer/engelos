@@ -55,6 +55,10 @@ type Config struct {
 	// MaxReplyLen caps the runes of a reply posted to chat. 0 means use the
 	// default (280); must be >= 0.
 	MaxReplyLen int
+	// Speak reports whether a reply is also spoken aloud through the AI-voice
+	// overlay (using the channel's TTS voice) in addition to being posted to
+	// chat. Default false.
+	Speak bool
 	// UpdatedAt is the UTC timestamp of the last write.
 	UpdatedAt time.Time
 }
@@ -227,7 +231,7 @@ func (s *sqliteStore) Get(ctx context.Context, tenantID, channel string) (Config
 	tenantID = strings.TrimSpace(tenantID)
 	channel = normalizeChannel(channel)
 	const q = `
-SELECT tenant_id, channel, enabled, bot_name, persona, max_reply_len, updated_at
+SELECT tenant_id, channel, enabled, bot_name, persona, max_reply_len, speak, updated_at
 FROM cohost_config
 WHERE tenant_id = ? AND channel = ?;`
 	row := s.db.QueryRowContext(ctx, q, tenantID, channel)
@@ -250,6 +254,7 @@ func (s *sqliteStore) GetOrDefault(ctx context.Context, tenantID, channel string
 		BotName:     defaultBotName,
 		Persona:     defaultPersona,
 		MaxReplyLen: defaultMaxReplyLen,
+		Speak:       false,
 	}, nil
 }
 
@@ -267,13 +272,14 @@ func (s *sqliteStore) Set(ctx context.Context, c Config) (Config, error) {
 	c.UpdatedAt = now
 
 	const q = `
-INSERT INTO cohost_config (id, tenant_id, channel, enabled, bot_name, persona, max_reply_len, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO cohost_config (id, tenant_id, channel, enabled, bot_name, persona, max_reply_len, speak, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(tenant_id, channel) DO UPDATE SET
 	enabled = excluded.enabled,
 	bot_name = excluded.bot_name,
 	persona = excluded.persona,
 	max_reply_len = excluded.max_reply_len,
+	speak = excluded.speak,
 	updated_at = excluded.updated_at;`
 	_, err = s.db.ExecContext(ctx, q,
 		newID(),
@@ -283,6 +289,7 @@ ON CONFLICT(tenant_id, channel) DO UPDATE SET
 		c.BotName,
 		c.Persona,
 		int64(c.MaxReplyLen),
+		boolToInt(c.Speak),
 		now.UnixNano(),
 	)
 	if err != nil {
@@ -298,7 +305,7 @@ ON CONFLICT(tenant_id, channel) DO UPDATE SET
 func (s *sqliteStore) List(ctx context.Context, tenantID string) ([]Config, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	const q = `
-SELECT tenant_id, channel, enabled, bot_name, persona, max_reply_len, updated_at
+SELECT tenant_id, channel, enabled, bot_name, persona, max_reply_len, speak, updated_at
 FROM cohost_config
 WHERE tenant_id = ?
 ORDER BY channel ASC;`
@@ -332,9 +339,10 @@ func scanConfig(row *sql.Row) (Config, error) {
 	var (
 		c       Config
 		enabled int64
+		speak   int64
 		updated int64
 	)
-	err := row.Scan(&c.TenantID, &c.Channel, &enabled, &c.BotName, &c.Persona, &c.MaxReplyLen, &updated)
+	err := row.Scan(&c.TenantID, &c.Channel, &enabled, &c.BotName, &c.Persona, &c.MaxReplyLen, &speak, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Config{}, ErrNotFound
 	}
@@ -342,6 +350,7 @@ func scanConfig(row *sql.Row) (Config, error) {
 		return Config{}, fmt.Errorf("cohost: scan: %w", err)
 	}
 	c.Enabled = enabled != 0
+	c.Speak = speak != 0
 	c.UpdatedAt = time.Unix(0, updated).UTC()
 	return c, nil
 }
@@ -351,13 +360,15 @@ func scanConfigRows(rows *sql.Rows) (Config, error) {
 	var (
 		c       Config
 		enabled int64
+		speak   int64
 		updated int64
 	)
-	err := rows.Scan(&c.TenantID, &c.Channel, &enabled, &c.BotName, &c.Persona, &c.MaxReplyLen, &updated)
+	err := rows.Scan(&c.TenantID, &c.Channel, &enabled, &c.BotName, &c.Persona, &c.MaxReplyLen, &speak, &updated)
 	if err != nil {
 		return Config{}, fmt.Errorf("cohost: scan row: %w", err)
 	}
 	c.Enabled = enabled != 0
+	c.Speak = speak != 0
 	c.UpdatedAt = time.Unix(0, updated).UTC()
 	return c, nil
 }

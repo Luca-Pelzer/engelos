@@ -104,10 +104,18 @@ type MessageTranslator interface {
 // cohost import.
 //
 // Maybe reports whether the channel has the co-host enabled and the message
-// addressed it, returning the reply to post back. It is best-effort: an empty
-// reply means "post nothing", and it must never block message processing.
+// addressed it, returning the reply to post back and whether the channel opted
+// to also speak it aloud. It is best-effort: an empty reply means "post
+// nothing", and it must never block message processing.
 type CoHost interface {
-	Maybe(ctx context.Context, channel, userID, username, text string) (reply string, ok bool)
+	Maybe(ctx context.Context, channel, userID, username, text string) (reply string, speak bool, ok bool)
+}
+
+// CoHostSpeaker speaks a co-host reply aloud on a channel through the AI-voice
+// overlay. A thin adapter over the internal/tts service satisfies it (wired in
+// main). It must be safe for concurrent use and never block.
+type CoHostSpeaker interface {
+	Speak(channel, text string)
 }
 
 // ClipDetector is the narrow contract the dispatcher feeds chat/sub/raid
@@ -309,6 +317,11 @@ type Config struct {
 	// bot and posts the reply to chat. Best-effort: it runs after command
 	// routing and a failure never blocks message processing.
 	CoHost CoHost
+
+	// CoHostSpeaker, when non-nil, speaks a co-host reply aloud when the
+	// channel opted in (CoHost.Maybe reports speak=true). Best-effort and
+	// non-blocking.
+	CoHostSpeaker CoHostSpeaker
 
 	// ClipDetector, when non-nil, is fed every chat message, sub and raid so
 	// an auto-clipper can capture clip-worthy moments. Best-effort and
@@ -836,7 +849,7 @@ func (d *Dispatcher) cohost(ctx context.Context, p adapters.Platform, ev adapter
 	if d.cfg.CoHost == nil || p == nil || ev.Message == nil {
 		return
 	}
-	reply, ok := d.cfg.CoHost.Maybe(ctx, ev.Channel, ev.Message.UserID, ev.Message.Username, ev.Message.Content)
+	reply, speak, ok := d.cfg.CoHost.Maybe(ctx, ev.Channel, ev.Message.UserID, ev.Message.Username, ev.Message.Content)
 	if !ok || reply == "" {
 		return
 	}
@@ -847,6 +860,9 @@ func (d *Dispatcher) cohost(ctx context.Context, p adapters.Platform, ev adapter
 	}); err != nil {
 		d.logger.Warn("cohost send failed",
 			"platform", ev.Platform, "channel", ev.Channel, "err", err)
+	}
+	if speak && d.cfg.CoHostSpeaker != nil {
+		d.cfg.CoHostSpeaker.Speak(ev.Channel, reply)
 	}
 }
 

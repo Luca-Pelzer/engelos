@@ -10,11 +10,12 @@ import (
 )
 
 type fakeCoHostStore struct {
-	enabled   bool
-	name      string
-	enaCalls  []setEconomyCall
-	nameCalls []string
-	personas  []string
+	enabled    bool
+	name       string
+	enaCalls   []setEconomyCall
+	nameCalls  []string
+	personas   []string
+	speakCalls []bool
 }
 
 func (f *fakeCoHostStore) CoHostStatus(_ context.Context, _ string) (bool, string) {
@@ -37,6 +38,11 @@ func (f *fakeCoHostStore) SetCoHostName(_ context.Context, _, name string) error
 
 func (f *fakeCoHostStore) SetCoHostPersona(_ context.Context, _, persona string) error {
 	f.personas = append(f.personas, persona)
+	return nil
+}
+
+func (f *fakeCoHostStore) SetCoHostSpeak(_ context.Context, _ string, speak bool) error {
+	f.speakCalls = append(f.speakCalls, speak)
 	return nil
 }
 
@@ -80,6 +86,18 @@ func TestCoHostToggle_SetPersona(t *testing.T) {
 	require.Len(t, store.personas, 1)
 	assert.Equal(t, "a witty gremlin", store.personas[0])
 	assert.Contains(t, reply.Text, "persona")
+}
+
+func TestCoHostToggle_SetSpeak(t *testing.T) {
+	store := &fakeCoHostStore{}
+	cmd := commands.NewCoHostToggleCommand(store)
+	on := cmd.Handler(context.Background(), modMsg("!cohost speak on"), []string{"speak", "on"})
+	off := cmd.Handler(context.Background(), modMsg("!cohost speak off"), []string{"speak", "off"})
+	require.Len(t, store.speakCalls, 2)
+	assert.True(t, store.speakCalls[0])
+	assert.False(t, store.speakCalls[1])
+	assert.Contains(t, on.Text, "ON")
+	assert.Contains(t, off.Text, "OFF")
 }
 
 func TestCoHostToggle_NilStore(t *testing.T) {

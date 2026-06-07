@@ -21,6 +21,7 @@ type CoHostConfigStore interface {
 	SetCoHostEnabled(ctx context.Context, channel string, enabled bool) error
 	SetCoHostName(ctx context.Context, channel, name string) error
 	SetCoHostPersona(ctx context.Context, channel, persona string) error
+	SetCoHostSpeak(ctx context.Context, channel string, speak bool) error
 }
 
 // NewCoHostToggleCommand returns "!cohost". Mods-only.
@@ -32,7 +33,7 @@ type CoHostConfigStore interface {
 func NewCoHostToggleCommand(store CoHostConfigStore) Command {
 	return Command{
 		Name:         "cohost",
-		Help:         "Turn the AI co-host on or off and set its name/persona - !cohost on|off|status|name <name>|persona <text>.",
+		Help:         "Turn the AI co-host on or off and set its name/persona/voice - !cohost on|off|status|name <name>|persona <text>|speak on|off.",
 		MinRole:      RoleModerator,
 		UserCooldown: defaultAdminUserCooldown,
 		Handler: func(ctx context.Context, msg Message, args []string) Reply {
@@ -76,8 +77,18 @@ func NewCoHostToggleCommand(store CoHostConfigStore) Command {
 					return Reply{Text: fmt.Sprintf("%scouldn't update the co-host persona", mentionPrefix(msg))}
 				}
 				return Reply{Text: fmt.Sprintf("%sco-host persona updated", mentionPrefix(msg))}
+			case "speak", "voice":
+				if len(args) < 2 {
+					return Reply{Text: fmt.Sprintf("%susage: !cohost speak on|off", mentionPrefix(msg))}
+				}
+				sub := strings.ToLower(strings.TrimSpace(args[1]))
+				on := sub == "on" || sub == "enable" || sub == "enabled"
+				if err := store.SetCoHostSpeak(ctx, msg.Channel, on); err != nil {
+					return Reply{Text: fmt.Sprintf("%scouldn't update the co-host voice", mentionPrefix(msg))}
+				}
+				return Reply{Text: fmt.Sprintf("%sco-host voice is now %s", mentionPrefix(msg), onOff(on))}
 			default:
-				return Reply{Text: fmt.Sprintf("%susage: !cohost on|off|status|name <name>|persona <text>",
+				return Reply{Text: fmt.Sprintf("%susage: !cohost on|off|status|name <name>|persona <text>|speak on|off",
 					mentionPrefix(msg))}
 			}
 		},
