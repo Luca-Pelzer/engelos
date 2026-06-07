@@ -3,6 +3,7 @@ package cohost
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -47,6 +48,24 @@ func TestSet_ThenGet(t *testing.T) {
 	assert.Equal(t, "Engel", got.BotName)
 	assert.Equal(t, 200, got.MaxReplyLen)
 	assert.Equal(t, time.UTC, got.UpdatedAt.Location())
+}
+
+func TestMigrations_RerunIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	dsn := "file:" + filepath.Join(dir, "cohost.db")
+	ctx := context.Background()
+
+	s1, err := OpenSQLiteStore(ctx, dsn)
+	require.NoError(t, err)
+	require.NoError(t, s1.Close())
+
+	s2, err := OpenSQLiteStore(ctx, dsn)
+	require.NoError(t, err, "reopening must re-run migrations without failing on the ALTER")
+	t.Cleanup(func() { _ = s2.Close() })
+
+	stored, err := s2.Set(ctx, Config{TenantID: "local", Channel: "c", Speak: true})
+	require.NoError(t, err)
+	assert.True(t, stored.Speak)
 }
 
 func TestSet_SpeakRoundTrip(t *testing.T) {

@@ -145,6 +145,12 @@ func migrate(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("cohost: read migration %s: %w", name, err)
 		}
 		if _, err := db.ExecContext(ctx, string(b)); err != nil {
+			// This runner re-executes every migration on each boot, so an
+			// "ALTER TABLE ADD COLUMN" re-run reports the column already
+			// exists. Treat that as already-applied; any other error is fatal.
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
 			return fmt.Errorf("cohost: exec migration %s: %w", name, err)
 		}
 	}
