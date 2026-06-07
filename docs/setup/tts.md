@@ -38,6 +38,35 @@ ein OBS-Browser-Source-Overlay ab. Du bringst deinen eigenen ElevenLabs-Key mit
 
 ---
 
+## 2a. Eigene Stimme klonen (optional)
+
+Statt einer fertigen ElevenLabs-Stimme kannst du deine eigene Stimme (oder eine
+Wunschstimme) klonen, sodass der Bot in dieser Stimme spricht. Dafuer muss oben
+bereits ein ElevenLabs API-Key gespeichert sein.
+
+1. Auf der **AI Voice**-Seite zur Karte **Clone your own voice** scrollen.
+2. Einen **Voice name** vergeben (frei waehlbar, taucht spaeter im Stimmen-Menue
+   auf).
+3. Unter **Audio samples** eine oder mehrere Audiodateien auswaehlen. Am besten
+   ein bis zwei Minuten klare Sprache ohne Hintergrundgeraeusche; MP3 oder WAV
+   funktionieren.
+4. **Create voice clone** klicken. Die neue Stimme wird erstellt, die Liste neu
+   geladen und die geklonte Stimme automatisch ausgewaehlt.
+5. **Save changes**, damit der Bot die neue Stimme fuer Alerts nutzt.
+
+Hinweise:
+
+- **Verifizierung:** ElevenLabs verlangt fuer manche geklonte Stimmen eine
+  einmalige Verifizierung. Erscheint die Warnung "needs verification", die
+  Stimme einmal im ElevenLabs-Dashboard verifizieren, danach ist sie nutzbar.
+- **Stimmen-Kontingent:** Jeder ElevenLabs-Tier erlaubt nur eine begrenzte Zahl
+  eigener Stimmen (Free-Tier z. B. 3). Nicht mehr benoetigte Stimmen mit
+  **Delete this voice** unter dem Stimmen-Menue entfernen.
+- **Rechte:** Klone nur Stimmen, fuer die du die Erlaubnis hast (deine eigene
+  oder eine ausdruecklich freigegebene).
+
+---
+
 ## 3. Audio-Overlay in OBS einbinden
 
 Der Bot synthesisiert das Audio, abgespielt wird es im Browser, damit OBS es als

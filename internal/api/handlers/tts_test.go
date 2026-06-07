@@ -1,14 +1,18 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/Luca-Pelzer/engelos/internal/tts"
 )
@@ -160,5 +164,117 @@ func TestTTSVoicesNoKey(t *testing.T) {
 	h.Voices(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("got %d want 400 (no_api_key)", rec.Code)
+	}
+}
+
+func multipartCloneBody(t *testing.T, name string, files map[string][]byte) (string, *bytes.Buffer) {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	if name != "" {
+		_ = mw.WriteField("name", name)
+	}
+	for fn, data := range files {
+		part, err := mw.CreateFormFile("files", fn)
+		if err != nil {
+			t.Fatalf("create form file: %v", err)
+		}
+		_, _ = part.Write(data)
+	}
+	_ = mw.Close()
+	return mw.FormDataContentType(), &buf
+}
+
+func TestTTSCloneMissingChannel(t *testing.T) {
+	h, _ := newTTSHandler(t)
+	ct, body := multipartCloneBody(t, "My Voice", map[string][]byte{"a.mp3": []byte("x")})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tts/clone", body)
+	req.Header.Set("Content-Type", ct)
+	rec := httptest.NewRecorder()
+	h.Clone(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d want 400", rec.Code)
+	}
+}
+
+func TestTTSCloneMissingName(t *testing.T) {
+	h, _ := newTTSHandler(t)
+	ct, body := multipartCloneBody(t, "", map[string][]byte{"a.mp3": []byte("x")})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tts/clone?channel=chan", body)
+	req.Header.Set("Content-Type", ct)
+	rec := httptest.NewRecorder()
+	h.Clone(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d want 400", rec.Code)
+	}
+}
+
+func TestTTSCloneNoFiles(t *testing.T) {
+	h, _ := newTTSHandler(t)
+	ct, body := multipartCloneBody(t, "My Voice", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tts/clone?channel=chan", body)
+	req.Header.Set("Content-Type", ct)
+	rec := httptest.NewRecorder()
+	h.Clone(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d want 400", rec.Code)
+	}
+}
+
+func TestTTSCloneNoAPIKey(t *testing.T) {
+	h, _ := newTTSHandler(t)
+	ct, body := multipartCloneBody(t, "My Voice", map[string][]byte{"a.mp3": []byte("x")})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tts/clone?channel=chan", body)
+	req.Header.Set("Content-Type", ct)
+	rec := httptest.NewRecorder()
+	h.Clone(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d want 400 (no_api_key), body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "no_api_key") {
+		t.Fatalf("expected no_api_key error, got: %s", rec.Body.String())
+	}
+}
+
+func TestTTSDeleteVoiceMissingID(t *testing.T) {
+	h, _ := newTTSHandler(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/tts/voices/?channel=chan", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("voiceID", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+	h.DeleteVoice(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d want 400", rec.Code)
+	}
+}
+
+func TestTTSDeleteVoiceNoAPIKey(t *testing.T) {
+	h, _ := newTTSHandler(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/tts/voices/v1?channel=chan", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("voiceID", "v1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+	h.DeleteVoice(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d want 400 (no_api_key), body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTTSCloneDisabledWhenNoSecrets(t *testing.T) {
+	st, err := tts.OpenSQLiteStore(context.Background(), "file:tts_clone_nosecrets?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	h := NewTTS(st, nil, "tenant1", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ct, body := multipartCloneBody(t, "n", map[string][]byte{"a.mp3": []byte("x")})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tts/clone?channel=chan", body)
+	req.Header.Set("Content-Type", ct)
+	rec := httptest.NewRecorder()
+	h.Clone(rec, req)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("got %d want 501", rec.Code)
 	}
 }

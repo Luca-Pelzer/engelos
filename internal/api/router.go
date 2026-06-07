@@ -525,6 +525,8 @@ func NewRouter(deps Deps) chi.Router {
 				r.Get("/", ttsH.Get)
 				r.Put("/", ttsH.Set)
 				r.Get("/voices", ttsH.Voices)
+				r.Post("/clone", ttsH.Clone)
+				r.Delete("/voices/{voiceID}", ttsH.DeleteVoice)
 			})
 			r.Route("/clipper", func(r chi.Router) {
 				r.Get("/", clipperH.Get)

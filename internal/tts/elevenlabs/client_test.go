@@ -168,3 +168,153 @@ func TestVoicesMissingKey(t *testing.T) {
 		t.Fatalf("got %v want ErrAPIKeyRequired", err)
 	}
 }
+
+func TestCreateVoiceClone(t *testing.T) {
+	var gotPath, gotKey, gotName string
+	var gotFilenames []string
+	var gotFileData []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotKey = r.Header.Get("xi-api-key")
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("parse multipart: %v", err)
+		}
+		gotName = r.FormValue("name")
+		for _, fhs := range r.MultipartForm.File["files"] {
+			gotFilenames = append(gotFilenames, fhs.Filename)
+			f, _ := fhs.Open()
+			b, _ := io.ReadAll(f)
+			_ = f.Close()
+			gotFileData = append(gotFileData, string(b))
+		}
+		_, _ = io.WriteString(w, `{"voice_id":"newvoice123","requires_verification":false}`)
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv)
+	got, err := c.CreateVoiceClone(context.Background(), "My Clone", []VoiceSample{
+		{Filename: "a.mp3", Data: []byte("audio-a")},
+		{Filename: "b.mp3", Data: []byte("audio-b")},
+	})
+	if err != nil {
+		t.Fatalf("CreateVoiceClone: %v", err)
+	}
+	if got.VoiceID != "newvoice123" || got.RequiresVerification {
+		t.Fatalf("bad result: %+v", got)
+	}
+	if gotPath != "/v1/voices/add" {
+		t.Fatalf("bad path: %s", gotPath)
+	}
+	if gotKey != "test-key" {
+		t.Fatalf("bad key header: %s", gotKey)
+	}
+	if gotName != "My Clone" {
+		t.Fatalf("bad name: %s", gotName)
+	}
+	if len(gotFilenames) != 2 || gotFilenames[0] != "a.mp3" || gotFilenames[1] != "b.mp3" {
+		t.Fatalf("bad filenames: %v", gotFilenames)
+	}
+	if len(gotFileData) != 2 || gotFileData[0] != "audio-a" || gotFileData[1] != "audio-b" {
+		t.Fatalf("bad file data: %v", gotFileData)
+	}
+}
+
+func TestCreateVoiceCloneSkipsEmptySamples(t *testing.T) {
+	var count int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20)
+		count = len(r.MultipartForm.File["files"])
+		_, _ = io.WriteString(w, `{"voice_id":"v","requires_verification":true}`)
+	}))
+	defer srv.Close()
+
+	c := testClient(t, srv)
+	got, err := c.CreateVoiceClone(context.Background(), "n", []VoiceSample{
+		{Filename: "empty.mp3", Data: nil},
+		{Filename: "real.mp3", Data: []byte("x")},
+	})
+	if err != nil {
+		t.Fatalf("CreateVoiceClone: %v", err)
+	}
+	if !got.RequiresVerification {
+		t.Fatalf("expected requires_verification true")
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 uploaded file, got %d", count)
+	}
+}
+
+func TestCreateVoiceCloneValidation(t *testing.T) {
+	c := New(WithBaseURL("http://unused"), WithAPIKey("k"))
+	if _, err := c.CreateVoiceClone(context.Background(), "  ", []VoiceSample{{Data: []byte("x")}}); !errors.Is(err, ErrAPI) {
+		t.Fatalf("empty name: got %v want ErrAPI", err)
+	}
+	if _, err := c.CreateVoiceClone(context.Background(), "n", nil); !errors.Is(err, ErrAPI) {
+		t.Fatalf("no samples: got %v want ErrAPI", err)
+	}
+	if _, err := c.CreateVoiceClone(context.Background(), "n", []VoiceSample{{Data: nil}}); !errors.Is(err, ErrAPI) {
+		t.Fatalf("all-empty samples: got %v want ErrAPI", err)
+	}
+	nokey := New(WithBaseURL("http://unused"))
+	if _, err := nokey.CreateVoiceClone(context.Background(), "n", []VoiceSample{{Data: []byte("x")}}); !errors.Is(err, ErrAPIKeyRequired) {
+		t.Fatalf("missing key: got %v want ErrAPIKeyRequired", err)
+	}
+}
+
+func TestCreateVoiceCloneNoVoiceID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"requires_verification":false}`)
+	}))
+	defer srv.Close()
+	c := testClient(t, srv)
+	if _, err := c.CreateVoiceClone(context.Background(), "n", []VoiceSample{{Data: []byte("x")}}); !errors.Is(err, ErrAPI) {
+		t.Fatalf("got %v want ErrAPI", err)
+	}
+}
+
+func TestDeleteVoice(t *testing.T) {
+	var gotPath, gotMethod, gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotKey = r.Header.Get("xi-api-key")
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	}))
+	defer srv.Close()
+	c := testClient(t, srv)
+	if err := c.DeleteVoice(context.Background(), "voice123"); err != nil {
+		t.Fatalf("DeleteVoice: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("bad method: %s", gotMethod)
+	}
+	if gotPath != "/v1/voices/voice123" {
+		t.Fatalf("bad path: %s", gotPath)
+	}
+	if gotKey != "test-key" {
+		t.Fatalf("bad key header: %s", gotKey)
+	}
+}
+
+func TestDeleteVoiceValidation(t *testing.T) {
+	c := New(WithBaseURL("http://unused"), WithAPIKey("k"))
+	if err := c.DeleteVoice(context.Background(), "  "); !errors.Is(err, ErrAPI) {
+		t.Fatalf("empty id: got %v want ErrAPI", err)
+	}
+	nokey := New(WithBaseURL("http://unused"))
+	if err := nokey.DeleteVoice(context.Background(), "v"); !errors.Is(err, ErrAPIKeyRequired) {
+		t.Fatalf("missing key: got %v want ErrAPIKeyRequired", err)
+	}
+}
+
+func TestDeleteVoiceServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"detail":"nope"}`)
+	}))
+	defer srv.Close()
+	c := testClient(t, srv)
+	if err := c.DeleteVoice(context.Background(), "v"); !errors.Is(err, ErrAPI) {
+		t.Fatalf("got %v want ErrAPI", err)
+	}
+}

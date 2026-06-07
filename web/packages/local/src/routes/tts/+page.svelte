@@ -26,6 +26,11 @@
   let loadingVoices = $state(false);
   let loaded = $state(false);
 
+  let cloneName = $state('');
+  let cloneFiles = $state<FileList | null>(null);
+  let cloning = $state(false);
+  let deletingVoice = $state(false);
+
   $effect(() => {
     const slug = $activeWorkspace;
     if (slug && slug !== channel) { channel = slug; void load(); }
@@ -96,6 +101,45 @@
       loadingVoices = false;
     }
   }
+
+  async function createClone() {
+    if (!channel || cloneName.trim() === '' || !cloneFiles || cloneFiles.length === 0) { return; }
+    cloning = true;
+    try {
+      const fd = new FormData();
+      fd.append('name', cloneName.trim());
+      for (const file of Array.from(cloneFiles)) { fd.append('files', file); }
+      const res = await channelApi(channel).post<{ voice_id: string; requires_verification: boolean }>('/tts/clone', fd);
+      await loadVoices();
+      voiceId = res.voice_id;
+      cloneName = '';
+      cloneFiles = null;
+      if (res.requires_verification) {
+        toast('Voice created, but ElevenLabs needs verification before it can speak. Verify it in your ElevenLabs dashboard.', 'warn', 7000);
+      } else {
+        toast('Voice clone created and selected.', 'success');
+      }
+    } catch (err) {
+      handleError(err, 'create voice clone');
+    } finally {
+      cloning = false;
+    }
+  }
+
+  async function deleteSelectedVoice() {
+    if (!channel || !voiceId) { return; }
+    deletingVoice = true;
+    try {
+      await channelApi(channel).delete('/tts/voices/' + encodeURIComponent(voiceId));
+      voiceId = '';
+      await loadVoices();
+      toast('Voice deleted.', 'success');
+    } catch (err) {
+      handleError(err, 'delete voice');
+    } finally {
+      deletingVoice = false;
+    }
+  }
 </script>
 
 <section class="space-y-6 max-w-3xl">
@@ -157,6 +201,11 @@
           <button type="button" class="tts-link" onclick={loadVoices} disabled={loadingVoices}>
             {loadingVoices ? 'Loading voices...' : 'Load voices from my account'}
           </button>
+          {#if voiceId}
+            <button type="button" class="tts-link tts-link-danger" onclick={deleteSelectedVoice} disabled={deletingVoice}>
+              {deletingVoice ? 'Deleting...' : 'Delete this voice'}
+            </button>
+          {/if}
         </label>
         <label class="block">
           <span class="block text-[12.5px] text-fg-soft mb-1.5">Model</span>
@@ -173,6 +222,46 @@
         <span class="block text-[11.5px] text-fg-soft mt-1">
           Add this as a browser source in OBS. It plays the spoken alerts; the key stays on the bot.
         </span>
+      </div>
+    </Card>
+
+    <Card class="reveal-up reveal-up-delay-3">
+      <div class="flex items-start justify-between mb-1">
+        <h3 class="text-[14px] font-semibold tracking-tight text-fg">Clone your own voice</h3>
+        <Badge tone="neutral">ElevenLabs</Badge>
+      </div>
+      <p class="text-[12.5px] text-fg-soft mb-5">
+        Upload audio to train a voice clone, then pick it as the voice above. Works best with one to
+        two minutes of clear speech with no background noise.
+      </p>
+
+      {#if !hasApiKey}
+        <p class="text-[12.5px] text-fg-soft mb-4">Save your ElevenLabs API key above first.</p>
+      {/if}
+
+      <label class="block">
+        <span class="block text-[12.5px] text-fg-soft mb-1.5">Voice name</span>
+        <input bind:value={cloneName} placeholder="My voice" class="tts-input" />
+      </label>
+
+      <label class="block mt-4">
+        <span class="block text-[12.5px] text-fg-soft mb-1.5">Audio samples</span>
+        <input
+          type="file"
+          accept="audio/*"
+          multiple
+          onchange={(e) => { cloneFiles = e.currentTarget.files; }}
+          class="tts-input tts-file"
+        />
+        {#if cloneFiles && cloneFiles.length > 0}
+          <span class="block text-[11.5px] text-fg-soft mt-1.5">{cloneFiles.length} file{cloneFiles.length === 1 ? '' : 's'} selected</span>
+        {/if}
+      </label>
+
+      <div class="flex justify-end mt-5">
+        <Button onclick={createClone} disabled={cloning || !hasApiKey || cloneName.trim() === '' || !cloneFiles || cloneFiles.length === 0}>
+          {#snippet children()}{cloning ? 'Creating...' : 'Create voice clone'}{/snippet}
+        </Button>
       </div>
     </Card>
 
@@ -210,5 +299,23 @@
   .tts-link:disabled {
     opacity: 0.6;
     cursor: default;
+  }
+  .tts-link-danger {
+    margin-left: 12px;
+    color: var(--color-danger, #ef4444);
+  }
+  .tts-file {
+    padding: 7px 11px;
+    cursor: pointer;
+  }
+  .tts-file::file-selector-button {
+    margin-right: 10px;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm, 6px);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-fg);
+    font-size: 12px;
+    cursor: pointer;
   }
 </style>

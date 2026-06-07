@@ -44,15 +44,25 @@ export function getAuthToken(): string | null {
 
 export async function request<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+  const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...opts.headers,
   };
-  if (opts.body !== undefined) {
+  if (opts.body !== undefined && !isFormData) {
     headers['Content-Type'] = 'application/json';
   }
   if (authToken) {
     headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  let body: BodyInit | undefined;
+  if (opts.body === undefined) {
+    body = undefined;
+  } else if (isFormData) {
+    body = opts.body as FormData;
+  } else {
+    body = JSON.stringify(opts.body);
   }
 
   let res: Response;
@@ -60,7 +70,7 @@ export async function request<T = unknown>(path: string, opts: RequestOptions = 
     res = await fetch(url, {
       method: opts.method ?? 'GET',
       headers,
-      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      body,
       signal: opts.signal,
       credentials: 'include',
     });
