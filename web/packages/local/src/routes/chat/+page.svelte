@@ -76,8 +76,8 @@
       await api.post('/api/v1/chat/send', { platform: target, text });
     } catch (err) {
       const msg = err instanceof ApiException && err.status === 404
-        ? 'Senden noch nicht verfuegbar (Backend folgt).'
-        : 'Nachricht konnte nicht gesendet werden.';
+        ? 'Sending is not available yet (backend coming).'
+        : 'Message could not be sent.';
       toast(msg, 'error');
     }
   }
@@ -94,8 +94,8 @@
       messages = [...messages];
     } catch (err) {
       const msg = err instanceof ApiException && err.status === 404
-        ? 'Moderation noch nicht verfuegbar (Backend folgt).'
-        : 'Aktion fehlgeschlagen.';
+        ? 'Moderation is not available yet (backend coming).'
+        : 'Action failed.';
       toast(msg, 'error');
     }
   }
@@ -125,7 +125,7 @@
       Nur Mods
     </button>
     <div class="grow"></div>
-    <span class="count"><b>{visible.length}</b> Nachrichten</span>
+    <span class="count"><b>{visible.length}</b> messages</span>
     <button class="icon-btn" class:on={autoScroll} title="Auto-Scroll" onclick={() => (autoScroll = !autoScroll)}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="5" width="3.5" height="14" rx="1" /><rect x="14.5" y="5" width="3.5" height="14" rx="1" /></svg>
     </button>
@@ -144,12 +144,12 @@
             <span class="uname" class:struck={m.state === 'banned'}>{m.username}</span>
             <span class="sep">:</span>
             <span class="txt">{m.content}</span>
-            <span class="gone">Nachricht entfernt</span>
+            <span class="gone">Message removed</span>
             {#if m.state === 'timeout'}<span class="penalty to">Timeout</span>{/if}
             {#if m.state === 'banned'}<span class="penalty ban">Ban</span>{/if}
           </span>
           <div class="modbar">
-            <button class="mod-act del" onclick={() => moderate(m, 'delete')} aria-label="Loeschen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg></button>
+            <button class="mod-act del" onclick={() => moderate(m, 'delete')} aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg></button>
             <button class="mod-act timeout" onclick={() => moderate(m, 'timeout')} aria-label="Timeout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9 2.5h6" /></svg></button>
             <button class="mod-act ban" onclick={() => moderate(m, 'ban')} aria-label="Ban"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6 18.4 18.4" /></svg></button>
           </div>
@@ -163,8 +163,8 @@
           <div class="fs-ic">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0z" /><path d="M12 16v5" /><path d="m3 3 18 18" /></svg>
           </div>
-          <h3>Keine Plattform verbunden</h3>
-          <p>Verbinde Twitch, YouTube oder Kick, um den Live-Chat zu empfangen und zu moderieren.</p>
+          <h3>No platform connected</h3>
+          <p>Connect Twitch, YouTube or Kick to receive and moderate live chat.</p>
           <p style="font-size:.8rem"><a href="/integrations" style="color:var(--brand);text-decoration:none;font-weight:600">Alle Integrationen verwalten</a></p>
         </div>
       </div>
@@ -188,13 +188,13 @@
         bind:value={draft}
         onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
       />
-      <button class="send-btn" onclick={send} aria-label="Senden">
+      <button class="send-btn" onclick={send} aria-label="Send">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" /></svg>
       </button>
     </div>
     <div class="note">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8 7 9 4-1 7-4.5 7-9V6z" /></svg>
-      Du schreibst als <b style="color:var(--text-dim);margin:0 3px;font-weight:700">Host</b>. Befehle wie <code style="font-family:var(--mono);color:var(--brand)">!so</code> werden unterstuetzt.
+      You are chatting as <b style="color:var(--text-dim);margin:0 3px;font-weight:700">Host</b>. Commands like <code style="font-family:var(--mono);color:var(--brand)">!so</code> are supported.
     </div>
   </div>
 </section>

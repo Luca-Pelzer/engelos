@@ -261,9 +261,60 @@ func TestAdapter_OnMessageCreate_LearnsGuildMapping(t *testing.T) {
 
 	select {
 	case ev := <-a.Events():
-		assert.Equal(t, adapters.EventMessageCreated, ev.Type)
+		assert.Equal(t, adapters.EventDiscordMessage, ev.Type)
+		require.NotNil(t, ev.Discord)
+		assert.Equal(t, "hi", ev.Discord.Text)
+		assert.False(t, ev.Discord.IsDM)
 	case <-time.After(time.Second):
-		t.Fatal("expected message.created event on the channel")
+		t.Fatal("expected discord.message event on the channel")
+	}
+}
+
+func TestAdapter_OnMessageCreate_DropsBotMessages(t *testing.T) {
+	t.Parallel()
+	a := newTestAdapter(Config{Token: "tkn"})
+	fakeConnected(a, &discordgo.Session{})
+
+	m := &discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "m-bot",
+			ChannelID: "chan-1",
+			GuildID:   "guild-1",
+			Content:   "i am a bot (or myself)",
+			Author:    &discordgo.User{ID: "bot-user", Username: "engelbot", Bot: true},
+		},
+	}
+	a.onMessageCreate(m)
+
+	select {
+	case ev := <-a.Events():
+		t.Fatalf("expected bot/self message to be dropped, got %+v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestAdapter_OnMessageCreate_DirectMessageFlag(t *testing.T) {
+	t.Parallel()
+	a := newTestAdapter(Config{Token: "tkn"})
+	fakeConnected(a, &discordgo.Session{})
+
+	m := &discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ID:        "dm-1",
+			ChannelID: "dm-chan",
+			GuildID:   "",
+			Content:   "hey bot",
+			Author:    &discordgo.User{ID: "u", Username: "n"},
+		},
+	}
+	a.onMessageCreate(m)
+
+	select {
+	case ev := <-a.Events():
+		require.NotNil(t, ev.Discord)
+		assert.True(t, ev.Discord.IsDM, "empty guild id => direct message")
+	case <-time.After(time.Second):
+		t.Fatal("expected discord.message event for the DM")
 	}
 }
 

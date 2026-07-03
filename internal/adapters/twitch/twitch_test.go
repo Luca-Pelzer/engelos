@@ -170,6 +170,46 @@ type fakeHelix struct {
 	getClipsResp   *helix.ClipsResponse
 	getClipsErr    error
 	lastGetClips   *helix.ClipsParams
+
+	createMarkerResp *helix.CreateStreamMarkerResponse
+	createMarkerErr  error
+	lastCreateMarker *helix.CreateStreamMarkerParams
+	createPollResp   *helix.PollsResponse
+	createPollErr    error
+	lastCreatePoll   *helix.CreatePollParams
+
+	editChannelResp *helix.EditChannelInformationResponse
+	editChannelErr  error
+	lastEditChannel *helix.EditChannelInformationParams
+	searchCatResp   *helix.SearchCategoriesResponse
+	searchCatErr    error
+	lastSearchCat   *helix.SearchCategoriesParams
+}
+
+func (h *fakeHelix) EditChannelInformation(p *helix.EditChannelInformationParams) (*helix.EditChannelInformationResponse, error) {
+	h.mu.Lock()
+	h.lastEditChannel = p
+	h.mu.Unlock()
+	if h.editChannelErr != nil {
+		return nil, h.editChannelErr
+	}
+	if h.editChannelResp != nil {
+		return h.editChannelResp, nil
+	}
+	return &helix.EditChannelInformationResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 204}}, nil
+}
+
+func (h *fakeHelix) SearchCategories(p *helix.SearchCategoriesParams) (*helix.SearchCategoriesResponse, error) {
+	h.mu.Lock()
+	h.lastSearchCat = p
+	h.mu.Unlock()
+	if h.searchCatErr != nil {
+		return nil, h.searchCatErr
+	}
+	if h.searchCatResp != nil {
+		return h.searchCatResp, nil
+	}
+	return &helix.SearchCategoriesResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
 }
 
 func (h *fakeHelix) CreateClip(p *helix.CreateClipParams) (*helix.CreateClipResponse, error) {
@@ -196,6 +236,32 @@ func (h *fakeHelix) GetClips(p *helix.ClipsParams) (*helix.ClipsResponse, error)
 		return h.getClipsResp, nil
 	}
 	return &helix.ClipsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) CreateStreamMarker(p *helix.CreateStreamMarkerParams) (*helix.CreateStreamMarkerResponse, error) {
+	h.mu.Lock()
+	h.lastCreateMarker = p
+	h.mu.Unlock()
+	if h.createMarkerErr != nil {
+		return nil, h.createMarkerErr
+	}
+	if h.createMarkerResp != nil {
+		return h.createMarkerResp, nil
+	}
+	return &helix.CreateStreamMarkerResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
+}
+
+func (h *fakeHelix) CreatePoll(p *helix.CreatePollParams) (*helix.PollsResponse, error) {
+	h.mu.Lock()
+	h.lastCreatePoll = p
+	h.mu.Unlock()
+	if h.createPollErr != nil {
+		return nil, h.createPollErr
+	}
+	if h.createPollResp != nil {
+		return h.createPollResp, nil
+	}
+	return &helix.PollsResponse{ResponseCommon: helix.ResponseCommon{StatusCode: 200}}, nil
 }
 
 func (h *fakeHelix) GetPredictions(p *helix.PredictionsParams) (*helix.PredictionsResponse, error) {

@@ -31,6 +31,7 @@ type Store interface {
 	List(ctx context.Context, tenantID, channel string) ([]Rule, error)
 	ListEnabled(ctx context.Context, tenantID, channel string) ([]Rule, error)
 	ListTimerRules(ctx context.Context, tenantID string) ([]Rule, error)
+	ListEventChannels(ctx context.Context, tenantID, eventType string) ([]string, error)
 	SetEnabled(ctx context.Context, tenantID, channel, name string, enabled bool) error
 	Close() error
 }
@@ -311,6 +312,33 @@ func (s *sqliteStore) ListTimerRules(ctx context.Context, tenantID string) ([]Ru
 	return s.query(ctx,
 		ruleSelect+`WHERE tenant_id = ? AND enabled = 1 AND trigger_kind = 'timer' ORDER BY channel ASC, name ASC`,
 		tenantID)
+}
+
+// ListEventChannels returns the distinct channels of a tenant that own at least
+// one enabled event-kind rule whose trigger filter accepts eventType. It powers
+// fan-out for platform events that carry no channel of their own (donations),
+// applying the same event_type predicate the engine uses at fire time so a
+// channel is included exactly when one of its rules would match.
+func (s *sqliteStore) ListEventChannels(ctx context.Context, tenantID, eventType string) ([]string, error) {
+	rules, err := s.query(ctx,
+		ruleSelect+`WHERE tenant_id = ? AND enabled = 1 AND trigger_kind = 'event' ORDER BY channel ASC`,
+		tenantID)
+	if err != nil {
+		return nil, err
+	}
+	probe := Trigger{Kind: TriggerEvent, EventType: eventType}
+	seen := make(map[string]struct{}, len(rules))
+	var out []string
+	for _, r := range rules {
+		if _, ok := seen[r.Channel]; ok {
+			continue
+		}
+		if matchTriggerFilter(r, probe) {
+			seen[r.Channel] = struct{}{}
+			out = append(out, r.Channel)
+		}
+	}
+	return out, nil
 }
 
 func (s *sqliteStore) query(ctx context.Context, sqlText string, args ...any) ([]Rule, error) {

@@ -24,16 +24,18 @@
   --role-host:   var(--brand);
   --role-staff:  #ffb24d;
 
-  --ok:   #34d399;
-  --warn: #ffb24d;
-  --bad:  #ff5d73;
+  /* Status + typography derive from the canonical token system (tokens.css)
+     so both styling generations render from ONE palette. (Phase D1.2c) */
+  --ok:   var(--color-success);
+  --warn: var(--color-warn);
+  --bad:  var(--color-danger);
 
-  --radius:   20px;
-  --radius-sm:13px;
+  --radius:   16px;
+  --radius-sm:12px;
   --radius-xs:9px;
   --ease:     cubic-bezier(.2,.7,.2,1);
-  --font:     "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono:     "IBM Plex Mono", "SF Mono", ui-monospace, "Cascadia Code", Menlo, monospace;
+  --font:     var(--font-sans);
+  --mono:     var(--font-mono);
 
   /* DARK (base) */
   --scene:
@@ -49,9 +51,9 @@
   --panel-border: rgba(255,255,255,.1);
   --panel-border-strong: rgba(255,255,255,.16);
   --hi:        rgba(255,255,255,.06);
-  --text:      #eef3f8;
-  --text-dim:  #9aa7b4;
-  --text-faint:#5f6e7c;
+  --text:      var(--color-fg);
+  --text-dim:  var(--color-fg-soft);
+  --text-faint:var(--color-muted);
   --field:     rgba(255,255,255,.05);
   --field-focus: rgba(255,255,255,.08);
   --border:    rgba(255,255,255,.12);
@@ -75,9 +77,6 @@
   --panel-border: rgba(20,40,70,.12);
   --panel-border-strong: rgba(20,40,70,.2);
   --hi:        rgba(255,255,255,.9);
-  --text:      #0b1219;
-  --text-dim:  #46535f;
-  --text-faint:#76838f;
   --field:     #ffffff;
   --field-focus: #ffffff;
   --border:    rgba(13,20,28,.16);
@@ -87,7 +86,7 @@
   --scrollbar: rgba(20,40,70,.22);
 }
 
-*{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box}
 html,body{height:100%}
 body{
   font-family:var(--font);
@@ -121,13 +120,13 @@ button{font-family:inherit}
   content:"";position:absolute;inset:0;opacity:.03;mix-blend-mode:overlay;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-.orb{position:absolute;border-radius:50%;filter:blur(64px);mix-blend-mode:screen;will-change:transform;opacity:.5}
+.orb{position:absolute;border-radius:50%;filter:blur(64px);mix-blend-mode:screen;will-change:transform;opacity:.62}
 .orb.a{width:44vw;height:44vw;max-width:620px;max-height:620px;left:-12vw;top:-15vw;
   background:radial-gradient(circle, var(--brand) 0%, transparent 68%);animation:f1 19s var(--ease) infinite}
 .orb.b{width:40vw;height:40vw;max-width:560px;max-height:560px;right:-12vw;bottom:2vh;
-  background:radial-gradient(circle, var(--brand-2) 0%, transparent 68%);opacity:.42;animation:f2 23s var(--ease) infinite}
+  background:radial-gradient(circle, var(--brand-2) 0%, transparent 68%);opacity:.52;animation:f2 23s var(--ease) infinite}
 .orb.c{width:26vw;height:26vw;max-width:380px;max-height:380px;right:28%;top:-8vh;
-  background:radial-gradient(circle, color-mix(in srgb,var(--brand),var(--brand-2)) 0%, transparent 70%);opacity:.3;animation:f1 27s var(--ease) infinite reverse}
+  background:radial-gradient(circle, color-mix(in srgb,var(--brand),var(--brand-2)) 0%, transparent 70%);opacity:.4;animation:f1 27s var(--ease) infinite reverse}
 @keyframes f1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(3%,4%) scale(1.06)}}
 @keyframes f2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-4%,-3%) scale(1.08)}}
 :root[data-theme="light"] .orb{mix-blend-mode:soft-light;opacity:.34}
@@ -151,6 +150,14 @@ button{font-family:inherit}
 .rail-nav{display:flex;flex-direction:column;align-items:center;gap:9px;width:100%;flex:1;min-height:0;overflow:visible;padding:2px 0}
 .rail-nav.bottom{flex:none;gap:9px}
 .rail-sep{width:34px;height:1px;background:var(--panel-border);margin:4px 0}
+/* Section label inside the icon rail — small, muted, marks IA boundaries. */
+.rail-label{
+  width:44px;text-align:center;
+  font-size:8.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--text-faint);opacity:.65;
+  margin:8px 0 1px;padding:2px 0;
+  white-space:nowrap;overflow:hidden;
+}
 .nav-item{
   width:38px;height:38px;border:1px solid var(--panel-border);background:var(--panel-2);cursor:pointer;color:var(--text-faint);
   display:grid;place-items:center;border-radius:12px;text-decoration:none;transition:.18s var(--ease);position:relative}
@@ -162,6 +169,22 @@ button{font-family:inherit}
   width:3px;height:20px;border-radius:99px;background:var(--brand);box-shadow:0 0 12px var(--brand-glow)}
 .nav-item.soon{opacity:.45}
 .nav-item.soon:hover{color:var(--text-faint);border-color:var(--panel-border);transform:none;cursor:default}
+/* Demoted surfaces (Legacy & Templates section): visually dimmed to signal
+   they are not first-class product pillars. Still clickable and functional. */
+.nav-item.dimmed{opacity:.5}
+.nav-item.dimmed:hover{opacity:.85}
+.rail-label.dimmed{opacity:.42}
+/* Inline badge for demoted page headings — marks a surface as Legacy,
+   Experimental, or a Template so it doesn't read as a first-class pillar. */
+.legacy-badge{
+  display:inline-block;vertical-align:middle;margin-left:8px;
+  font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:2px 7px 1.5px;border-radius:5px;line-height:1.4;
+  background:color-mix(in srgb,var(--warn) 14%,transparent);
+  color:color-mix(in srgb,var(--warn) 78%,var(--text-faint));
+  border:1px solid color-mix(in srgb,var(--warn) 28%,transparent);
+  opacity:.85;
+}
 /* tooltip */
 .nav-item::after{content:attr(data-tip);position:absolute;left:calc(100% + 12px);top:50%;transform:translateY(-50%) translateX(-4px);
   background:var(--panel-bg);border:1px solid var(--panel-border-strong);color:var(--text);font-size:11px;font-weight:600;

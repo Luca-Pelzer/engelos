@@ -202,7 +202,7 @@ type ActivityRecorder interface {
 // rule's role conditions read; OnEvent carries non-message events (subs, raids)
 // with a small data map of their salient fields.
 type ActionEngine interface {
-	OnMessage(platform, channel, userID, username, text string,
+	OnMessage(platform, channel, messageID, userID, username, text string,
 		isBroadcaster, isModerator, isVIP, isSubscriber bool)
 	OnEvent(platform, channel, eventType string, data map[string]any)
 }
@@ -327,6 +327,13 @@ type Config struct {
 	// an auto-clipper can capture clip-worthy moments. Best-effort and
 	// fire-and-forget: it never blocks message processing.
 	ClipDetector ClipDetector
+
+	// DiscordChannels, when non-nil, resolves the workspace channels a Discord
+	// gateway message fans out to: those with an enabled discord.message rule.
+	// A Discord message has no native workspace channel, so this maps it onto
+	// the rules that opted in (like the Ko-fi donation fan-out). Nil disables
+	// Discord message routing to the Action-Engine.
+	DiscordChannels func(ctx context.Context) []string
 
 	// Logger receives lifecycle and per-event debug logs. Defaults to
 	// slog.Default().
@@ -620,7 +627,61 @@ func (d *Dispatcher) handle(ctx context.Context, p adapters.Platform, ev adapter
 		if d.cfg.Actions != nil && ev.Channel != "" {
 			d.cfg.Actions.OnEvent(ev.Platform, ev.Channel, string(ev.Type), raidEventData(ev))
 		}
+	case adapters.EventStreamOnline, adapters.EventStreamOffline:
+		if d.cfg.Actions != nil && ev.Channel != "" {
+			d.cfg.Actions.OnEvent(ev.Platform, ev.Channel, string(ev.Type), streamEventData(ev))
+		}
+	case adapters.EventDonation:
+		if d.cfg.Actions != nil && ev.Channel != "" {
+			d.cfg.Actions.OnEvent(ev.Platform, ev.Channel, string(ev.Type), donationEventData(ev))
+		}
+	case adapters.EventDiscordMessage:
+		d.onDiscordMessage(ctx, ev)
 	}
+}
+
+// onDiscordMessage routes a Discord gateway message to the Action-Engine. A
+// Discord message has no native workspace channel, so it fans out to every
+// channel with an enabled discord.message rule (via DiscordChannels). For each
+// such channel it fires the event trigger (discord.message, carrying the
+// discord.* vars) and the message path (so command-kind rules and message rules
+// fire too, with $(source)=discord). It deliberately does NOT run the
+// points/streak/economy machinery of onMessage: Discord chat must not mint
+// Twitch loyalty. Message content is never logged above debug.
+func (d *Dispatcher) onDiscordMessage(ctx context.Context, ev adapters.Event) {
+	if ev.Discord == nil || ev.Discord.UserID == "" || d.cfg.Actions == nil || d.cfg.DiscordChannels == nil {
+		return
+	}
+	d.stats.mu.Lock()
+	d.stats.messages++
+	d.stats.mu.Unlock()
+
+	channels := d.cfg.DiscordChannels(ctx)
+	if len(channels) == 0 {
+		return
+	}
+	data := discordEventData(ev)
+	dm := ev.Discord
+	d.logger.Debug("discord message routed",
+		"channels", len(channels), "guild", dm.GuildID, "discord_channel", dm.ChannelID, "user", dm.Username)
+	for _, ch := range channels {
+		if ch == "" {
+			continue
+		}
+		d.cfg.Actions.OnEvent(ev.Platform, ch, string(ev.Type), data)
+		d.cfg.Actions.OnMessage(ev.Platform, ch, dm.MessageID, dm.UserID, dm.Username, dm.Text,
+			false, dm.IsModerator, false, false)
+	}
+}
+
+// Dispatch routes a synthesized event through the same handling path platform
+// producers use, so out-of-band sources (the Ko-fi donation webhook) reach the
+// action engine identically to native events. It runs synchronously on the
+// caller's goroutine with a nil platform, which the donation branch never
+// dereferences; do not use it for message events, whose handling needs a live
+// platform to reply on.
+func (d *Dispatcher) Dispatch(ctx context.Context, ev adapters.Event) {
+	d.handle(ctx, nil, ev)
 }
 
 func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adapters.Event) {
@@ -656,7 +717,7 @@ func (d *Dispatcher) onMessage(ctx context.Context, p adapters.Platform, ev adap
 	if d.cfg.Actions != nil {
 		isBroadcaster := ev.Message.Username != "" &&
 			strings.EqualFold(ev.Message.Username, ev.Channel)
-		d.cfg.Actions.OnMessage(ev.Platform, ev.Channel,
+		d.cfg.Actions.OnMessage(ev.Platform, ev.Channel, ev.Message.ID,
 			ev.Message.UserID, ev.Message.Username, ev.Message.Content,
 			isBroadcaster, ev.Message.IsModerator, ev.Message.IsVIP, ev.Message.IsSubscriber)
 	}
@@ -886,6 +947,46 @@ func raidEventData(ev adapters.Event) map[string]any {
 	if ev.Raid != nil {
 		d["from_username"] = ev.Raid.FromUsername
 		d["viewer_count"] = ev.Raid.ViewerCount
+	}
+	return d
+}
+
+// streamEventData flattens a stream event into the salient fields a rule reads.
+func streamEventData(ev adapters.Event) map[string]any {
+	d := map[string]any{}
+	if ev.Stream != nil {
+		d["is_live"] = ev.Stream.IsLive
+		if !ev.Stream.StartedAt.IsZero() {
+			d["started_at"] = ev.Stream.StartedAt.Format(time.RFC3339)
+		}
+	}
+	return d
+}
+
+func donationEventData(ev adapters.Event) map[string]any {
+	d := map[string]any{}
+	if ev.Donation != nil {
+		d["donation.from"] = ev.Donation.From
+		d["donation.amount"] = ev.Donation.Amount
+		d["donation.currency"] = ev.Donation.Currency
+		d["donation.message"] = ev.Donation.Message
+		d["donation.kind"] = ev.Donation.Kind
+	}
+	return d
+}
+
+func discordEventData(ev adapters.Event) map[string]any {
+	d := map[string]any{}
+	if ev.Discord != nil {
+		d["discord.username"] = ev.Discord.Username
+		d["discord.user_id"] = ev.Discord.UserID
+		d["discord.text"] = ev.Discord.Text
+		d["discord.channel"] = ev.Discord.ChannelName
+		d["discord.channel_id"] = ev.Discord.ChannelID
+		d["discord.guild"] = ev.Discord.GuildID
+		d["discord.message_id"] = ev.Discord.MessageID
+		d["discord.is_dm"] = ev.Discord.IsDM
+		d["source"] = ev.Platform
 	}
 	return d
 }

@@ -187,19 +187,22 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
-    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Streak</h2>
+    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">
+      Streak Template
+      <span class="legacy-badge">Template</span>
+    </h2>
     <p class="text-[13px] text-fg-soft mt-1">
-      Track daily viewer streaks. Viewers keep momentum by showing up each day, and freezes
-      let them protect a streak when they miss a day.
+      Optional retention workflow template for daily viewer streaks. Workflows can tick,
+      freeze or reset streak state from chat, schedules or Twitch events.
     </p>
   </header>
 
   <Card class="reveal-up reveal-up-delay-1">
     <h3 class="text-[14px] font-semibold tracking-tight text-fg">Viewer lookup</h3>
     <p class="text-[12.5px] text-fg-soft mt-1 mb-4">
-      Enter a channel and viewer id to inspect or adjust a streak.
+      Enter a channel and viewer id to inspect or adjust this workflow state.
     </p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Input label="Channel" placeholder="engelswtf" bind:value={channel} />

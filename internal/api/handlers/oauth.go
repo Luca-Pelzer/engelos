@@ -106,12 +106,20 @@ type OAuth struct {
 	// goroutine; keep it fast and non-blocking. nil disables the hook.
 	onLogin func(ev LoginEvent)
 
-	// workspaces, when set, opens login to any Twitch user: after a session
-	// is minted the callback provisions an owner's default workspace, accepts
+	// workspaces, when set, provisions an owner's default workspace, accepts
 	// any pending invitations addressed to the login, and routes the user to
-	// the right landing page by membership count. nil keeps the legacy
-	// owner-only login (no workspace provisioning, fixed redirect).
+	// the right landing page by membership count. It stays wired in both
+	// open and closed mode so owners still get workspace provisioning.
 	workspaces workspaces.Store
+
+	// openLogin, when true, opens login to ANY Twitch account (not just
+	// owners): a non-owner is minted RoleViewer and provisioned a workspace.
+	// When false (the default, driven by ENGELOS_OPEN_LOGIN), a non-owner
+	// purpose=user login is refused with a redirect to the denied page and
+	// no account is created. This is decoupled from the workspaces store so
+	// the store can stay wired for owner provisioning while the door stays
+	// closed to strangers.
+	openLogin bool
 }
 
 // LoginEvent is delivered to the OnLogin hook after a successful OAuth
@@ -182,12 +190,24 @@ func (o *OAuth) WithOnLogin(fn func(ev LoginEvent)) *OAuth {
 	return o
 }
 
-// WithWorkspaces opens login to any Twitch user by wiring the workspaces
-// store the callback uses to provision an owner's default workspace, accept
-// pending invitations and route by membership. A nil store keeps owner-only
-// login.
+// WithWorkspaces wires the workspaces store the callback uses to provision an
+// owner's default workspace, accept pending invitations and route by
+// membership. It stays wired in both open and closed mode so owners keep
+// workspace provisioning; only the openLogin boolean (see WithOpenLogin)
+// decides whether non-owners may enter. A nil store disables provisioning.
 func (o *OAuth) WithWorkspaces(store workspaces.Store) *OAuth {
 	o.workspaces = store
+	return o
+}
+
+// WithOpenLogin controls whether non-owner accounts may sign in. When true,
+// any Twitch account that reaches the callback is minted RoleViewer and
+// provisioned a workspace (multi-account mode). When false (the default,
+// driven by ENGELOS_OPEN_LOGIN), a non-owner purpose=user login is refused
+// with a redirect to /login?denied=account and no account is created. The
+// owner path and the purpose=bot token-link path are unaffected either way.
+func (o *OAuth) WithOpenLogin(b bool) *OAuth {
+	o.openLogin = b
 	return o
 }
 
@@ -503,11 +523,10 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 	// is provisioned. A purpose=bot flow always proceeds WITHOUT owner rights so
 	// the bot account can grant its channel token, but it must already be linked
 	// to an existing user and never mints a session. A purpose=user (dashboard)
-	// flow is refused for non-owners ONLY in legacy owner-only mode; with the
-	// workspaces store wired, login is open and any Twitch user may sign in, with
-	// access governed afterwards by per-workspace membership, not this gate.
+	// flow is refused for non-owners ONLY in closed mode (ENGELOS_OPEN_LOGIN=false,
+	// the default); with openLogin true, any Twitch user may sign in, with access
+	// governed afterwards by per-workspace membership, not this gate.
 	owner := o.isOwnerLogin(ctx, auth.ProviderTwitch, providerUserID, login)
-	openLogin := o.workspaces != nil
 	if !owner {
 		switch {
 		case purpose == auth.OAuthPurposeBot:
@@ -519,12 +538,15 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
-		case !openLogin:
-			o.logger.WarnContext(ctx, "oauth: login refused, not an owner",
+		case !o.openLogin:
+			// Closed mode: a non-owner dashboard login is refused with a
+			// friendly redirect (not a raw 403) and NO account or session is
+			// created. The owner path and the purpose=bot linking path above
+			// are untouched.
+			o.logger.WarnContext(ctx, "oauth: login refused, not an owner (closed mode)",
 				slog.String("login", login), slog.String("purpose", purpose))
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": "not_authorized",
-			})
+			o.clearStateCookie(w)
+			http.Redirect(w, r, "/login?denied=account", http.StatusSeeOther)
 			return
 		}
 	}
@@ -571,7 +593,7 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 	// A non-owner that reaches here is either a bot-purpose link (token granted
 	// above, no session) or, in owner-only mode, refused already. Such a login
 	// gets no dashboard session: it has done its job and is redirected back.
-	if !owner && (purpose == auth.OAuthPurposeBot || !openLogin) {
+	if !owner && (purpose == auth.OAuthPurposeBot || !o.openLogin) {
 		http.Redirect(w, r, "/login?bot=linked", http.StatusSeeOther)
 		return
 	}
@@ -583,7 +605,14 @@ func (o *OAuth) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !openLogin {
+	// Owners are provisioned and routed by landingPath in BOTH open and
+	// closed mode; the workspaces store stays wired regardless of
+	// ENGELOS_OPEN_LOGIN. Only fall back to the bare success redirect when
+	// there is no store to provision against (legacy owner-only daemon with
+	// WithWorkspaces unset). Non-owners never reach here in closed mode
+	// (refused at the access gate above); pre-linked bots already returned.
+	// So owners are the only closed-mode arrivals at this point.
+	if o.workspaces == nil {
 		http.Redirect(w, r, "/?login=success", http.StatusSeeOther)
 		return
 	}
@@ -715,6 +744,13 @@ func (o *OAuth) findOrCreateUser(ctx context.Context, provider, providerUserID, 
 // chooses the landing page: none -> onboarding, one -> straight into it, many
 // -> the picker.
 func (o *OAuth) landingPath(ctx context.Context, user auth.User, login, providerUserID string, owner bool) string {
+	if o.workspaces == nil {
+		// Defensive: landingPath is only reached in open-login mode, which the
+		// daemon always wires alongside the workspaces store. A nil store here
+		// means a misconfiguration; fall back to the safe success redirect
+		// rather than dereferencing nil.
+		return "/?login=success"
+	}
 	if owner {
 		o.provisionOwnerWorkspace(ctx, user, login, providerUserID)
 	}

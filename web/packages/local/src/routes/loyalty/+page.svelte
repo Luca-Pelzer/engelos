@@ -22,7 +22,7 @@
       const res = await channelApi(channel).get<LbResponse>('/loyalty/leaderboard');
       board = res.leaderboard ?? [];
     } catch (err) {
-      toast(err instanceof ApiException && err.status === 501 ? 'Loyalty-Feature ist nicht aktiviert.' : 'Laden fehlgeschlagen.', 'error');
+      toast(err instanceof ApiException && err.status === 501 ? 'The loyalty feature is not enabled.' : 'Could not load.', 'error');
     } finally {
       loading = false;
     }
@@ -30,14 +30,14 @@
 
   async function adjust(sign: 1 | -1) {
     const name = lookupName.trim().toLowerCase();
-    if (!channel || !name) { toast('Username ist erforderlich.', 'warn'); return; }
+    if (!channel || !name) { toast('Username is required.', 'warn'); return; }
     try {
       const res = await channelApi(channel).post<{ username: string; balance: number }>('/loyalty/adjust', { username: name, amount: sign * Math.abs(adjustAmt) });
       lookupResult = res;
       board = board.map((e) => (e.username === res.username ? { ...e, balance: res.balance } : e));
       toast(`${sign > 0 ? '+' : '-'}${fmt(Math.abs(adjustAmt))} fuer ${res.username}`, sign > 0 ? 'success' : 'warn');
     } catch (err) {
-      toast(err instanceof ApiException && err.status === 409 ? 'Nicht genug Punkte.' : err instanceof ApiException && err.status === 404 ? 'Zuschauer hat noch kein Konto.' : 'Aktion fehlgeschlagen.', 'error');
+      toast(err instanceof ApiException && err.status === 409 ? 'Not enough points.' : err instanceof ApiException && err.status === 404 ? 'Viewer has no account yet.' : 'Action failed.', 'error');
     }
   }
 
@@ -51,16 +51,17 @@
 
 <section class="page" data-screen-label="loyalty">
   <div class="page-wrap">
+    <div class="section-title">Loyalty Plugin <span class="legacy-badge">Legacy</span> <span class="sub">optional workflow state, not a core product pillar</span></div>
     <div class="toolbar">
-      <span class="ws-label">{channel ? `@${channel}` : 'Kein Workspace gewaehlt'}</span>
-      <button class="btn btn-ghost btn-sm" onclick={loadBoard} disabled={loading || !channel}>{loading ? 'Laedt...' : 'Neu laden'}</button>
+      <span class="ws-label">{channel ? `@${channel}` : 'No workspace selected'}</span>
+      <button class="btn btn-ghost btn-sm" onclick={loadBoard} disabled={loading || !channel}>{loading ? 'Loading…' : 'Reload'}</button>
     </div>
 
     <div class="loy-grid">
       <div>
-        <div class="section-title">Leaderboard <span class="sub">Top-Zuschauer nach Punkten</span></div>
+        <div class="section-title">Leaderboard <span class="sub">workflow/plugin points balance</span></div>
         <table class="dtable">
-          <thead><tr><th style="width:64px">Rang</th><th>Zuschauer</th><th class="right">Punkte</th></tr></thead>
+          <thead><tr><th style="width:64px">Rank</th><th>Viewer</th><th class="right">Points</th></tr></thead>
           <tbody>
             {#each board as e (e.username)}
               <tr>
@@ -74,7 +75,7 @@
         {#if board.length === 0}
           <div class="empty">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v3a5 5 0 0 1-10 0z" /><path d="M12 12v4M8.5 20h7" /></svg>
-            <div class="t">{channel ? 'Noch keine Punkte vergeben' : 'Workspace oben auswaehlen'}</div>
+            <div class="t">{channel ? 'No points awarded yet' : 'Select a workspace above'}</div>
           </div>
         {/if}
       </div>
@@ -87,7 +88,7 @@
             <div class="lookup-result">
               <div class="nm">{lookupResult.username}</div>
               <div class="pts">{fmt(lookupResult.balance)}</div>
-              <div class="pts-l">Punkte</div>
+              <div class="pts-l">Points</div>
             </div>
           {/if}
           <div class="adjust">

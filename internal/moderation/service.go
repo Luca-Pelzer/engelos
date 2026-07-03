@@ -33,6 +33,17 @@ const (
 	ActionBan
 )
 
+// AIVerdict carries the contextmod AI-escalation decision fields onto an
+// external-AI audit row (via LogExternal/EscalateExternal). It uses primitives
+// so this package need not import internal/contextmod; the fields mirror
+// contextmod.Decision. A nil *AIVerdict marks a fast-path (non-AI) action.
+type AIVerdict struct {
+	Category   string
+	Severity   int
+	Confidence float64
+	Consulted  bool
+}
+
 // Decision is the moderation verdict for a single message. When Kind is
 // ActionNone the dispatcher proceeds normally (commands, points, streak). For
 // any other Kind the dispatcher should enforce the action (unless DryRun) and
@@ -43,6 +54,9 @@ type Decision struct {
 	Reason   string        // human-readable, safe to show in chat
 	Filter   string        // which filter fired
 	DryRun   bool          // true when the engine is in dry-run (shadow) mode
+	// AI, when non-nil, carries the contextmod verdict fields onto the audit
+	// row so external-AI decisions are reviewable; nil for fast-path rows.
+	AI *AIVerdict
 }
 
 // Message is the neutral input the dispatcher hands to the Service. It mirrors
@@ -145,7 +159,9 @@ func (s *Service) Config() automod.Config {
 	return s.engine.Config()
 }
 
-// DryRun reports whether the engine is in dry-run (shadow) mode. Safe on a nil
+// DryRun reports whether the engine is in dry-run (shadow) mode, so external
+// moderation paths (e.g. the AI context escalator) can honour the same gate as
+// the built-in filters and avoid enforcing in shadow mode. Safe on a nil
 // Service (returns false).
 func (s *Service) DryRun() bool {
 	if s == nil {
@@ -154,6 +170,19 @@ func (s *Service) DryRun() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.engine.Config().Mode == automod.ModeDryRun
+}
+
+// LogExternal records an audit row for a moderation decision made outside the
+// built-in filter engine (e.g. the AI context escalator), tagging it with the
+// "contextmod" filter so it is reviewable alongside the rule-engine actions.
+// It writes only an audit entry and never enforces. Safe on a nil Service or
+// nil audit store (no-op).
+func (s *Service) LogExternal(ctx context.Context, msg Message, dec Decision) {
+	if s == nil {
+		return
+	}
+	result := automod.FilterResult{FilterName: "contextmod", Reason: dec.Reason}
+	s.recordAudit(ctx, msg, result, dec)
 }
 
 // SetConfig validates and atomically swaps in a new filter configuration by
@@ -176,10 +205,17 @@ func (s *Service) SetConfig(cfg automod.Config) error {
 // AuditList returns recent mod actions for a channel, newest first. Safe on a
 // nil Service or nil audit store (returns nil).
 func (s *Service) AuditList(ctx context.Context, channel string, limit int) ([]automodstate.ModAction, error) {
+	return s.AuditListBySource(ctx, channel, automodstate.SourceAll, limit)
+}
+
+// AuditListBySource is AuditList filtered to AI-escalation rows
+// (automodstate.SourceAI) or fast-path rows (automodstate.SourceFast). Safe on a
+// nil Service or nil audit store (returns nil).
+func (s *Service) AuditListBySource(ctx context.Context, channel string, source automodstate.AuditSource, limit int) ([]automodstate.ModAction, error) {
 	if s == nil || s.audit == nil {
 		return nil, nil
 	}
-	return s.audit.List(ctx, s.tenantID, channel, limit)
+	return s.audit.ListBySource(ctx, s.tenantID, channel, source, limit)
 }
 
 // Evaluate runs the filters, applies escalation, and (for a violation) records
@@ -246,10 +282,47 @@ func (s *Service) Evaluate(ctx context.Context, msg Message) Decision {
 	return dec
 }
 
+// EscalateExternal records an external (AI) violation against the escalation
+// ladder under the "contextmod" filter and returns the resulting ladder action
+// and duration, plus whether the engine is in dry-run. In dry-run it uses Peek
+// (no state mutation, matching the M1 fix); active mode uses Record. It also
+// writes an audit row. Safe on a nil Service.
+func (s *Service) EscalateExternal(ctx context.Context, msg Message, ai *AIVerdict) (ActionKind, time.Duration, bool) {
+	if s == nil {
+		return ActionNone, 0, false
+	}
+
+	s.mu.RLock()
+	dryRun := s.engine.Config().Mode == automod.ModeDryRun
+	s.mu.RUnlock()
+
+	// Dry-run previews the next rung via Peek so shadow mode never poisons the
+	// persistent ladder; active mode Records, exactly as Evaluate does.
+	var action automodstate.Action
+	var duration time.Duration
+	if dryRun {
+		action, duration = s.escal.Peek(msg.Channel, msg.Username, "contextmod")
+	} else {
+		action, duration = s.escal.Record(msg.Channel, msg.Username, "contextmod")
+	}
+	kind := escalActionKind(action)
+
+	dec := Decision{
+		Kind:     kind,
+		Duration: duration,
+		Reason:   "contextmod ladder",
+		Filter:   "contextmod",
+		DryRun:   dryRun,
+		AI:       ai,
+	}
+	s.recordAudit(ctx, msg, automod.FilterResult{FilterName: "contextmod", Reason: dec.Reason}, dec)
+	return kind, duration, dryRun
+}
+
 // escalActionKind maps an escalation-ladder Action onto the dispatcher's
 // ActionKind. A warn rung carries no enforcement beyond removal, so it maps to
-// ActionDelete; mergeVerdict consults it so the ladder mapping stays in one
-// place.
+// ActionDelete; mergeVerdict and EscalateExternal share this so the ladder
+// mapping cannot drift apart.
 func escalActionKind(escAction automodstate.Action) ActionKind {
 	switch escAction {
 	case automodstate.ActionTimeout:
@@ -305,7 +378,7 @@ func (s *Service) recordAudit(ctx context.Context, msg Message, result automod.F
 	if s.audit == nil {
 		return
 	}
-	if _, err := s.audit.Log(ctx, automodstate.ModAction{
+	row := automodstate.ModAction{
 		TenantID:    s.tenantID,
 		Channel:     msg.Channel,
 		UserID:      msg.UserID,
@@ -318,7 +391,18 @@ func (s *Service) recordAudit(ctx context.Context, msg Message, result automod.F
 		Action:      kindString(dec.Kind),
 		DurationSec: int(dec.Duration / time.Second),
 		DryRun:      dec.DryRun,
-	}); err != nil {
+	}
+	// Carry the AI verdict fields onto external-AI rows so the audit trail
+	// shows what the model classified, including audit-only low-confidence
+	// outcomes that were recorded but never enforced.
+	if v := dec.AI; v != nil {
+		cat, sev, conf, cons := v.Category, v.Severity, v.Confidence, v.Consulted
+		row.AICategory = &cat
+		row.AISeverity = &sev
+		row.AIConfidence = &conf
+		row.AIConsulted = &cons
+	}
+	if _, err := s.audit.Log(ctx, row); err != nil {
 		s.logger.WarnContext(ctx, "automod audit log failed", slog.Any("err", err))
 	}
 }

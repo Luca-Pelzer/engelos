@@ -1,14 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Card, Badge, StatusDot, EmptyState } from '@engelos/shared/components';
-  import { api, ApiException, wsStatus, botStatus, events } from '@engelos/shared/lib';
+  import { api, ApiException, wsStatus, events } from '@engelos/shared/lib';
 
   type Dispatcher = {
     messages: number;
     subscriptions: number;
     raids: number;
-    pity_grant_errors: number;
-    streak_tick_errors: number;
+    dropped_events: number;
     last_event_at: string;
   };
   type StatsResponse = { version: string; phase: string; dispatcher?: Dispatcher };
@@ -25,12 +24,29 @@
   const cards = $derived.by(() => {
     const d = stats?.dispatcher;
     return [
-      { label: 'Messages', value: d ? fmt(d.messages) : '—' },
-      { label: 'Subscriptions', value: d ? fmt(d.subscriptions) : '—' },
-      { label: 'Raids', value: d ? fmt(d.raids) : '—' },
       {
-        label: 'Handler Errors',
-        value: d ? fmt(d.pity_grant_errors + d.streak_tick_errors) : '—',
+        label: 'Messages',
+        value: d ? fmt(d.messages) : '—',
+        warn: false,
+        icon: '<path d="M4 5.5h16v10H9.5l-4 3v-3H4z"/>',
+      },
+      {
+        label: 'Subscriptions',
+        value: d ? fmt(d.subscriptions) : '—',
+        warn: false,
+        icon: '<path d="M12 3.5l2.5 5.2 5.7.7-4.2 4 1.1 5.6-5.1-2.8-5.1 2.8 1.1-5.6-4.2-4 5.7-.7z"/>',
+      },
+      {
+        label: 'Raids',
+        value: d ? fmt(d.raids) : '—',
+        warn: false,
+        icon: '<path d="M5 19L19 5M19 5h-8M19 5v8"/>',
+      },
+      {
+        label: 'Dropped Events',
+        value: d ? fmt(d.dropped_events) : '—',
+        warn: !!d && d.dropped_events > 0,
+        icon: '<path d="M12 3.5L21.5 20h-19z"/><path d="M12 10v4M12 17h.01"/>',
       },
     ];
   });
@@ -68,6 +84,33 @@
     if (pollTimer) clearInterval(pollTimer);
   });
 
+  const shortcuts = [
+    {
+      href: '/ai-mod', title: 'AI-Mod', color: 'var(--brand)',
+      desc: 'Two-layer moderation: instant rules plus an AI second opinion on your plain-language channel rules.',
+      cta: 'Tune moderation',
+      icon: '<path d="M12 3l8 4v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V7z"/><path d="M9.5 12l1.8 1.8L15 10"/>',
+    },
+    {
+      href: '/actions/canvas', title: 'Workflow Canvas', color: 'var(--brand-2)',
+      desc: 'Build automations visually: triggers, conditions and 20+ actions from chat to OBS, TTS and AI.',
+      cta: 'Open the canvas',
+      icon: '<circle cx="5" cy="6" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="12" r="2.5"/><path d="M7.5 6H12a4 4 0 0 1 4 4v.5M7.5 18H12a4 4 0 0 0 4-4v-.5"/>',
+    },
+    {
+      href: '/kb', title: 'Knowledge Base', color: 'var(--twitch)',
+      desc: 'Teach the bot your rules, schedule and lore so it answers viewer questions with your facts.',
+      cta: 'Add knowledge',
+      icon: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    },
+    {
+      href: '/integrations', title: 'Integrations', color: 'var(--spotify)',
+      desc: 'Connect ElevenLabs, OBS, Ko-fi, Discord and more — every integration adds workflow nodes.',
+      cta: 'Connect services',
+      icon: '<path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v5"/>',
+    },
+  ];
+
   function fmt(n: number): string {
     return n.toLocaleString('en-US');
   }
@@ -86,17 +129,11 @@
 </script>
 
 <section class="space-y-7">
-  <header class="flex items-end justify-between gap-4 reveal-up">
-    <div>
-      <p class="text-[13px] text-fg-soft mb-1">Welcome back</p>
-      <h2 class="text-2xl font-semibold tracking-tight text-fg-strong">
-        Your stream's pulse, at a glance.
-      </h2>
-    </div>
-    <div class="flex items-center gap-2 text-[12.5px] text-fg-soft whitespace-nowrap">
-      <StatusDot state={dotState} />
-      {$botStatus.label}
-    </div>
+  <header class="reveal-up">
+    <p class="text-[13px] text-fg-soft mb-1">Welcome back</p>
+    <h2 class="text-2xl font-semibold tracking-tight text-fg-strong">
+      Your control room at a glance.
+    </h2>
   </header>
 
   {#if statsError}
@@ -113,12 +150,17 @@
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     {#each cards as c, i (c.label)}
       <Card class="reveal-up reveal-up-delay-{i + 1}">
-        <div class="flex flex-col gap-1">
-          <span class="text-[12px] uppercase tracking-wider text-muted font-medium">{c.label}</span>
-          <span class="text-[28px] leading-none font-semibold tracking-tight text-fg-strong font-mono mt-1">
-            {loading ? '…' : c.value}
-          </span>
-          <span class="text-[12.5px] mt-2 text-fg-soft">since last restart</span>
+        <div class="kpi" class:warn={c.warn}>
+          <div class="kpi-head">
+            <span class="kpi-ic" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                {@html c.icon}
+              </svg>
+            </span>
+            <span class="kpi-label">{c.label}</span>
+          </div>
+          <span class="kpi-value">{loading ? '…' : c.value}</span>
+          <span class="kpi-caption">since last restart</span>
         </div>
       </Card>
     {/each}
@@ -161,7 +203,7 @@
       {/if}
     </Card>
 
-    <Card class="reveal-up reveal-up-delay-5">
+    <Card class="reveal-up reveal-up-delay-5 self-start">
       <h3 class="text-[14px] font-semibold tracking-tight text-fg mb-1">Daemon</h3>
       <p class="text-[12.5px] text-fg-soft mb-4">Live instance details.</p>
       <dl class="space-y-3 text-[13px]">
@@ -187,6 +229,23 @@
       </dl>
     </Card>
   </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {#each shortcuts as s, i (s.href)}
+      <a href={s.href} class="reveal-up reveal-up-delay-{i + 2}" data-sveltekit-preload-data="hover">
+        <Card interactive>
+          <div class="flex items-center gap-3 mb-2.5">
+            <span class="qa-ic" style="--qa:{s.color}" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{@html s.icon}</svg>
+            </span>
+            <h3 class="text-[14px] font-semibold tracking-tight text-fg">{s.title}</h3>
+          </div>
+          <p class="text-[12.5px] text-fg-soft leading-relaxed">{s.desc}</p>
+          <span class="text-[12px] text-accent mt-3 inline-block">{s.cta} →</span>
+        </Card>
+      </a>
+    {/each}
+  </div>
 </section>
 
 <style>
@@ -197,5 +256,71 @@
     background: var(--color-accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
     flex-shrink: 0;
+  }
+  .kpi {
+    display: flex;
+    flex-direction: column;
+  }
+  .kpi-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .kpi-ic {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .kpi-ic svg {
+    width: 14px;
+    height: 14px;
+  }
+  .kpi-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-muted);
+  }
+  .kpi-value {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--color-fg-strong);
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-caption {
+    font-size: 12px;
+    color: var(--color-muted);
+    margin-top: 8px;
+  }
+  .kpi.warn .kpi-ic {
+    background: color-mix(in srgb, var(--color-warn) 14%, transparent);
+    color: var(--color-warn);
+  }
+  .kpi.warn .kpi-value {
+    color: var(--color-warn);
+  }
+  .qa-ic {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--qa) 16%, transparent);
+    color: var(--qa);
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .qa-ic svg {
+    width: 17px;
+    height: 17px;
   }
 </style>

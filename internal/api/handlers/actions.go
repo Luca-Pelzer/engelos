@@ -135,7 +135,13 @@ func (h *Actions) Create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "channel and name are required"})
 		return
 	}
-	ru, err := h.store.Create(r.Context(), req.toRule(h.tenantID, channel, strings.TrimSpace(req.Name)))
+	rule, err := ensureWebhookSecret(req.toRule(h.tenantID, channel, strings.TrimSpace(req.Name)), "")
+	if err != nil {
+		h.logger.Error("actions create failed", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "secret_error"})
+		return
+	}
+	ru, err := h.store.Create(r.Context(), rule)
 	if err != nil {
 		h.writeWriteError(w, err, "actions create failed")
 		return
@@ -161,7 +167,17 @@ func (h *Actions) Update(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "channel is required"})
 		return
 	}
-	ru, err := h.store.Update(r.Context(), req.toRule(h.tenantID, channel, name))
+	prior := ""
+	if existing, gerr := h.store.Get(r.Context(), h.tenantID, channel, name); gerr == nil {
+		prior = webhookSecretFrom(existing.TriggerFilter)
+	}
+	rule, err := ensureWebhookSecret(req.toRule(h.tenantID, channel, name), prior)
+	if err != nil {
+		h.logger.Error("actions update failed", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "secret_error"})
+		return
+	}
+	ru, err := h.store.Update(r.Context(), rule)
 	if err != nil {
 		h.writeWriteError(w, err, "actions update failed")
 		return
@@ -220,13 +236,18 @@ func (h *Actions) Fire(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store_error"})
 		return
 	}
+	// Pre-allocate the run id so the caller can poll the run history for this
+	// firing. The id resolves once recorded; if recording is disabled or the
+	// rule's conditions fail, no run is stored and the id stays dangling.
+	runID := actions.NewRunID()
 	h.runner.RunRule(rule, actions.Trigger{
 		Kind:      actions.TriggerManual,
 		Channel:   channel,
 		EventType: "manual",
 		Username:  "dashboard",
+		RunID:     runID,
 	})
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "fired"})
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "fired", "run_id": runID})
 }
 
 // reloadScheduler re-arms the timer scheduler after a rule mutation so timer
@@ -260,7 +281,7 @@ func ruleJSON(ru actions.Rule) map[string]any {
 		"name":           ru.Name,
 		"enabled":        ru.Enabled,
 		"trigger_kind":   string(ru.TriggerKind),
-		"trigger_filter": rawOrNull(ru.TriggerFilter),
+		"trigger_filter": maskTriggerFilter(ru.TriggerKind, ru.TriggerFilter),
 		"conditions":     ru.Conditions,
 		"actions":        ru.Actions,
 	}

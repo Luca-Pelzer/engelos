@@ -3,12 +3,9 @@ package main
 import (
 	"context"
 	"log/slog"
-	"os"
-	"strings"
 
 	"github.com/Luca-Pelzer/engelos/internal/commands"
 	"github.com/Luca-Pelzer/engelos/internal/translate"
-	"github.com/Luca-Pelzer/engelos/internal/translate/claude"
 )
 
 // translateConfigAdapter adapts translate.Store to commands.TranslateConfigStore
@@ -83,32 +80,13 @@ func (m messageTranslator) Maybe(ctx context.Context, channel, userID, text stri
 	return res.Translated, true
 }
 
-// newMessageTranslator builds the dispatcher-facing translator. The Claude
-// backend targets Anthropic's public API; set your key with
-// ENGELOS_ANTHROPIC_API_KEY. ENGELOS_TRANSLATE_BASE_URL repoints the endpoint
-// and ENGELOS_TRANSLATE_MODEL overrides the model id.
-func newMessageTranslator(store translate.Store, backend *claude.Client, tenantID string, logger *slog.Logger) messageTranslator {
+// newMessageTranslator builds the dispatcher-facing translator around the shared
+// AI backend. The backend (and thus its provider, endpoint, key and model) is
+// selected once by the aibackend selector in main and injected here as an
+// interface; this adapter only owns the per-channel gate and target language.
+func newMessageTranslator(store translate.Store, backend translate.Backend, tenantID string, logger *slog.Logger) messageTranslator {
 	tr := translate.New(backend, translate.DefaultOptions())
 	return messageTranslator{store: store, tr: tr, tenantID: tenantID, logger: logger}
-}
-
-// newClaudeClient builds the shared Claude client used by the AI features
-// (translation and co-host). It targets Anthropic's public API; set your key
-// with ENGELOS_ANTHROPIC_API_KEY. ENGELOS_TRANSLATE_BASE_URL repoints the
-// endpoint at a compatible proxy, and ENGELOS_TRANSLATE_MODEL overrides the
-// model id.
-func newClaudeClient(logger *slog.Logger) *claude.Client {
-	opts := []claude.Option{claude.WithLogger(logger)}
-	if base := strings.TrimSpace(os.Getenv("ENGELOS_TRANSLATE_BASE_URL")); base != "" {
-		opts = append(opts, claude.WithBaseURL(base))
-	}
-	if key := strings.TrimSpace(os.Getenv("ENGELOS_ANTHROPIC_API_KEY")); key != "" {
-		opts = append(opts, claude.WithAPIKey(key))
-	}
-	if model := strings.TrimSpace(os.Getenv("ENGELOS_TRANSLATE_MODEL")); model != "" {
-		opts = append(opts, claude.WithModel(model))
-	}
-	return claude.New(opts...)
 }
 
 // compile-time interface checks.

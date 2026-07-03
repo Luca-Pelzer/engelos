@@ -23,9 +23,13 @@ const (
 	EventUserBanned       EventType = "user.banned"
 	EventUserTimedOut     EventType = "user.timed_out"
 	EventChannelRaided    EventType = "channel.raided"
+	EventStreamOnline     EventType = "stream.online"
+	EventStreamOffline    EventType = "stream.offline"
 	EventConnected        EventType = "platform.connected"
 	EventDisconnected     EventType = "platform.disconnected"
 	EventReconnecting     EventType = "platform.reconnecting"
+	EventDonation         EventType = "donation"
+	EventDiscordMessage   EventType = "discord.message"
 )
 
 // Event is the normalized, platform-neutral representation of something that
@@ -43,11 +47,14 @@ type Event struct {
 	Channel    string    `json:"channel"`
 	OccurredAt time.Time `json:"occurred_at"`
 
-	Message      *MessageEvent      `json:"message,omitempty"`
-	Subscription *SubscriptionEvent `json:"subscription,omitempty"`
-	Raid         *RaidEvent         `json:"raid,omitempty"`
-	UserAction   *UserActionEvent   `json:"user_action,omitempty"`
-	Connection   *ConnectionEvent   `json:"connection,omitempty"`
+	Message      *MessageEvent        `json:"message,omitempty"`
+	Subscription *SubscriptionEvent   `json:"subscription,omitempty"`
+	Raid         *RaidEvent           `json:"raid,omitempty"`
+	UserAction   *UserActionEvent     `json:"user_action,omitempty"`
+	Connection   *ConnectionEvent     `json:"connection,omitempty"`
+	Stream       *StreamEvent         `json:"stream,omitempty"`
+	Donation     *DonationEvent       `json:"donation,omitempty"`
+	Discord      *DiscordMessageEvent `json:"discord,omitempty"`
 }
 
 // MessageEvent carries the payload for [EventMessageCreated] and (with
@@ -103,6 +110,42 @@ type UserActionEvent struct {
 type ConnectionEvent struct {
 	Reason string `json:"reason,omitempty"`
 	Error  string `json:"error,omitempty"`
+}
+
+// StreamEvent carries the payload for [EventStreamOnline] and
+// [EventStreamOffline]. IsLive mirrors the event kind (true for online); for an
+// online event StartedAt is the stream's start time (zero for offline).
+type StreamEvent struct {
+	IsLive    bool      `json:"is_live"`
+	StartedAt time.Time `json:"started_at,omitempty"`
+}
+
+// DonationEvent carries the payload for [EventDonation]. It is platform-neutral
+// but currently sourced from Ko-fi webhooks; Amount and Currency are the raw
+// strings the provider sent (Ko-fi uses "5.00" and "USD"), Kind distinguishes a
+// one-off tip from a subscription ("Donation"/"Subscription").
+type DonationEvent struct {
+	From     string `json:"from"`
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+	Message  string `json:"message,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+}
+
+// DiscordMessageEvent carries the payload for [EventDiscordMessage]: a guild or
+// DM text message the bot read over the gateway. ChannelName is the guild
+// channel's name when known (empty in a DM or before the channel is cached);
+// IsDM is true for a direct message (empty GuildID).
+type DiscordMessageEvent struct {
+	GuildID     string `json:"guild_id"`
+	ChannelID   string `json:"channel_id"`
+	ChannelName string `json:"channel_name,omitempty"`
+	MessageID   string `json:"message_id"`
+	Username    string `json:"username"`
+	UserID      string `json:"user_id"`
+	Text        string `json:"text"`
+	IsDM        bool   `json:"is_dm"`
+	IsModerator bool   `json:"is_moderator"`
 }
 
 // ActionType enumerates the platform-agnostic actions the bot can ask an

@@ -52,7 +52,7 @@
       inviteLogin = '';
       invitations = (await channelApi(channel).get<{ invitations: Invitation[] }>('/invitations')).invitations ?? [];
     } catch (err) {
-      inviteError = err instanceof ApiException && err.status === 409 ? 'Bereits eingeladen.' : 'Einladung fehlgeschlagen.';
+      inviteError = err instanceof ApiException && err.status === 409 ? 'Already invited.' : 'Invitation failed.';
     } finally {
       inviting = false;
     }
@@ -86,7 +86,7 @@
   function sourceLabel(s: string): string {
     if (s === 'owner') return 'Owner';
     if (s === 'twitch_verified') return 'Twitch-Mod';
-    if (s === 'invite') return 'Eingeladen';
+    if (s === 'invite') return 'Invited';
     return s;
   }
 
@@ -105,24 +105,24 @@
   <div class="page-wrap">
     <header class="head">
       <div>
-        <h2>Mitglieder</h2>
+        <h2>Members</h2>
         {#if channel}<span class="ws-label">@{channel}</span>{/if}
       </div>
     </header>
 
     {#if loading}
-      <div class="muted">Laedt...</div>
+      <div class="muted">Loading…</div>
     {:else if errorCode}
       <div class="empty">
-        <div class="t">{errorCode === 'forbidden' ? 'Kein Zugriff' : errorCode === 'not_found' ? 'Channel nicht gefunden' : 'Fehler'}</div>
-        <div class="d">{errorCode === 'forbidden' ? 'Du bist kein Mitglied dieses Workspace.' : 'Bitte einen Workspace waehlen.'}</div>
+        <div class="t">{errorCode === 'forbidden' ? 'No access' : errorCode === 'not_found' ? 'Channel not found' : 'Error'}</div>
+        <div class="d">{errorCode === 'forbidden' ? 'You are not a member of this workspace.' : 'Please select a workspace.'}</div>
       </div>
     {:else}
       {#if isOwner}
         <div class="card toggle-card">
           <div class="toggle-meta">
-            <h3>Twitch-Mods automatisch freischalten</h3>
-            <p class="hint">Wer auf deinem Twitch-Channel Moderator ist, erhaelt beim Login automatisch Mod-Zugriff hier.</p>
+            <h3>Auto-approve Twitch mods</h3>
+            <p class="hint">Anyone who moderates your Twitch channel automatically gets mod access here on login.</p>
           </div>
           <button
             class="switch"
@@ -131,15 +131,15 @@
             disabled={savingToggle}
             role="switch"
             aria-checked={autoVerify}
-            aria-label="Twitch-Mods automatisch freischalten"
+            aria-label="Auto-approve Twitch mods"
           >
             <span class="knob"></span>
           </button>
         </div>
 
         <div class="card">
-          <h3>Moderator einladen</h3>
-          <p class="hint">Lade per Twitch-Login ein. Die Person tritt automatisch bei, sobald sie sich das naechste Mal anmeldet.</p>
+          <h3>Invite a moderator</h3>
+          <p class="hint">Invite by Twitch login. They join automatically the next time they sign in.</p>
           <form class="invite-row" onsubmit={invite}>
             <span class="at">@</span>
             <input
@@ -151,7 +151,7 @@
               spellcheck="false"
             />
             <button class="btn btn-primary" type="submit" disabled={inviting || !inviteLogin.trim()}>
-              {inviting ? 'Sende...' : 'Einladen'}
+              {inviting ? 'Sending…' : 'Invite'}
             </button>
           </form>
           {#if inviteError}<div class="err">{inviteError}</div>{/if}
@@ -159,7 +159,7 @@
       {/if}
 
       <div class="card">
-        <h3>Aktive Mitglieder <span class="count">{members.length}</span></h3>
+        <h3>Active members <span class="count">{members.length}</span></h3>
         <ul class="rows">
           {#each members as m (m.user_id)}
             <li class="row">
@@ -169,7 +169,7 @@
                 <span class="rsub">{sourceLabel(m.source)}</span>
               </div>
               {#if isOwner && m.role !== 'owner'}
-                <button class="btn-ghost" onclick={() => removeMember(m.user_id)} title="Entfernen">Entfernen</button>
+                <button class="btn-ghost" onclick={() => removeMember(m.user_id)} title="Remove">Remove</button>
               {/if}
             </li>
           {/each}
@@ -178,9 +178,9 @@
 
       {#if isOwner}
         <div class="card">
-          <h3>Offene Einladungen <span class="count">{invitations.filter((i) => !i.accepted).length}</span></h3>
+          <h3>Open invitations <span class="count">{invitations.filter((i) => !i.accepted).length}</span></h3>
           {#if invitations.filter((i) => !i.accepted).length === 0}
-            <p class="hint">Keine offenen Einladungen.</p>
+            <p class="hint">No open invitations.</p>
           {:else}
             <ul class="rows">
               {#each invitations.filter((i) => !i.accepted) as inv (inv.id)}

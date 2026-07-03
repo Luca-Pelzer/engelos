@@ -85,9 +85,12 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
-    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">AI Co-Host</h2>
+    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">
+      AI Co-Host
+      <span class="legacy-badge">Experimental</span>
+    </h2>
     <p class="text-[13px] text-fg-soft mt-1">
       An AI sidekick that answers when viewers address it by name. Give it a persona and a
       reply length, then enable it per channel.

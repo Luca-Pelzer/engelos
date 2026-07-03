@@ -121,12 +121,15 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
-    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Moments</h2>
+    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">
+      Moment Template
+      <span class="legacy-badge">Template</span>
+    </h2>
     <p class="text-[13px] text-fg-soft mt-1">
-      BeReal-style moment alerts. Start a moment when something big happens; viewers type
-      <code>!here</code> in chat to react before the window closes. The more who react, the rarer it gets.
+      Optional workflow template for moment alerts. Start a moment manually or from another
+      trigger; viewers type <code>!here</code> before the window closes.
     </p>
   </header>
 
@@ -158,7 +161,7 @@
       <Card class="reveal-up reveal-up-delay-2">
         <h3 class="text-[14px] font-semibold tracking-tight text-fg mb-1">Start a moment</h3>
         <p class="text-[12.5px] text-fg-soft mb-5">
-          Fires a <code>moment.opened</code> overlay alert and opens the <code>!here</code> window.
+          Fires a <code>moment.opened</code> plugin event and opens the <code>!here</code> window.
         </p>
         <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4">
           <label class="block">

@@ -29,7 +29,11 @@
     const root = document.documentElement;
     root.style.setProperty('--brand', a.sw[0]);
     root.style.setProperty('--brand-2', a.sw[1]);
-    try { localStorage.setItem(ACCENT_KEY, a.id); } catch { /* private mode */ }
+    // Store the [primary, secondary] pair - the SAME format shared/lib/theme.ts
+    // and the app.html boot script read. Storing the id string here used to make
+    // their JSON.parse throw, silently resetting the dashboard to the teal
+    // fallback while login showed the picked accent (two-products bug).
+    try { localStorage.setItem(ACCENT_KEY, JSON.stringify(a.sw)); } catch { /* private mode */ }
   }
 
   let email = $state('');
@@ -38,7 +42,10 @@
   let remember = $state(false);
   let loading = $state(false);
 
-  let eqEl: HTMLDivElement;
+  // Inline status banner driven by query params the OAuth callbacks redirect
+  // back to /login with. Rendered once on mount; no further reactivity needed.
+  type BannerKind = 'denied' | 'bot' | 'error';
+  let banner = $state<{ kind: BannerKind; text: string } | null>(null);
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
@@ -63,10 +70,42 @@
   }
 
   onMount(() => {
+    // Read OAuth-callback redirect params once on mount and surface a status
+    // banner. Strip the param afterwards so a refresh doesn't replay it.
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const denied = params.get('denied');
+      const bot = params.get('bot');
+      const loginErr = params.get('login');
+      if (denied === 'account') {
+        banner = {
+          kind: 'denied',
+          text: "This account isn't authorized for this dashboard. Ask the operator to add it.",
+        };
+      } else if (bot === 'linked') {
+        banner = {
+          kind: 'bot',
+          text: 'Bot token linked. Sign in with an operator account to open the dashboard.',
+        };
+      } else if (loginErr === 'error') {
+        banner = { kind: 'error', text: 'Login failed. Please try again.' };
+      }
+      if (banner && window.history.replaceState) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch { /* SSR / no window */ }
+
     try {
       const sa = localStorage.getItem(ACCENT_KEY);
-      if (sa && ACCENTS.some((a) => a.id === sa)) applyAccent(sa);
-      else applyAccent('magma');
+      if (sa && ACCENTS.some((a) => a.id === sa)) {
+        applyAccent(sa);
+      } else if (sa) {
+        const pair = JSON.parse(sa) as [string, string];
+        const match = ACCENTS.find((a) => a.sw[0] === pair[0]);
+        applyAccent(match ? match.id : 'magma');
+      } else {
+        applyAccent('magma');
+      }
     } catch { applyAccent('magma'); }
 
     api.get<{ twitch: boolean; discord: boolean }>('/api/v1/auth/providers')
@@ -74,91 +113,6 @@
       .catch(() => { providers = { twitch: true, discord: false }; });
 
     const reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-
-    // Sparklines in the faux dashboard stat cards.
-    document.querySelectorAll<HTMLElement>('.dstat .spark').forEach((sp, idx) => {
-      let html = '';
-      for (let i = 0; i < 12; i++) {
-        const h = 24 + Math.round(Math.abs(Math.sin(i * 0.9 + idx * 1.7)) * 70);
-        html += `<i style="height:${h}%"></i>`;
-      }
-      sp.innerHTML = html;
-    });
-
-    // Equalizer: each bar runs its own high-frequency phase set so adjacent
-    // bars differ sharply (a jagged spectrum, not a smooth flowing wave).
-    type Bar = {
-      fill: HTMLElement; cap: HTMLElement; env: number; gain: number;
-      o1: number; o2: number; o3: number; p1: number; p2: number; p3: number;
-      cur: number; peak: number; drift: number;
-    };
-    let bars: Bar[] = [];
-    let raf = 0;
-    let t0 = 0;
-
-    const barCount = () => {
-      const w = eqEl?.clientWidth || 360;
-      return Math.max(14, Math.min(40, Math.round(w / 15)));
-    };
-    const build = () => {
-      if (!eqEl) return;
-      eqEl.innerHTML = '';
-      bars = [];
-      const N = barCount();
-      for (let i = 0; i < N; i++) {
-        const bar = document.createElement('div'); bar.className = 'bar';
-        const fill = document.createElement('div'); fill.className = 'fill';
-        const cap = document.createElement('div'); cap.className = 'cap';
-        bar.appendChild(fill); bar.appendChild(cap); eqEl.appendChild(bar);
-        const t = i / (N - 1);
-        const env = 0.45 + 0.55 * Math.pow(Math.sin(Math.PI * t), 0.6);
-        const gain = 0.55 + Math.random() * 0.55;
-        const seed = 8 + Math.random() * env * gain * 88;
-        fill.style.height = seed.toFixed(1) + '%';
-        cap.style.bottom = (seed + 3).toFixed(1) + '%';
-        bars.push({
-          fill, cap, env, gain,
-          o1: 1.4 + Math.random() * 2.6, o2: 3.4 + Math.random() * 3.6, o3: 6 + Math.random() * 5,
-          p1: Math.random() * 6.28, p2: Math.random() * 6.28, p3: Math.random() * 6.28,
-          cur: Math.random() * 0.5 + 0.2, peak: 0.1, drift: Math.random() * 6.28,
-        });
-      }
-    };
-    const frame = (now: number) => {
-      const s = (now - t0) / 1000;
-      for (const b of bars) {
-        b.drift += 0.0011;
-        const beat = 0.82 + 0.18 * Math.sin(s * 2.2);
-        const raw = 0.5 * Math.sin(s * b.o1 + b.p1) + 0.32 * Math.sin(s * b.o2 + b.p2 + Math.sin(b.drift)) + 0.18 * Math.sin(s * b.o3 + b.p3);
-        const target = Math.max(0.03, Math.min(1, (0.5 + 0.5 * raw) * b.env * b.gain * beat));
-        const k = target > b.cur ? 0.55 : 0.32;
-        b.cur += (target - b.cur) * k;
-        b.fill.style.height = (6 + b.cur * 94).toFixed(1) + '%';
-        if (b.cur > b.peak) b.peak = b.cur; else b.peak -= 0.016;
-        if (b.peak < b.cur) b.peak = b.cur;
-        b.cap.style.bottom = (6 + b.peak * 94).toFixed(1) + '%';
-      }
-      raf = requestAnimationFrame(frame);
-    };
-
-    build();
-    if (!reduce) {
-      t0 = performance.now();
-      raf = requestAnimationFrame(frame);
-    }
-
-    let rt: ReturnType<typeof setTimeout>;
-    const onResize = () => {
-      clearTimeout(rt);
-      rt = setTimeout(() => {
-        if (barCount() !== bars.length) {
-          cancelAnimationFrame(raf);
-          build();
-          if (!reduce) { t0 = performance.now(); raf = requestAnimationFrame(frame); }
-        }
-      }, 220);
-    };
-    window.addEventListener('resize', onResize);
 
     let onMoveOrbs: ((ev: PointerEvent) => void) | null = null;
     if (window.matchMedia('(min-width:760px)').matches && !reduce) {
@@ -175,8 +129,6 @@
     }
 
     return () => {
-      if (raf) cancelAnimationFrame(raf);
-      window.removeEventListener('resize', onResize);
       if (onMoveOrbs) window.removeEventListener('pointermove', onMoveOrbs);
     };
   });
@@ -187,59 +139,6 @@
   <div class="orb b"></div>
   <div class="orb c"></div>
 </div>
-
-<div class="dash" aria-hidden="true">
-  <aside class="dash-rail">
-    <div class="ri act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.6" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.6" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.6" /></svg></div>
-    <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5.5h16v10H9.5l-4 3v-3H4z" /></svg></div>
-    <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 2 5.5 2 5.5H4s2-1 2-5.5" /><path d="M10 19a2 2 0 0 0 4 0" /></svg></div>
-    <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 10v4M9.5 6v12M14.5 8.5v7M19 11v2" /></svg></div>
-    <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3" /><path d="M3.6 19a5.5 5.5 0 0 1 10.8 0" /><path d="M16 6.6a3 3 0 0 1 0 5.6M20.4 19a5.5 5.5 0 0 0-3.4-5" /></svg></div>
-    <div class="ri sett"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2.5v2.5M12 19v2.5M4.4 4.4l1.8 1.8M17.8 17.8l1.8 1.8M2.5 12H5M19 12h2.5M4.4 19.6l1.8-1.8M17.8 6.2l1.8-1.8" /></svg></div>
-  </aside>
-  <div class="dash-main">
-    <div class="dash-top">
-      <div class="dlive">Live</div>
-      <div class="dview">2,481 watching</div>
-    </div>
-    <div class="dstats">
-      <div class="dpanel dstat"><div class="n"><b>18.2k</b></div><div class="l">Followers</div><div class="spark"></div></div>
-      <div class="dpanel dstat"><div class="n">312<b>/m</b></div><div class="l">Chat messages</div><div class="spark"></div></div>
-      <div class="dpanel dstat"><div class="n">6:42<b>h</b></div><div class="l">Uptime</div><div class="spark"></div></div>
-    </div>
-
-    <div class="dgrid">
-      <div class="dpanel chat">
-        <div class="ph"><span class="pt">Chat &middot; Auto-mod</span><span class="pdot"></span></div>
-        <div class="crow"><span class="av"></span><span class="ct"><span class="gbar" style="width:42%"></span><span class="gbar" style="width:80%"></span></span></div>
-        <div class="crow"><span class="av"></span><span class="ct"><span class="gbar" style="width:55%"></span><span class="gbar" style="width:64%"></span></span></div>
-        <div class="crow flag"><span class="av"></span><span class="ct"><span class="gbar" style="width:38%"></span><span class="gbar" style="width:90%"></span></span></div>
-        <div class="cmdwrap" style="margin-top:2px"><span class="cmd">!so</span><span class="cmd">!uptime</span><span class="cmd">!followage</span></div>
-      </div>
-
-      <div class="dpanel audio">
-        <div class="ph"><span class="pt">Stream audio</span><span class="pdot"></span></div>
-        <div class="eq" bind:this={eqEl}></div>
-      </div>
-
-      <div class="dpanel followers">
-        <div class="ph"><span class="pt">Recent followers</span><span class="pdot"></span></div>
-        <div class="crow"><span class="av"></span><span class="ct"><span class="gbar" style="width:64%"></span></span><span class="gbar" style="width:34px;flex:none"></span></div>
-        <div class="crow"><span class="av"></span><span class="ct"><span class="gbar" style="width:50%"></span></span><span class="gbar" style="width:34px;flex:none"></span></div>
-        <div class="crow"><span class="av"></span><span class="ct"><span class="gbar" style="width:72%"></span></span><span class="gbar" style="width:34px;flex:none"></span></div>
-        <div class="crow"><span class="av"></span><span class="ct"><span class="gbar" style="width:44%"></span></span><span class="gbar" style="width:34px;flex:none"></span></div>
-      </div>
-
-      <div class="dpanel events">
-        <div class="ph"><span class="pt">Activity</span></div>
-        <div class="erow"><span class="ei"></span><span class="et"><span class="gbar" style="width:58%"></span><span class="gbar" style="width:34%"></span></span></div>
-        <div class="erow"><span class="ei"></span><span class="et"><span class="gbar" style="width:46%"></span><span class="gbar" style="width:28%"></span></span></div>
-        <div class="erow"><span class="ei"></span><span class="et"><span class="gbar" style="width:64%"></span><span class="gbar" style="width:40%"></span></span></div>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="dash-scrim" aria-hidden="true"></div>
 
 <div class="topbar">
   <div class="tb-right">
@@ -274,8 +173,23 @@
       </span>
       <span class="wordmark">Engel<span class="lo">OS</span></span>
     </div>
-    <h2 class="reveal d2">Welcome back</h2>
-    <p class="lede reveal d2">Sign in to your control room. <br />New here? <a href="/setup">Spin up an instance</a></p>
+    <h2 class="reveal d2">Operator sign-in</h2>
+    <p class="lede reveal d2">Sign in to the EngelOS operator dashboard.</p>
+
+    {#if banner}
+      <div class="banner reveal d2 {banner.kind}" role="status" aria-live="polite">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          {#if banner.kind === 'denied'}
+            <path d="M12 2 2 19h20L12 2Z" /><path d="M12 9v5M12 17h.01" />
+          {:else if banner.kind === 'bot'}
+            <path d="M5 12.5 10 17 19 8" />
+          {:else}
+            <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" />
+          {/if}
+        </svg>
+        <span>{banner.text}</span>
+      </div>
+    {/if}
 
     <form onsubmit={handleSubmit} novalidate>
       <div class="field reveal d3">
@@ -340,10 +254,7 @@
       {/if}
     </form>
 
-    <p class="legal reveal d8">
-      Self-hosted and open source.<br />
-      <a href="https://github.com/Luca-Pelzer/engelos" target="_blank" rel="noreferrer noopener">github.com/Luca-Pelzer/engelos</a>
-    </p>
+    <p class="legal reveal d8">Operator access only.</p>
   </div>
 </main>
 
@@ -367,13 +278,13 @@
     --card-bg: rgba(20, 20, 23, 0.64);
     --card-border: rgba(255, 255, 255, 0.12);
     --card-hi: rgba(255, 255, 255, 0.06);
-    --text: #f1f1f3;
-    --text-dim: #a6a7ac;
-    --text-faint: #6c6d73;
-    --field: rgba(255, 255, 255, 0.05);
-    --field-focus: rgba(255, 255, 255, 0.08);
-    --border: rgba(255, 255, 255, 0.12);
-    --border-strong: rgba(255, 255, 255, 0.2);
+    --text: #f4f5f7;
+    --text-dim: #b7bbc6;
+    --text-faint: #8a8e99;
+    --field: rgba(255, 255, 255, 0.075);
+    --field-focus: rgba(255, 255, 255, 0.11);
+    --border: rgba(255, 255, 255, 0.18);
+    --border-strong: rgba(255, 255, 255, 0.28);
     --provider-bg: rgba(255, 255, 255, 0.045);
     --provider-border: rgba(255, 255, 255, 0.14);
     --field-shadow: none;
@@ -424,63 +335,6 @@
   :global(:root[data-theme='light']) .orb.b { opacity: 0.3; }
   :global(:root[data-theme='light']) .orb.c { opacity: 0.22; }
 
-  .dash { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; display: grid; grid-template-columns: 72px 1fr; opacity: 0.62; -webkit-mask-image: radial-gradient(135% 125% at 50% 44%, #000 46%, transparent 88%); mask-image: radial-gradient(135% 125% at 50% 44%, #000 46%, transparent 88%); }
-  .dash-rail { border-right: 1px solid rgba(255, 255, 255, 0.06); display: flex; flex-direction: column; align-items: center; gap: 13px; padding: 20px 0; }
-  .dash-rail .ri { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; flex: none; background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.42); }
-  .dash-rail .ri svg { width: 17px; height: 17px; }
-  .dash-rail .ri.act { color: var(--brand); background: color-mix(in srgb, var(--brand) 18%, transparent); border-color: color-mix(in srgb, var(--brand) 40%, transparent); }
-  .dash-rail .ri.sett { margin-top: auto; }
-  .dash-main { display: flex; flex-direction: column; padding: 24px clamp(20px, 3vw, 40px); gap: 18px; min-width: 0; }
-  .dash-top { display: flex; align-items: center; gap: 12px; }
-  .dash-top .dlive { display: inline-flex; align-items: center; gap: 7px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.09em; color: #ff9aa4; background: rgba(255, 77, 94, 0.12); border: 1px solid rgba(255, 77, 94, 0.28); padding: 5px 11px; border-radius: 999px; text-transform: uppercase; }
-  .dash-top .dlive::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #ff4d5e; }
-  .dash-top .dview { margin-left: auto; font-size: 0.8rem; color: rgba(255, 255, 255, 0.4); font-weight: 600; }
-  .dpanel { background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-  .dpanel .ph { display: flex; align-items: center; justify-content: space-between; }
-  .dpanel .pt { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.42); }
-  .dpanel .pdot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 8px var(--brand-glow); }
-  .dstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .dstat .n { font-size: 1.7rem; font-weight: 800; color: rgba(255, 255, 255, 0.62); letter-spacing: -0.02em; line-height: 1; }
-  .dstat .n b { color: var(--brand); }
-  .dstat .l { font-size: 0.7rem; color: rgba(255, 255, 255, 0.34); margin-top: 5px; }
-  .dstat .spark { display: flex; align-items: flex-end; gap: 3px; height: 26px; margin-top: 10px; }
-  .dstat .spark :global(i) { flex: 1; border-radius: 2px; background: linear-gradient(var(--brand), var(--brand-deep)); opacity: 0.55; }
-  .dgrid { display: grid; grid-template-columns: 1.2fr 1fr; grid-template-rows: 1fr 1fr; gap: 18px; flex: 1; min-height: 0; }
-  .dgrid .dpanel { min-height: 0; overflow: hidden; }
-  .gbar { height: 9px; border-radius: 5px; background: rgba(255, 255, 255, 0.1); }
-  .crow { display: flex; align-items: center; gap: 11px; }
-  .crow .av { width: 28px; height: 28px; border-radius: 50%; flex: none; background: linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)); }
-  .crow .ct { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .crow.flag .av { background: linear-gradient(135deg, var(--brand), var(--brand-2)); opacity: 0.8; }
-  .erow { display: flex; align-items: center; gap: 11px; }
-  .erow .ei { width: 30px; height: 30px; border-radius: 9px; flex: none; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.08); }
-  .erow .et { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .cmd { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 600; color: rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.09); padding: 5px 9px; border-radius: 8px; }
-  .cmdwrap { display: flex; flex-wrap: wrap; gap: 8px; }
-
-  .dpanel.audio { justify-content: flex-end; }
-  .eq { display: flex; align-items: flex-end; gap: 5px; height: 92px; width: 100%; }
-  .eq :global(.bar) { flex: 1 1 0; position: relative; height: 100%; min-width: 0; }
-  .eq :global(.bar .fill) { position: absolute; left: 0; right: 0; bottom: 0; height: 8%; border-radius: 3px 3px 0 0; background: linear-gradient(var(--brand-2), var(--brand) 55%, var(--brand-deep)); box-shadow: 0 0 12px -3px var(--brand-glow); will-change: height; }
-  .eq :global(.bar .cap) { position: absolute; left: 0; right: 0; height: 2px; border-radius: 2px; bottom: 8%; background: #fff; opacity: 0.85; box-shadow: 0 0 7px var(--brand-glow); will-change: bottom; }
-
-  .dash-scrim { position: fixed; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(58% 52% at 50% 50%, color-mix(in srgb, var(--scrim) 72%, transparent) 0%, transparent 72%); }
-
-  :global(:root[data-theme='light']) .dash { opacity: 0.72; }
-  :global(:root[data-theme='light']) .dash-rail { border-right-color: rgba(20, 40, 70, 0.14); }
-  :global(:root[data-theme='light']) .dash-rail .ri:not(.act) { background: rgba(20, 40, 70, 0.05); border-color: rgba(20, 40, 70, 0.14); color: rgba(20, 40, 70, 0.5); }
-  :global(:root[data-theme='light']) .dash-rail .ri.act { color: var(--brand); background: color-mix(in srgb, var(--brand) 15%, transparent); border-color: color-mix(in srgb, var(--brand) 42%, transparent); }
-  :global(:root[data-theme='light']) .dash-top .dview { color: rgba(20, 40, 70, 0.5); }
-  :global(:root[data-theme='light']) .dpanel { background: rgba(255, 255, 255, 0.62); border-color: rgba(20, 40, 70, 0.15); }
-  :global(:root[data-theme='light']) .dpanel .pt { color: rgba(20, 40, 70, 0.6); }
-  :global(:root[data-theme='light']) .dstat .n { color: rgba(20, 40, 70, 0.78); }
-  :global(:root[data-theme='light']) .dstat .l { color: rgba(20, 40, 70, 0.55); }
-  :global(:root[data-theme='light']) .gbar { background: rgba(20, 40, 70, 0.2); }
-  :global(:root[data-theme='light']) .crow .av { background: linear-gradient(135deg, rgba(20, 40, 70, 0.32), rgba(20, 40, 70, 0.14)); }
-  :global(:root[data-theme='light']) .erow .ei { background: rgba(20, 40, 70, 0.08); border-color: rgba(20, 40, 70, 0.15); }
-  :global(:root[data-theme='light']) .cmd { color: rgba(20, 40, 70, 0.64); background: rgba(255, 255, 255, 0.6); border-color: rgba(20, 40, 70, 0.16); }
-  :global(:root[data-theme='light']) .eq :global(.bar .cap) { background: var(--brand-deep); opacity: 0.7; }
-
   .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 5; display: flex; align-items: center; justify-content: flex-end; padding: clamp(1.1rem, 2vw, 1.7rem) clamp(1.1rem, 2.4vw, 2.2rem); }
   .tb-right { display: flex; align-items: center; gap: 12px; }
   .accentpick { display: flex; align-items: center; gap: 8px; background-color: var(--card-bg); border: 1px solid var(--card-border); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); padding: 8px 11px; border-radius: 999px; }
@@ -505,8 +359,15 @@
   .wordmark .lo { color: var(--brand); }
   .card h2 { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.03em; text-align: center; }
   .card .lede { margin-top: 0.5rem; color: var(--text-dim); font-size: 0.95rem; text-align: center; }
-  .card .lede a { color: var(--brand); text-decoration: none; font-weight: 600; }
-  .card .lede a:hover { text-decoration: underline; }
+
+  .banner { display: flex; align-items: flex-start; gap: 0.6rem; margin-top: 1.1rem; padding: 0.8rem 0.95rem; border-radius: var(--lg-radius-sm); font-size: 0.86rem; line-height: 1.4; border: 1px solid var(--border); background: var(--field); color: var(--text-dim); }
+  .banner svg { width: 18px; height: 18px; flex: none; margin-top: 0.05rem; }
+  .banner.denied { border-color: color-mix(in srgb, #ff4d5e 55%, transparent); background: color-mix(in srgb, #ff4d5e 12%, var(--field)); color: var(--text); }
+  .banner.denied svg { color: #ff4d5e; }
+  .banner.bot { border-color: color-mix(in srgb, var(--brand) 45%, transparent); background: color-mix(in srgb, var(--brand) 10%, var(--field)); }
+  .banner.bot svg { color: var(--brand); }
+  .banner.error { border-color: var(--border-strong); }
+  .banner.error svg { color: var(--text-dim); }
 
   form { margin-top: 1.7rem; display: flex; flex-direction: column; gap: 1rem; }
   .field label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-dim); margin-bottom: 0.45rem; letter-spacing: 0.01em; }
@@ -554,17 +415,12 @@
   .btn-social.discord svg { color: var(--discord); }
 
   .legal { margin-top: 1.5rem; text-align: center; font-size: 0.78rem; color: var(--text-faint); line-height: 1.6; }
-  .legal a { color: var(--text-dim); text-decoration: none; border-bottom: 1px solid var(--border); }
-  .legal a:hover { color: var(--text); }
 
   @keyframes up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
   .reveal { opacity: 0; animation: up 0.7s var(--lg-ease) forwards; }
   .d1 { animation-delay: 0.04s; } .d2 { animation-delay: 0.1s; } .d3 { animation-delay: 0.16s; } .d4 { animation-delay: 0.22s; }
   .d5 { animation-delay: 0.28s; } .d6 { animation-delay: 0.34s; } .d7 { animation-delay: 0.4s; } .d8 { animation-delay: 0.46s; }
 
-  @media (max-width: 860px) {
-    .dash, .dash-scrim { display: none; }
-  }
   @media (max-width: 520px) {
     .social { grid-template-columns: 1fr; }
     .card { padding: 1.5rem 1.25rem; }

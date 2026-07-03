@@ -29,7 +29,7 @@
       const res = await channelApi(channel).get<ListResponse>('/quotes');
       quotes = res.quotes ?? [];
     } catch (err) {
-      const msg = err instanceof ApiException && err.status === 501 ? 'Quotes-Feature ist nicht aktiviert.' : 'Laden fehlgeschlagen.';
+      const msg = err instanceof ApiException && err.status === 501 ? 'The quotes feature is not enabled.' : 'Could not load.';
       toast(msg, 'error');
     } finally {
       loading = false;
@@ -39,7 +39,7 @@
   async function add() {
     const text = draft.trim();
     if (!channel || !text) {
-      toast('Zitat-Text ist erforderlich.', 'warn');
+      toast('Quote text is required.', 'warn');
       return;
     }
     try {
@@ -47,9 +47,9 @@
       quotes = [...quotes, q];
       draft = '';
       showAdd = false;
-      toast(`Zitat #${q.number} gespeichert.`, 'success');
+      toast(`Quote #${q.number} saved.`, 'success');
     } catch {
-      toast('Speichern fehlgeschlagen.', 'error');
+      toast('Could not save.', 'error');
     }
   }
 
@@ -57,9 +57,9 @@
     try {
       await channelApi(channel).delete(`/quotes/${n}`);
       quotes = quotes.filter((x) => x.number !== n);
-      toast(`Zitat #${n} geloescht.`, 'warn');
+      toast(`Quote #${n} deleted.`, 'warn');
     } catch {
-      toast('Loeschen fehlgeschlagen.', 'error');
+      toast('Could not delete.', 'error');
     }
   }
 
@@ -78,24 +78,25 @@
 
 <section class="page" data-screen-label="quotes">
   <div class="page-wrap">
+    <div class="section-title">Quote Plugin <span class="sub">optional content store for chat and workflow actions</span></div>
     <div class="toolbar">
-      <span class="ws-label">{channel ? `@${channel}` : 'Kein Workspace gewaehlt'}</span>
-      <button class="btn btn-ghost btn-sm" onclick={load} disabled={loading || !channel}>{loading ? 'Laedt...' : 'Neu laden'}</button>
+      <span class="ws-label">{channel ? `@${channel}` : 'No workspace selected'}</span>
+      <button class="btn btn-ghost btn-sm" onclick={load} disabled={loading || !channel}>{loading ? 'Loading…' : 'Reload'}</button>
       <div class="input search">
         <span class="lead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" /></svg></span>
         <input type="text" placeholder="Durchsuchen... (Text oder #Nummer)" bind:value={search} />
       </div>
       <div class="grow"></div>
-      <span class="count-pill"><b>{quotes.length}</b> Zitate</span>
-      <button class="btn btn-primary btn-sm" onclick={() => (showAdd = true)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>Zitat hinzufuegen</button>
+      <span class="count-pill"><b>{quotes.length}</b> quotes</span>
+      <button class="btn btn-primary btn-sm" onclick={() => (showAdd = true)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>Add quote</button>
     </div>
 
     {#if showAdd}
       <div class="add-row">
         <textarea class="add-text" placeholder='"..."' bind:value={draft}></textarea>
         <div class="add-actions">
-          <button class="btn btn-ghost btn-sm" onclick={() => { showAdd = false; draft = ''; }}>Abbrechen</button>
-          <button class="btn btn-primary btn-sm" onclick={add}>Speichern</button>
+          <button class="btn btn-ghost btn-sm" onclick={() => { showAdd = false; draft = ''; }}>Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick={add}>Save</button>
         </div>
       </div>
     {/if}
@@ -111,7 +112,7 @@
               <span>{fmtDate(x.created_at)}</span>
             </div>
           </div>
-          <button class="iact del q-del" onclick={() => del(x.number)} aria-label="Loeschen">
+          <button class="iact del q-del" onclick={() => del(x.number)} aria-label="Delete">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></svg>
           </button>
         </div>
@@ -121,8 +122,8 @@
     {#if filtered.length === 0}
       <div class="empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h4v4a4 4 0 0 1-4 4M13 7h4v4a4 4 0 0 1-4 4" /></svg>
-        <div class="t">{channel ? 'Keine Zitate gefunden' : 'Workspace oben auswaehlen'}</div>
-        <div class="d">Speichere den naechsten legendaeren Moment.</div>
+        <div class="t">{channel ? 'No quotes found' : 'Select a workspace above'}</div>
+        <div class="d">Save the next legendary moment.</div>
       </div>
     {/if}
   </div>

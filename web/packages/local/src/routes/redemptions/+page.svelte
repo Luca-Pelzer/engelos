@@ -218,11 +218,11 @@
 <section class="space-y-6">
   <header class="flex items-end justify-between gap-4 reveal-up">
     <div>
-      <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Channel Points</h2>
+      <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Redemption Triggers</h2>
       <p class="text-[13px] text-fg-soft mt-1 max-w-2xl">
-        Bind a Twitch Channel-Points reward to a bot action. Requires an
-        Affiliate or Partner channel. The broadcaster must Login with Twitch so
-        the bot can fulfill redemptions.
+        Bind native Twitch Channel-Points redemptions to workflow actions. Requires
+        an Affiliate or Partner channel and broadcaster Twitch login so EngelOS can
+        fulfill or cancel redemptions through Twitch.
       </p>
     </div>
     {#if loaded}
@@ -246,7 +246,7 @@
       {#if bindings.length === 0}
         <EmptyState
           title="No bindings yet"
-          description="Map a reward to a chat message or counter action to get started."
+          description="Map a Twitch reward to a workflow action like chat, counters, TTS or fulfillment."
         >
           {#snippet actions()}
             <Button onclick={openCreate}>

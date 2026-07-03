@@ -32,7 +32,7 @@
       const res = await channelApi(channel).get<ListResponse>('/liveops');
       events = res.events ?? [];
     } catch (err) {
-      toast(err instanceof ApiException && err.status === 501 ? 'Event-Plan ist nicht aktiviert.' : 'Laden fehlgeschlagen.', 'error');
+      toast(err instanceof ApiException && err.status === 501 ? 'Event-Plan ist nicht aktiviert.' : 'Could not load.', 'error');
     } finally {
       loading = false;
     }
@@ -41,7 +41,7 @@
   function openNew() { fName = ''; fDesc = ''; fStart = ''; fEnd = ''; showForm = true; }
 
   async function save() {
-    if (!channel || !fName.trim() || !fStart) { toast('Name und Startzeit sind erforderlich.', 'warn'); return; }
+    if (!channel || !fName.trim() || !fStart) { toast('Name and start time are required.', 'warn'); return; }
     const body: Record<string, string> = { name: fName.trim(), description: fDesc, starts_at: new Date(fStart).toISOString() };
     if (fEnd) body.ends_at = new Date(fEnd).toISOString();
     try {
@@ -50,7 +50,7 @@
       showForm = false;
       toast('Event angelegt.', 'success');
     } catch {
-      toast('Speichern fehlgeschlagen.', 'error');
+      toast('Could not save.', 'error');
     }
   }
 
@@ -60,7 +60,7 @@
       events = events.filter((x) => x.number !== number);
       toast('Event geloescht.', 'warn');
     } catch {
-      toast('Loeschen fehlgeschlagen.', 'error');
+      toast('Could not delete.', 'error');
     }
   }
 
@@ -79,9 +79,10 @@
 
 <section class="page" data-screen-label="liveops">
   <div class="page-wrap">
+    <div class="section-title">Event Templates <span class="legacy-badge">Template</span> <span class="sub">planned stream events that can feed workflow triggers</span></div>
     <div class="toolbar">
-      <span class="ws-label">{channel ? `@${channel}` : 'Kein Workspace gewaehlt'}</span>
-      <button class="btn btn-ghost btn-sm" onclick={load} disabled={loading || !channel}>{loading ? 'Laedt...' : 'Neu laden'}</button>
+      <span class="ws-label">{channel ? `@${channel}` : 'No workspace selected'}</span>
+      <button class="btn btn-ghost btn-sm" onclick={load} disabled={loading || !channel}>{loading ? 'Loading…' : 'Reload'}</button>
       <div class="grow"></div>
       <span class="count-pill"><b>{events.length}</b> Events</span>
       <button class="btn btn-primary btn-sm" onclick={openNew}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>Neues Event</button>
@@ -89,15 +90,15 @@
 
     {#if showForm}
       <div class="form-card">
-        <div><label class="fld" for="liveops-name">Name</label><div class="input"><input id="liveops-name" type="text" placeholder="z. B. Subathon" bind:value={fName} /></div></div>
+        <div><label class="fld" for="liveops-name">Name</label><div class="input"><input id="liveops-name" type="text" placeholder="e.g. Subathon" bind:value={fName} /></div></div>
         <div><label class="fld" for="liveops-desc">Beschreibung (optional)</label><div class="input"><input id="liveops-desc" type="text" placeholder="Kurzbeschreibung" bind:value={fDesc} /></div></div>
         <div class="form-grid">
           <div><label class="fld" for="liveops-start">Start</label><div class="input"><input id="liveops-start" type="datetime-local" bind:value={fStart} /></div></div>
           <div><label class="fld" for="liveops-end">Ende (optional)</label><div class="input"><input id="liveops-end" type="datetime-local" bind:value={fEnd} /></div></div>
         </div>
         <div class="form-actions">
-          <button class="btn btn-ghost btn-sm" onclick={() => (showForm = false)}>Abbrechen</button>
-          <button class="btn btn-primary btn-sm" onclick={save}>Speichern</button>
+          <button class="btn btn-ghost btn-sm" onclick={() => (showForm = false)}>Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick={save}>Save</button>
         </div>
       </div>
     {/if}
@@ -114,7 +115,7 @@
             {#if e.description}<div class="ev-desc">{e.description}</div>{/if}
             {#if e.ends_at}<div class="ev-end">bis {fmt(e.ends_at)}</div>{/if}
           </div>
-          <button class="iact del" onclick={() => del(e.number)} aria-label="Loeschen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg></button>
+          <button class="iact del" onclick={() => del(e.number)} aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg></button>
         </div>
       {/each}
     </div>
@@ -122,7 +123,7 @@
     {#if events.length === 0}
       <div class="empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5" /><path d="M3.5 9.5h17M8 3v4M16 3v4" /></svg>
-        <div class="t">{channel ? 'Keine Events geplant' : 'Workspace oben auswaehlen'}</div>
+        <div class="t">{channel ? 'No events scheduled' : 'Select a workspace above'}</div>
         <div class="d">Plane deinen naechsten Stream oder Subathon.</div>
       </div>
     {/if}

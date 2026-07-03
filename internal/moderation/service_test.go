@@ -106,6 +106,7 @@ func TestEvaluate_ModeOffPasses(t *testing.T) {
 // single link violation and is then consumed.
 func TestEvaluate_LinkPermitWaivesOnce(t *testing.T) {
 	cfg := automod.DefaultConfig()
+	cfg.Mode = automod.ModeActive // permit consume-and-enforce is an active-mode behavior
 	cfg.Links.Enabled = true
 	cfg.Links.TimeoutSecs = 600
 	eng, err := automod.NewEngine(cfg)

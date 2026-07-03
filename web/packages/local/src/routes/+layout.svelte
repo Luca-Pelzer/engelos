@@ -41,31 +41,44 @@
   }
 
   const pageTitle = $derived.by(() => {
+    // Titles mirror the sidebar IA: a pillar/section plus the page name.
+    // Routes are grouped by product area (AI-Mod, Workflows, Integrations,
+    // Runtime) so the top bar reinforces the navigation structure.
     if (path === '/')              return 'Dashboard';
-    if (path.startsWith('/chat'))         return 'Chat';
-    if (path.startsWith('/commands'))     return 'Commands';
-    if (path.startsWith('/actions'))      return 'Aktionen';
-    if (path.startsWith('/redemptions'))  return 'Channel Points';
-    if (path.startsWith('/counters'))     return 'Counters';
-    if (path.startsWith('/automod'))      return 'AutoMod';
-    if (path.startsWith('/translate'))    return 'Translation';
-    if (path.startsWith('/cohost'))       return 'AI Co-Host';
-    if (path.startsWith('/tts'))          return 'AI Voice';
-    if (path.startsWith('/clipper'))      return 'Auto-Clipper';
-    if (path.startsWith('/songrequests')) return 'Song Requests';
-    if (path.startsWith('/pity'))         return 'Pity';
-    if (path.startsWith('/streak'))       return 'Streak';
-    if (path.startsWith('/moments'))      return 'Moments';
-    if (path.startsWith('/wrapped'))      return 'Stream Wrapped';
-    if (path.startsWith('/connections'))  return 'Connections';
-    if (path.startsWith('/integrations')) return 'Integrationen';
-    if (path.startsWith('/settings'))     return 'Einstellungen';
+    // AI-Mod — one pillar, three coordinated views.
+    if (path.startsWith('/ai-mod'))      return 'AI-Mod';
+    if (path.startsWith('/contextmod'))   return 'AI-Mod · AI Escalation';
+    if (path.startsWith('/automod'))      return 'AI-Mod · Fast Path';
+    // Workflows
+    if (path.startsWith('/workflows'))    return 'Workflows';
+    if (path.startsWith('/actions'))      return 'Workflows · Builder';
+    if (path.startsWith('/commands'))     return 'Workflows · Command Triggers';
+    if (path.startsWith('/timers'))       return 'Workflows · Schedule Triggers';
+    if (path.startsWith('/redemptions'))  return 'Workflows · Redemption Triggers';
+    if (path.startsWith('/rewards'))      return 'Workflows · Twitch Rewards';
+    if (path.startsWith('/counters'))     return 'Workflows · Counter Actions';
+    // Integrations
+    if (path.startsWith('/integrations')) return 'Integrations';
+    if (path.startsWith('/tts'))          return 'Integrations · AI Voice';
+    if (path.startsWith('/cohost'))       return 'Integrations · AI Co-Host';
+    if (path.startsWith('/translate'))    return 'Integrations · Translate';
+    if (path.startsWith('/clipper'))      return 'Integrations · Clip Workflow';
+    if (path.startsWith('/songrequests')) return 'Integrations · Music Plugin';
+    if (path.startsWith('/loyalty'))      return 'Integrations · Loyalty Plugin';
+    if (path.startsWith('/pity'))         return 'Integrations · Pity Template';
+    if (path.startsWith('/streak'))       return 'Integrations · Streak Template';
+    if (path.startsWith('/moments'))      return 'Integrations · Moment Template';
+    if (path.startsWith('/wrapped'))      return 'Integrations · Recap Template';
+    if (path.startsWith('/quotes'))       return 'Integrations · Quote Plugin';
+    if (path.startsWith('/liveops'))      return 'Integrations · Event Templates';
+    // Runtime
+    if (path.startsWith('/chat'))         return 'Runtime · Live Chat';
+    if (path.startsWith('/connections'))  return 'Runtime · Connections';
+    if (path.startsWith('/members'))      return 'Runtime · Members';
+    if (path.startsWith('/import'))       return 'Runtime · Import';
+    // Settings / account
+    if (path.startsWith('/settings'))     return 'Settings';
     if (path.startsWith('/upgrade'))      return 'Upgrade to Cloud';
-    if (path.startsWith('/loyalty'))      return 'Punkte & Games';
-    if (path.startsWith('/rewards'))      return 'Belohnungen';
-    if (path.startsWith('/timers'))       return 'Auto-Ansagen';
-    if (path.startsWith('/quotes'))       return 'Zitate';
-    if (path.startsWith('/liveops'))      return 'Event-Plan';
     return '';
   });
 
@@ -128,8 +141,11 @@
     position: fixed;
     bottom: 20px;
     right: 20px;
+    left: auto;
+    transform: none;
     display: flex;
     flex-direction: column;
+    align-items: flex-end;
     gap: 8px;
     z-index: 100;
     pointer-events: none;
@@ -139,18 +155,33 @@
     min-width: 240px;
     max-width: 360px;
     padding: 11px 14px;
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-glass-strong);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border: 1px solid var(--color-border-glass);
     color: var(--color-fg);
     font-size: 13px;
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-card);
     animation: toast-in 200ms var(--ease-out-expo);
   }
-  .toast-error   { border-color: var(--color-danger); }
-  .toast-success { border-color: var(--color-success); }
-  .toast-warn    { border-color: var(--color-warn); }
-  .toast-info    { border-color: var(--color-accent); }
+  .toast::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 99px;
+    margin-right: 9px;
+    background: var(--color-accent);
+    vertical-align: 1px;
+  }
+  .toast-error::before   { background: var(--color-danger); }
+  .toast-success::before { background: var(--color-success); }
+  .toast-warn::before    { background: var(--color-warn); }
+  .toast-error   { border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border-glass)); }
+  .toast-success { border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border-glass)); }
+  .toast-warn    { border-color: color-mix(in srgb, var(--color-warn) 45%, var(--color-border-glass)); }
+  .toast-info    { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border-glass)); }
   @keyframes toast-in {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }

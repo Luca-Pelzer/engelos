@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // varPattern matches a single substitution token of the form $(name). The name
@@ -42,10 +43,14 @@ func resolveVar(ec *ExecutionContext, name string) (string, bool) {
 		return ec.Trigger.UserID, true
 	case "channel":
 		return ec.Trigger.Channel, true
-	case "platform":
+	case "platform", "source":
 		return ec.Trigger.Platform, true
 	case "message", "text":
 		return ec.Trigger.Text, true
+	case "args":
+		return commandArgs(ec.Trigger.Text), true
+	case "message.id", "messageid":
+		return ec.Trigger.MessageID, true
 	case "event":
 		return ec.Trigger.EventType, true
 	}
@@ -56,6 +61,20 @@ func resolveVar(ec *ExecutionContext, name string) (string, bool) {
 		return stringifyValue(v), true
 	}
 	return "", false
+}
+
+// commandArgs returns the triggering message with its leading command word (the
+// first whitespace-delimited token, e.g. "!ask") removed and the remainder
+// trimmed — the argument text a command rule acts on. A message that is only a
+// command word yields "". It is a pure function of the text, so a command rule
+// can read $(args) without the engine plumbing the split through the Trigger;
+// firstToken defines the matching command word the same way.
+func commandArgs(text string) string {
+	s := strings.TrimSpace(text)
+	if i := strings.IndexFunc(s, unicode.IsSpace); i >= 0 {
+		return strings.TrimSpace(s[i:])
+	}
+	return ""
 }
 
 // substituteRaw walks a JSON config and substitutes $(name) tokens inside every

@@ -38,11 +38,12 @@ const (
 	TriggerCommand TriggerKind = "command"
 	TriggerTimer   TriggerKind = "timer"
 	TriggerManual  TriggerKind = "manual"
+	TriggerWebhook TriggerKind = "webhook"
 )
 
 func (k TriggerKind) valid() bool {
 	switch k {
-	case TriggerEvent, TriggerCommand, TriggerTimer, TriggerManual:
+	case TriggerEvent, TriggerCommand, TriggerTimer, TriggerManual, TriggerWebhook:
 		return true
 	default:
 		return false

@@ -12,7 +12,7 @@
 
   async function create() {
     const s = slug.trim().toLowerCase();
-    if (!s) { toast('Bitte den Channel-Login eingeben.', 'warn'); return; }
+    if (!s) { toast('Enter the channel login first.', 'warn'); return; }
     saving = true;
     try {
       const ws = await api.post<Workspace>('/api/v1/workspaces', { slug: s, display_name: displayName.trim() });
@@ -21,7 +21,7 @@
       void goto(`/channels/${ws.slug}`);
     } catch (err) {
       if (err instanceof ApiException && err.status === 409) toast('Dieser Workspace existiert bereits.', 'error');
-      else toast('Anlegen fehlgeschlagen.', 'error');
+      else toast('Could not create.', 'error');
     } finally {
       saving = false;
     }
@@ -32,15 +32,15 @@
   <div class="wrap">
     <div class="form-card">
       <div class="brand"><span class="mark">E</span></div>
-      <h2>Workspace anlegen</h2>
-      <p class="muted">Verbinde Deinen Channel, um Deinen Bot einzurichten.</p>
+      <h2>Create workspace</h2>
+      <p class="muted">Connect your channel to set up your bot.</p>
 
-      <div><label class="fld" for="onboard-slug">Channel-Login</label><div class="input"><input id="onboard-slug" type="text" placeholder="z. B. deintwitchname" bind:value={slug} onkeydown={(e) => { if (e.key === 'Enter') create(); }} /></div></div>
-      <div><label class="fld" for="onboard-display">Anzeigename (optional)</label><div class="input"><input id="onboard-display" type="text" placeholder="Wird sonst aus dem Login abgeleitet" bind:value={displayName} /></div></div>
+      <div><label class="fld" for="onboard-slug">Channel login</label><div class="input"><input id="onboard-slug" type="text" placeholder="e.g. yourtwitchname" bind:value={slug} onkeydown={(e) => { if (e.key === 'Enter') create(); }} /></div></div>
+      <div><label class="fld" for="onboard-display">Display name (optional)</label><div class="input"><input id="onboard-display" type="text" placeholder="Derived from your login if empty" bind:value={displayName} /></div></div>
 
       <div class="actions">
-        <a class="btn btn-ghost btn-sm" href="/channels">Abbrechen</a>
-        <button class="btn btn-primary btn-sm" onclick={create} disabled={saving}>{saving ? 'Legt an...' : 'Workspace anlegen'}</button>
+        <a class="btn btn-ghost btn-sm" href="/channels">Cancel</a>
+        <button class="btn btn-primary btn-sm" onclick={create} disabled={saving}>{saving ? 'Creating…' : 'Create workspace'}</button>
       </div>
     </div>
   </div>

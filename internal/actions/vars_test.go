@@ -30,6 +30,7 @@ func TestVars_SubstituteString_WellKnownFields(t *testing.T) {
 		{"$(user.id)", "12345"},
 		{"$(channel)", "general"},
 		{"$(platform)", "discord"},
+		{"$(source)", "discord"},
 		{"$(message)", "hello world"},
 		{"$(text)", "hello world"},
 		{"$(event)", "message"},
@@ -39,6 +40,26 @@ func TestVars_SubstituteString_WellKnownFields(t *testing.T) {
 		t.Run(tt.token, func(t *testing.T) {
 			result := substituteString(ec, tt.token)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestVars_Args_StripsLeadingCommandWord(t *testing.T) {
+	cases := []struct {
+		text string
+		want string
+	}{
+		{"!ask what time is the stream", "what time is the stream"},
+		{"!ask   spaced   out  ", "spaced   out"},
+		{"!ask", ""},
+		{"!ask   ", ""},
+		{"", ""},
+		{"single", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.text, func(t *testing.T) {
+			ec := newExecutionContext(context.Background(), sampleRule("c", "t"), Trigger{Text: tc.text})
+			assert.Equal(t, tc.want, substituteString(ec, "$(args)"))
 		})
 	}
 }

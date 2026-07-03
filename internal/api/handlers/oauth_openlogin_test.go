@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
+	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/workspaces"
 )
 
@@ -30,12 +31,24 @@ func newWorkspacesTestStore(t *testing.T) workspaces.Store {
 func TestOAuth_OpenLogin_NonOwnerRefusedWhenClosed(t *testing.T) {
 	t.Parallel()
 	store := newOAuthTestStore(t)
-	h := newOAuthHandler(t, store, newOAuthCfg()).WithOwnerLogins([]string{"streamer"})
+	ws := newWorkspacesTestStore(t)
+	// Reflects the real default: workspaces store is wired (owners still get
+	// provisioning), but ENGELOS_OPEN_LOGIN=false so non-owners are refused.
+	h := newOAuthHandler(t, store, newOAuthCfg()).
+		WithOwnerLogins([]string{"streamer"}).
+		WithWorkspaces(ws).
+		WithOpenLogin(false)
 
 	fake := newFakeHelix("42", "stranger", "s@example.com", "Stranger")
 	resp := runCallbackWithPurpose(t, h, fake, &oauth2.Token{AccessToken: "tok"}, "user")
 
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	// Closed mode refuses a non-owner with a friendly redirect (not a raw
+	// 403) and creates no account or session.
+	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	assert.Equal(t, "/login?denied=account", resp.Header.Get("Location"))
+	assert.Empty(t, sessionCookie(resp), "no session must be minted for a refused non-owner")
+	_, err := store.GetUserByEmail(context.Background(), oauthTestTenant, "s@example.com")
+	require.Error(t, err, "refused non-owner must not get an account")
 }
 
 func TestOAuth_OpenLogin_NonOwnerLandsOnOnboard(t *testing.T) {
@@ -44,7 +57,8 @@ func TestOAuth_OpenLogin_NonOwnerLandsOnOnboard(t *testing.T) {
 	ws := newWorkspacesTestStore(t)
 	h := newOAuthHandler(t, store, newOAuthCfg()).
 		WithOwnerLogins([]string{"streamer"}).
-		WithWorkspaces(ws)
+		WithWorkspaces(ws).
+		WithOpenLogin(true)
 
 	fake := newFakeHelix("42", "stranger", "s@example.com", "Stranger")
 	resp := runCallbackWithPurpose(t, h, fake, &oauth2.Token{AccessToken: "tok"}, "user")
@@ -60,7 +74,8 @@ func TestOAuth_OpenLogin_OwnerProvisionsWorkspaceAndLandsOnIt(t *testing.T) {
 	ws := newWorkspacesTestStore(t)
 	h := newOAuthHandler(t, store, newOAuthCfg()).
 		WithOwnerLogins([]string{"streamer"}).
-		WithWorkspaces(ws)
+		WithWorkspaces(ws).
+		WithOpenLogin(true)
 
 	fake := newFakeHelix("7", "streamer", "o@example.com", "Streamer")
 	resp := runCallbackWithPurpose(t, h, fake, &oauth2.Token{AccessToken: "tok"}, "user")
@@ -78,13 +93,48 @@ func TestOAuth_OpenLogin_OwnerProvisionsWorkspaceAndLandsOnIt(t *testing.T) {
 	assert.Equal(t, workspaces.SourceOwner, members[0].Source)
 }
 
+// TestOAuth_ClosedMode_OwnerProvisionsWorkspaceAndLandsOnIt is the regression
+// guard for the C2 blocker: in closed mode (ENGELOS_OPEN_LOGIN=false, the
+// default) an owner login MUST still be provisioned a workspace and routed to
+// it via landingPath. The store is wired (as the daemon always wires it) but
+// openLogin is false; before the fix the owner hit the !openLogin early
+// redirect to /?login=success and skipped provisioning entirely.
+func TestOAuth_ClosedMode_OwnerProvisionsWorkspaceAndLandsOnIt(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	ws := newWorkspacesTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg()).
+		WithOwnerLogins([]string{"streamer"}).
+		WithWorkspaces(ws).
+		WithOpenLogin(false)
+
+	fake := newFakeHelix("7", "streamer", "o@example.com", "Streamer")
+	resp := runCallbackWithPurpose(t, h, fake, &oauth2.Token{AccessToken: "tok"}, "user")
+
+	// Owner lands on their provisioned workspace, not the bare success page.
+	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	assert.Equal(t, "/channels/streamer", resp.Header.Get("Location"))
+	assert.NotEmpty(t, sessionCookie(resp), "owner must get a dashboard session even in closed mode")
+
+	// Workspace provisioned with an owner membership.
+	got, err := ws.GetWorkspaceBySlug(context.Background(), oauthTestTenant, "streamer")
+	require.NoError(t, err, "owner workspace must be provisioned in closed mode")
+	assert.Equal(t, "streamer", got.TwitchLogin)
+	members, err := ws.ListMembers(context.Background(), got.ID)
+	require.NoError(t, err)
+	require.Len(t, members, 1)
+	assert.Equal(t, workspaces.RoleOwner, members[0].Role)
+	assert.Equal(t, workspaces.SourceOwner, members[0].Source)
+}
+
 func TestOAuth_OpenLogin_OwnerLoginIsIdempotent(t *testing.T) {
 	t.Parallel()
 	store := newOAuthTestStore(t)
 	ws := newWorkspacesTestStore(t)
 	h := newOAuthHandler(t, store, newOAuthCfg()).
 		WithOwnerLogins([]string{"streamer"}).
-		WithWorkspaces(ws)
+		WithWorkspaces(ws).
+		WithOpenLogin(true)
 
 	fake := newFakeHelix("7", "streamer", "o@example.com", "Streamer")
 	_ = runCallbackWithPurpose(t, h, fake, &oauth2.Token{AccessToken: "tok"}, "user")
@@ -102,7 +152,8 @@ func TestOAuth_OpenLogin_InvitedUserAutoJoins(t *testing.T) {
 	ws := newWorkspacesTestStore(t)
 	h := newOAuthHandler(t, store, newOAuthCfg()).
 		WithOwnerLogins([]string{"streamer"}).
-		WithWorkspaces(ws)
+		WithWorkspaces(ws).
+		WithOpenLogin(true)
 
 	ctx := context.Background()
 	host, err := ws.CreateWorkspace(ctx, workspaces.Workspace{
@@ -158,6 +209,7 @@ func TestOAuth_OpenLogin_AutoVerifiesTwitchMod(t *testing.T) {
 	h := newOAuthHandler(t, store, newOAuthCfg()).
 		WithOwnerLogins([]string{"streamer"}).
 		WithWorkspaces(ws).
+		WithOpenLogin(true).
 		WithModVerify(func(context.Context, workspaces.Workspace) (*helix.Client, bool) { return nil, false })
 	h.newModGetter = func(context.Context, workspaces.Workspace) (helixModGetter, bool) {
 		return &fakeModGetter{mods: map[string]bool{"55": true}}, true
@@ -187,7 +239,8 @@ func TestOAuth_OpenLogin_NonModNotVerified(t *testing.T) {
 
 	h := newOAuthHandler(t, store, newOAuthCfg()).
 		WithOwnerLogins([]string{"streamer"}).
-		WithWorkspaces(ws)
+		WithWorkspaces(ws).
+		WithOpenLogin(true)
 	h.newModGetter = func(context.Context, workspaces.Workspace) (helixModGetter, bool) {
 		return &fakeModGetter{mods: map[string]bool{}}, true
 	}
@@ -210,7 +263,8 @@ func TestOAuth_OpenLogin_AutoVerifySkipsWhenToggleOff(t *testing.T) {
 
 	h := newOAuthHandler(t, store, newOAuthCfg()).
 		WithOwnerLogins([]string{"streamer"}).
-		WithWorkspaces(ws)
+		WithWorkspaces(ws).
+		WithOpenLogin(true)
 	called := false
 	h.newModGetter = func(context.Context, workspaces.Workspace) (helixModGetter, bool) {
 		called = true
@@ -234,4 +288,35 @@ func sessionCookie(resp *http.Response) string {
 		}
 	}
 	return ""
+}
+
+// TestOAuth_ClosedMode_NonOwnerRedirectsAndCreatesNothing is the dedicated
+// regression guard for the denied-UX contract: in closed mode
+// (ENGELOS_OPEN_LOGIN=false, the default) a non-owner purpose=user callback
+// must 303-redirect to /login?denied=account and must create neither a user
+// nor a session. The workspaces store is wired (as the daemon wires it) to
+// prove the flag, not the store absence, now controls the door.
+func TestOAuth_ClosedMode_NonOwnerRedirectsAndCreatesNothing(t *testing.T) {
+	t.Parallel()
+	store := newOAuthTestStore(t)
+	ws := newWorkspacesTestStore(t)
+	h := newOAuthHandler(t, store, newOAuthCfg()).
+		WithOwnerLogins([]string{"streamer"}).
+		WithWorkspaces(ws).
+		WithOpenLogin(false)
+
+	fake := newFakeHelix("42", "stranger", "s@example.com", "Stranger")
+	resp := runCallbackWithPurpose(t, h, fake, &oauth2.Token{AccessToken: "tok"}, "user")
+
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	loc, _ := resp.Location()
+	require.NotNil(t, loc)
+	assert.Equal(t, "/login?denied=account", loc.String())
+	assert.Empty(t, sessionCookie(resp), "no session cookie for a refused non-owner")
+	_, err := store.GetUserByEmail(context.Background(), oauthTestTenant, "s@example.com")
+	require.Error(t, err, "no user must be created for a refused non-owner")
+	// The Twitch identity row must not have been persisted either: a stranger
+	// refused at the access gate never reaches CreateOAuthIdentity.
+	_, err = store.GetOAuthIdentityByProviderUserID(context.Background(), auth.ProviderTwitch, "42")
+	require.Error(t, err, "no oauth identity must be persisted for a refused non-owner")
 }

@@ -15,15 +15,19 @@ import (
 	"github.com/Luca-Pelzer/engelos/internal/auth"
 	"github.com/Luca-Pelzer/engelos/internal/clipper"
 	"github.com/Luca-Pelzer/engelos/internal/cohost"
+	"github.com/Luca-Pelzer/engelos/internal/contextmod"
 	"github.com/Luca-Pelzer/engelos/internal/counters"
 	"github.com/Luca-Pelzer/engelos/internal/customcommands"
 	"github.com/Luca-Pelzer/engelos/internal/featureflags"
 	"github.com/Luca-Pelzer/engelos/internal/features/pity"
 	"github.com/Luca-Pelzer/engelos/internal/features/streak"
+	"github.com/Luca-Pelzer/engelos/internal/integrations"
+	"github.com/Luca-Pelzer/engelos/internal/kb"
 	"github.com/Luca-Pelzer/engelos/internal/liveops"
 	"github.com/Luca-Pelzer/engelos/internal/loyalty"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 	"github.com/Luca-Pelzer/engelos/internal/moments"
+	"github.com/Luca-Pelzer/engelos/internal/plugins"
 	"github.com/Luca-Pelzer/engelos/internal/quotes"
 	"github.com/Luca-Pelzer/engelos/internal/redemptions"
 	"github.com/Luca-Pelzer/engelos/internal/rewards"
@@ -92,6 +96,16 @@ type Deps struct {
 	// /overlay/*. It is mounted OUTSIDE /api so the JSON content-type
 	// middleware does not clobber its text/html responses.
 	Overlay http.Handler
+
+	// AvatarWS, if non-nil, is the avatar overlay WebSocket relay mounted at
+	// /api/v1/overlay/avatar/ws. It is token-gated (not session-gated) because
+	// the OBS overlay has no login. Nil leaves the avatar routes unmounted.
+	AvatarWS http.Handler
+
+	// AvatarToken, if non-nil, is the owner-gated endpoint that mints and
+	// returns the per-channel overlay token at /api/v1/overlay/avatar/token.
+	// Mounted only when AvatarWS is also set.
+	AvatarToken http.Handler
 
 	// AuthStore backs the auth handlers and the SessionAuth middleware.
 	// When nil, the auth routes degrade to 501 "not_implemented" and no
@@ -202,6 +216,31 @@ type Deps struct {
 	MomentsStore       moments.Store
 	MomentsBroadcaster handlers.MomentBroadcaster
 
+	// ContextModStore, when non-nil, exposes per-channel AI context-moderation
+	// config under /api/v1/contextmod. Nil makes those endpoints return 501.
+	ContextModStore contextmod.Store
+
+	// AIManager, when non-nil, exposes the runtime AI-backend configuration
+	// (provider, endpoint, model, encrypted key and a connection test) under
+	// /api/v1/ai, gated to owner/admin. Nil leaves those routes unmounted.
+	AIManager handlers.AIManager
+
+	// Integrations, when non-nil, exposes the integrations catalog and
+	// (with IntegrationCreds) encrypted credential management under
+	// /api/v1/integrations, gated to owner/admin. Nil leaves those routes
+	// unmounted.
+	Integrations     *integrations.Registry
+	IntegrationCreds handlers.IntegrationCredentials
+
+	// PluginRegistry and PluginState, when non-nil, expose the plugin catalog
+	// and its restart-based enable/disable toggles under /api/v1/plugins, gated
+	// to owner/admin. PluginsActive is the startup snapshot of which plugins are
+	// mounted in this process, so a view can report enabled (current) alongside
+	// desired (persisted). Nil registry leaves those routes unmounted.
+	PluginRegistry *plugins.Registry
+	PluginState    plugins.StateStore
+	PluginsActive  map[string]bool
+
 	// SongQueueStore, when non-nil, exposes the bot-managed YouTube song queue
 	// to the player overlay at /api/v1/songqueue/next (intentionally NOT
 	// session-protected; an OBS browser source cannot log in). Nil returns 501.
@@ -231,6 +270,11 @@ type Deps struct {
 	// /api/v1/quotes/*. Nil makes those endpoints return 501 (feature off).
 	QuoteStore quotes.Store
 
+	// KBStore, when non-nil, exposes the per-channel knowledge-base CRUD +
+	// FTS search under /api/v1/channels/{slug}/kb. Reads are gated to
+	// owner/mod, writes to owner. Nil unmounts the routes (404).
+	KBStore kb.Store
+
 	// RewardStore, when non-nil, exposes the per-channel rewards catalog CRUD
 	// under /api/v1/rewards/*. Nil makes those endpoints return 501.
 	RewardStore rewards.Store
@@ -253,6 +297,19 @@ type Deps struct {
 	// ActionsScheduler, when non-nil, is re-armed after every rule mutation so
 	// timer rules take effect live. Nil skips live re-arming.
 	ActionsScheduler handlers.SchedulerReloader
+
+	// ActionsRuns, when non-nil, backs the per-rule run-history endpoints under
+	// /channels/{channelSlug}/actions/{name}/runs. Nil (recording disabled)
+	// leaves those routes unmounted.
+	ActionsRuns handlers.RunSource
+
+	// KofiCreds and Dispatcher, together with ActionsStore, back the
+	// unauthenticated Ko-fi donation webhook at
+	// /api/v1/integrations/kofi/webhook. KofiCreds reads the stored
+	// verification token; Dispatcher fans the donation into the action engine.
+	// Any of the three being nil leaves the webhook unmounted.
+	KofiCreds  handlers.KofiCredSource
+	Dispatcher handlers.DonationDispatcher
 
 	// WorkspacesStore, when non-nil, exposes workspace/membership endpoints
 	// and backs the WorkspaceMiddleware that authorizes channel-scoped
@@ -298,9 +355,14 @@ func NewRouter(deps Deps) chi.Router {
 	migrateH := handlers.NewMigrate(deps.CommandStore, deps.TimerStore, deps.TenantID, logger)
 	countersH := handlers.NewCounters(deps.CounterStore, deps.TenantID, logger)
 	quotesH := handlers.NewQuotes(deps.QuoteStore, deps.TenantID, logger)
+	kbH := handlers.NewKB(deps.KBStore, deps.TenantID, logger)
 	rewardsH := handlers.NewRewards(deps.RewardStore, deps.TenantID, logger)
 	timersH := handlers.NewTimers(deps.TimersStore, deps.TenantID, logger)
 	actionsH := handlers.NewActions(deps.ActionsStore, deps.ActionsRegistry, deps.ActionsRunner, deps.ActionsScheduler, deps.TenantID, logger)
+	webhooksH := handlers.NewWebhooks(deps.ActionsStore, deps.ActionsRunner, deps.TenantID, logger)
+	kofiH := handlers.NewKofi(deps.KofiCreds, deps.ActionsStore, deps.Dispatcher, deps.TenantID, logger)
+	templatesH := handlers.NewTemplates(deps.ActionsStore, deps.TenantID, logger)
+	runsH := handlers.NewRuns(deps.ActionsRuns, deps.TenantID, logger)
 	workspacesH := handlers.NewWorkspaces(deps.WorkspacesStore, deps.TenantID, logger)
 	liveopsH := handlers.NewLiveOps(deps.LiveOpsStore, deps.TenantID, logger)
 	loyaltyH := handlers.NewLoyalty(deps.LoyaltyStore, deps.TenantID, deps.LoyaltyResolver, logger)
@@ -312,6 +374,7 @@ func NewRouter(deps Deps) chi.Router {
 	clipperH := handlers.NewClipper(deps.ClipperStore, deps.TenantID, logger)
 	cohostH := handlers.NewCoHost(deps.CoHostStore, deps.TenantID, logger)
 	momentsH := handlers.NewMoments(deps.MomentsStore, deps.MomentsBroadcaster, deps.TenantID, logger)
+	contextmodH := handlers.NewContextMod(deps.ContextModStore, deps.TenantID, logger)
 	connectionsH := handlers.NewConnections(deps.AuthStore, deps.TenantID, logger)
 	songQueueH := handlers.NewSongQueue(deps.SongQueueStore, deps.TenantID, logger)
 	wrappedH := handlers.NewWrapped(deps.WrappedStore, deps.WrappedRanker, deps.TenantID, logger)
@@ -404,27 +467,33 @@ func NewRouter(deps Deps) chi.Router {
 			}
 		})
 
-		r.Route("/pity", func(r chi.Router) {
-			if deps.AuthStore != nil {
-				r.Use(apimw.RequireGlobalOwner)
-			}
-			r.Post("/grant", pityH.Grant)
-			r.Post("/roll", pityH.Roll)
-			r.Get("/status", pityH.Status)
-			r.Get("/leaderboard", pityH.Leaderboard)
-			r.Post("/reset", pityH.Reset)
-		})
+		// pity plugin: nil system => routes unmounted => 404 (like quotes).
+		if deps.Pity != nil {
+			r.Route("/pity", func(r chi.Router) {
+				if deps.AuthStore != nil {
+					r.Use(apimw.RequireGlobalOwner)
+				}
+				r.Post("/grant", pityH.Grant)
+				r.Post("/roll", pityH.Roll)
+				r.Get("/status", pityH.Status)
+				r.Get("/leaderboard", pityH.Leaderboard)
+				r.Post("/reset", pityH.Reset)
+			})
+		}
 
-		r.Route("/streak", func(r chi.Router) {
-			if deps.AuthStore != nil {
-				r.Use(apimw.RequireGlobalOwner)
-			}
-			r.Post("/tick", streakH.Tick)
-			r.Post("/freeze", streakH.UseFreeze)
-			r.Get("/status", streakH.Status)
-			r.Get("/leaderboard", streakH.Leaderboard)
-			r.Post("/reset", streakH.Reset)
-		})
+		// streak plugin: nil system => routes unmounted => 404 (like quotes).
+		if deps.Streak != nil {
+			r.Route("/streak", func(r chi.Router) {
+				if deps.AuthStore != nil {
+					r.Use(apimw.RequireGlobalOwner)
+				}
+				r.Post("/tick", streakH.Tick)
+				r.Post("/freeze", streakH.UseFreeze)
+				r.Get("/status", streakH.Status)
+				r.Get("/leaderboard", streakH.Leaderboard)
+				r.Post("/reset", streakH.Reset)
+			})
+		}
 
 		r.Route("/migrate", func(r chi.Router) {
 			if deps.AuthStore != nil {
@@ -446,6 +515,22 @@ func NewRouter(deps Deps) chi.Router {
 			}
 			r.Post("/", workspacesH.Create)
 		})
+
+		// Inbound webhook trigger: UNAUTHENTICATED but HMAC-verified inside the
+		// handler. Mounted as a sibling to the session-gated channel routes so
+		// the request signature is the only credential, never a bearer token.
+		// Nil-guarded like other optional routers: no store/runner, no route.
+		if deps.ActionsStore != nil && deps.ActionsRunner != nil {
+			r.Post("/channels/{channelSlug}/webhooks/{ruleName}", webhooksH.Handle)
+		}
+
+		// Ko-fi donation webhook: UNAUTHENTICATED but token-verified inside the
+		// handler against the tenant's stored verification token. A sibling to
+		// the session-gated routes so Ko-fi's payload token is the only
+		// credential. Nil-guarded on its three backing dependencies.
+		if deps.ActionsStore != nil && deps.KofiCreds != nil && deps.Dispatcher != nil {
+			r.Post("/integrations/kofi/webhook", kofiH.Handle)
+		}
 
 		r.Route("/channels/{channelSlug}", func(r chi.Router) {
 			if deps.AuthStore != nil {
@@ -471,17 +556,39 @@ func NewRouter(deps Deps) chi.Router {
 				r.Put("/{name}", commandsH.Update)
 				r.Delete("/{name}", commandsH.Delete)
 			})
-			r.Route("/counters", func(r chi.Router) {
-				r.Get("/", countersH.List)
-				r.Put("/{name}", countersH.Set)
-				r.Post("/{name}/add", countersH.Add)
-				r.Delete("/{name}", countersH.Delete)
-			})
-			r.Route("/quotes", func(r chi.Router) {
-				r.Get("/", quotesH.List)
-				r.Post("/", quotesH.Create)
-				r.Delete("/{number}", quotesH.Delete)
-			})
+			// counters plugin: nil store => routes unmounted => 404 (like quotes).
+			if deps.CounterStore != nil {
+				r.Route("/counters", func(r chi.Router) {
+					r.Get("/", countersH.List)
+					r.Put("/{name}", countersH.Set)
+					r.Post("/{name}/add", countersH.Add)
+					r.Delete("/{name}", countersH.Delete)
+				})
+			}
+			// quotes is the pilot plugin: when its plugin is disabled main
+			// passes a nil store, so the routes are unmounted and 404 (matching
+			// the songrequests RES-19 gate) rather than serving a mounted 501.
+			if deps.QuoteStore != nil {
+				r.Route("/quotes", func(r chi.Router) {
+					r.Get("/", quotesH.List)
+					r.Post("/", quotesH.Create)
+					r.Delete("/{number}", quotesH.Delete)
+				})
+			}
+			// Knowledge base: mods can read/search, only owners/admins write.
+			// Nil store → routes unmounted (404), matching the plugin gates.
+			if deps.KBStore != nil {
+				r.Route("/kb", func(r chi.Router) {
+					r.With(apimw.RequireRole(workspaces.RoleOwner, workspaces.RoleMod)).
+						Get("/", kbH.List)
+					r.With(apimw.RequireRole(workspaces.RoleOwner)).
+						Post("/", kbH.Create)
+					r.With(apimw.RequireRole(workspaces.RoleOwner)).
+						Put("/{id}", kbH.Update)
+					r.With(apimw.RequireRole(workspaces.RoleOwner)).
+						Delete("/{id}", kbH.Delete)
+				})
+			}
 			r.Route("/rewards", func(r chi.Router) {
 				r.Get("/", rewardsH.List)
 				r.Post("/", rewardsH.Create)
@@ -503,29 +610,54 @@ func NewRouter(deps Deps) chi.Router {
 			})
 			r.Route("/actions", func(r chi.Router) {
 				r.Get("/catalog", actionsH.Catalog)
+				r.Get("/templates", templatesH.List)
+				r.Post("/templates/{id}/apply", templatesH.Apply)
 				r.Get("/", actionsH.List)
 				r.Post("/", actionsH.Create)
 				r.Put("/{name}", actionsH.Update)
 				r.Delete("/{name}", actionsH.Delete)
 				r.Post("/{name}/fire", actionsH.Fire)
+				// Run history: reads for owner/mod, clearing for owner only.
+				// Nil-guarded so the routes vanish when recording is disabled.
+				if deps.ActionsRuns != nil {
+					r.With(apimw.RequireRole(workspaces.RoleOwner, workspaces.RoleMod)).
+						Get("/{name}/runs", runsH.List)
+					r.With(apimw.RequireRole(workspaces.RoleOwner, workspaces.RoleMod)).
+						Get("/{name}/runs/{runID}", runsH.Detail)
+					r.With(apimw.RequireRole(workspaces.RoleOwner)).
+						Delete("/{name}/runs", runsH.Delete)
+				}
 			})
-			r.Route("/liveops", func(r chi.Router) {
-				r.Get("/", liveopsH.List)
-				r.Post("/", liveopsH.Create)
-				r.Delete("/{number}", liveopsH.Delete)
-			})
-			r.Route("/loyalty", func(r chi.Router) {
-				r.Get("/leaderboard", loyaltyH.Leaderboard)
-				r.Post("/adjust", loyaltyH.Adjust)
-			})
+			// liveops plugin: nil store => routes unmounted => 404 (like quotes).
+			if deps.LiveOpsStore != nil {
+				r.Route("/liveops", func(r chi.Router) {
+					r.Get("/", liveopsH.List)
+					r.Post("/", liveopsH.Create)
+					r.Delete("/{number}", liveopsH.Delete)
+				})
+			}
+			// loyalty plugin: nil store => routes unmounted => 404 (like quotes).
+			if deps.LoyaltyStore != nil {
+				r.Route("/loyalty", func(r chi.Router) {
+					r.Get("/leaderboard", loyaltyH.Leaderboard)
+					r.Post("/adjust", loyaltyH.Adjust)
+				})
+			}
 			r.Route("/features", func(r chi.Router) {
 				r.Get("/", featuresH.List)
 				r.Put("/{feature}", featuresH.Set)
 			})
-			r.Route("/songrequests", func(r chi.Router) {
-				r.Get("/", songRequestsH.Get)
-				r.Put("/", songRequestsH.Set)
-			})
+			// songrequests (RES-19, Option A): mounted only when the store is
+			// wired. When ENGELOS_FEATURE_SONGREQUESTS is off the store is nil,
+			// the route is not registered, and /api/v1/songrequests returns 404
+			// (feature quarantined) rather than a mounted 501. Code + handler
+			// stay intact; flip the flag to restore the route unchanged.
+			if deps.SongRequestStore != nil {
+				r.Route("/songrequests", func(r chi.Router) {
+					r.Get("/", songRequestsH.Get)
+					r.Put("/", songRequestsH.Set)
+				})
+			}
 			r.Route("/translate", func(r chi.Router) {
 				r.Get("/", translateH.Get)
 				r.Put("/", translateH.Set)
@@ -545,11 +677,18 @@ func NewRouter(deps Deps) chi.Router {
 				r.Get("/", cohostH.Get)
 				r.Put("/", cohostH.Set)
 			})
-			r.Route("/moments", func(r chi.Router) {
-				r.Get("/", momentsH.Get)
-				r.Post("/", momentsH.Open)
-				r.Post("/end", momentsH.End)
-				r.Get("/{momentID}/participants", momentsH.Participants)
+			// moments plugin: nil store => routes unmounted => 404 (like quotes).
+			if deps.MomentsStore != nil {
+				r.Route("/moments", func(r chi.Router) {
+					r.Get("/", momentsH.Get)
+					r.Post("/", momentsH.Open)
+					r.Post("/end", momentsH.End)
+					r.Get("/{momentID}/participants", momentsH.Participants)
+				})
+			}
+			r.Route("/contextmod", func(r chi.Router) {
+				r.Get("/", contextmodH.Get)
+				r.Put("/", contextmodH.Set)
 			})
 		})
 
@@ -562,13 +701,91 @@ func NewRouter(deps Deps) chi.Router {
 			r.Get("/audit", automodH.Audit)
 		})
 
+		// Runtime AI-backend config (RES-17 Phase 1.2a). Owner/admin only, and
+		// only mounted when main wired a manager, so an env-only deployment
+		// without the config store simply has no /ai surface.
+		if deps.AIManager != nil {
+			aiH := handlers.NewAI(deps.AIManager, logger)
+			r.Route("/ai", func(r chi.Router) {
+				if deps.AuthStore != nil {
+					r.Use(apimw.RequireGlobalOwner)
+				}
+				r.Get("/config", aiH.GetConfig)
+				r.Put("/config", aiH.PutConfig)
+				r.Post("/test", aiH.TestConfig)
+				r.Get("/providers", aiH.Providers)
+				r.Get("/usage", aiH.Usage)
+			})
+		}
+
+		// Integrations framework: the manifest catalog and encrypted credential
+		// management. Owner/admin only; only mounted when main wired a registry.
+		if deps.Integrations != nil {
+			integrationsH := handlers.NewIntegrations(deps.Integrations, deps.IntegrationCreds, deps.TenantID, logger)
+			r.Route("/integrations", func(r chi.Router) {
+				if deps.AuthStore != nil {
+					r.Use(apimw.RequireGlobalOwner)
+				}
+				r.Get("/", integrationsH.List)
+				r.Put("/{id}/credentials", integrationsH.PutCredentials)
+				r.Delete("/{id}/credentials", integrationsH.DeleteCredentials)
+			})
+		}
+
+		// Avatar overlay subsystem (Phase Z4/Z5). The OBS avatar browser
+		// source connects to /overlay/avatar/ws with a per-channel overlay
+		// token; that WS route is intentionally NOT session-gated (the overlay
+		// has no login) — it is authenticated by the token instead. The token
+		// itself is minted/read at /overlay/avatar/token, which IS owner-only.
+		if deps.AvatarWS != nil {
+			r.Route("/overlay/avatar", func(r chi.Router) {
+				r.Handle("/ws", deps.AvatarWS)
+				if deps.AvatarToken != nil {
+					r.Group(func(r chi.Router) {
+						if deps.AuthStore != nil {
+							r.Use(apimw.RequireGlobalOwner)
+						}
+						r.Method(http.MethodGet, "/token", deps.AvatarToken)
+					})
+				}
+			})
+		}
+
+		// Plugin boundary: the catalog and its restart-based enable/disable
+		// toggles. Owner/admin only; only mounted when main wired a registry.
+		if deps.PluginRegistry != nil {
+			pluginsH := handlers.NewPlugins(deps.PluginRegistry, deps.PluginState, deps.PluginsActive, deps.TenantID, logger)
+			r.Route("/plugins", func(r chi.Router) {
+				if deps.AuthStore != nil {
+					r.Use(apimw.RequireGlobalOwner)
+				}
+				r.Get("/", pluginsH.List)
+				r.Put("/{id}", pluginsH.Update)
+			})
+		}
+
 		// /songqueue is intentionally NOT session-protected: the OBS browser
 		// source player has no login and only advances the public song queue.
-		r.Get("/songqueue/next", songQueueH.Next)
+		// Gated with songrequests (RES-19): nil store => route unmounted => 404.
+		if deps.SongQueueStore != nil {
+			r.Get("/songqueue/next", songQueueH.Next)
+		}
+
+		// Public capability map so the dashboard only renders surfaces whose
+		// backend is actually mounted. Mirrors /auth/providers: it reflects the
+		// same nil-checks that gate route registration, so the answer can never
+		// drift from what is reachable. songrequests (RES-19) is the first
+		// entry; the "Music Plugin" card is hidden when songrequests is false.
+		r.Get("/capabilities", handlers.Capabilities(handlers.CapabilityFlags{
+			SongRequests: deps.SongRequestStore != nil,
+		}))
 
 		// /wrapped is public: recap cards are meant to be shared and rendered
-		// in an unauthenticated overlay/browser source.
-		r.Get("/wrapped", wrappedH.Get)
+		// in an unauthenticated overlay/browser source. Plugin-gated: nil store
+		// => route unmounted => 404 (like quotes), keeping the capability honest.
+		if deps.WrappedStore != nil {
+			r.Get("/wrapped", wrappedH.Get)
+		}
 	})
 
 	if deps.Overlay != nil {

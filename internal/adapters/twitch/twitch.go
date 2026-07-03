@@ -110,6 +110,10 @@ type helixClient interface {
 	EndPrediction(*helix.EndPredictionParams) (*helix.PredictionsResponse, error)
 	CreateClip(*helix.CreateClipParams) (*helix.CreateClipResponse, error)
 	GetClips(*helix.ClipsParams) (*helix.ClipsResponse, error)
+	CreateStreamMarker(*helix.CreateStreamMarkerParams) (*helix.CreateStreamMarkerResponse, error)
+	CreatePoll(*helix.CreatePollParams) (*helix.PollsResponse, error)
+	EditChannelInformation(*helix.EditChannelInformationParams) (*helix.EditChannelInformationResponse, error)
+	SearchCategories(*helix.SearchCategoriesParams) (*helix.SearchCategoriesResponse, error)
 	SetUserAccessToken(token string)
 }
 
@@ -834,6 +838,18 @@ func (w *helixWrapper) CreateClip(p *helix.CreateClipParams) (*helix.CreateClipR
 }
 func (w *helixWrapper) GetClips(p *helix.ClipsParams) (*helix.ClipsResponse, error) {
 	return w.c.GetClips(p)
+}
+func (w *helixWrapper) CreateStreamMarker(p *helix.CreateStreamMarkerParams) (*helix.CreateStreamMarkerResponse, error) {
+	return w.c.CreateStreamMarker(p)
+}
+func (w *helixWrapper) CreatePoll(p *helix.CreatePollParams) (*helix.PollsResponse, error) {
+	return w.c.CreatePoll(p)
+}
+func (w *helixWrapper) EditChannelInformation(p *helix.EditChannelInformationParams) (*helix.EditChannelInformationResponse, error) {
+	return w.c.EditChannelInformation(p)
+}
+func (w *helixWrapper) SearchCategories(p *helix.SearchCategoriesParams) (*helix.SearchCategoriesResponse, error) {
+	return w.c.SearchCategories(p)
 }
 func (w *helixWrapper) EndPrediction(p *helix.EndPredictionParams) (*helix.PredictionsResponse, error) {
 	return w.c.EndPrediction(p)

@@ -136,7 +136,8 @@ const (
 // the individual filter - moderators and broadcasters are ALWAYS globally
 // exempt regardless), a TimeoutSecs base timeout, plus its own parameters.
 type Config struct {
-	// Mode controls overall engine behaviour. Default ModeActive.
+	// Mode controls overall engine behaviour. Default ModeDryRun (shadow-first:
+	// callers must explicitly opt into ModeActive before anything is enforced).
 	Mode FilterMode
 
 	Caps        CapsConfig
@@ -254,10 +255,12 @@ type BannedEntry struct {
 
 // DefaultConfig returns a Config with every filter DISABLED but pre-populated
 // with sensible default parameters, so enabling any single filter "just
-// works" without further tuning. Mode defaults to ModeActive.
+// works" without further tuning. Mode defaults to ModeDryRun so a fresh,
+// unconfigured engine SHADOWS (records what it would do) instead of enforcing;
+// the operator opts into ModeActive once the shadow log looks right.
 func DefaultConfig() Config {
 	return Config{
-		Mode: ModeActive,
+		Mode: ModeDryRun,
 		Caps: CapsConfig{
 			Enabled:        false,
 			MinLength:      15,

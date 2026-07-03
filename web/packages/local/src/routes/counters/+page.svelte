@@ -148,9 +148,10 @@
 <section class="space-y-6">
   <header class="flex items-end justify-between gap-4 reveal-up">
     <div>
-      <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Counters</h2>
+      <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Counter Actions</h2>
       <p class="text-[13px] text-fg-soft mt-1">
-        Named tallies like deaths, wins or fails. Bump them from chat or here.
+        Workflow-friendly state actions for named tallies like deaths, wins or fails.
+        Bump them from chat, redemptions, schedules or manual dashboard actions.
       </p>
     </div>
     {#if loaded}
@@ -174,7 +175,7 @@
       <Card padded={false} class="reveal-up reveal-up-delay-2">
         <EmptyState
           title="No counters yet"
-          description="Create one like deaths or wins, then bump it with !deaths in chat."
+          description="Create one like deaths or wins, then wire chat commands or redemptions to bump it."
         >
           {#snippet actions()}
             <Button onclick={openCreate}>

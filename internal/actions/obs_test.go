@@ -46,7 +46,7 @@ func (o *recordingOBS) SetSourceVisible(scene, source string, visible bool) erro
 
 func TestOBSActions_Registered(t *testing.T) {
 	reg := NewRegistry()
-	require.NoError(t, RegisterBuiltins(reg, Services{OBS: &recordingOBS{}}))
+	require.NoError(t, RegisterOBSNodes(reg, &recordingOBS{}))
 	_, ok := reg.Action("obs:switch-scene")
 	assert.True(t, ok)
 	_, ok = reg.Action("obs:set-source-visibility")
@@ -57,7 +57,7 @@ func TestOBSSwitchScene(t *testing.T) {
 	t.Run("switches the named scene", func(t *testing.T) {
 		obs := &recordingOBS{}
 		reg := NewRegistry()
-		require.NoError(t, RegisterBuiltins(reg, Services{OBS: obs}))
+		require.NoError(t, RegisterOBSNodes(reg, obs))
 		act, _ := reg.Action("obs:switch-scene")
 		ec := newExecutionContext(context.Background(), sampleRule("ch", "t"), Trigger{})
 
@@ -69,7 +69,7 @@ func TestOBSSwitchScene(t *testing.T) {
 	t.Run("empty scene no-op", func(t *testing.T) {
 		obs := &recordingOBS{}
 		reg := NewRegistry()
-		require.NoError(t, RegisterBuiltins(reg, Services{OBS: obs}))
+		require.NoError(t, RegisterOBSNodes(reg, obs))
 		act, _ := reg.Action("obs:switch-scene")
 		ec := newExecutionContext(context.Background(), sampleRule("ch", "t"), Trigger{})
 
@@ -80,7 +80,7 @@ func TestOBSSwitchScene(t *testing.T) {
 
 	t.Run("nil controller no-op", func(t *testing.T) {
 		reg := NewRegistry()
-		require.NoError(t, RegisterBuiltins(reg, Services{}))
+		require.NoError(t, RegisterOBSNodes(reg, nil))
 		act, _ := reg.Action("obs:switch-scene")
 		ec := newExecutionContext(context.Background(), sampleRule("ch", "t"), Trigger{})
 
@@ -91,7 +91,7 @@ func TestOBSSwitchScene(t *testing.T) {
 	t.Run("controller error surfaces", func(t *testing.T) {
 		obs := &recordingOBS{switchErr: errors.New("obs down")}
 		reg := NewRegistry()
-		require.NoError(t, RegisterBuiltins(reg, Services{OBS: obs}))
+		require.NoError(t, RegisterOBSNodes(reg, obs))
 		act, _ := reg.Action("obs:switch-scene")
 		ec := newExecutionContext(context.Background(), sampleRule("ch", "t"), Trigger{})
 
@@ -104,7 +104,7 @@ func TestOBSSetSourceVisibility(t *testing.T) {
 	t.Run("shows a source", func(t *testing.T) {
 		obs := &recordingOBS{}
 		reg := NewRegistry()
-		require.NoError(t, RegisterBuiltins(reg, Services{OBS: obs}))
+		require.NoError(t, RegisterOBSNodes(reg, obs))
 		act, _ := reg.Action("obs:set-source-visibility")
 		ec := newExecutionContext(context.Background(), sampleRule("ch", "t"), Trigger{})
 
@@ -117,7 +117,7 @@ func TestOBSSetSourceVisibility(t *testing.T) {
 	t.Run("missing scene or source no-op", func(t *testing.T) {
 		obs := &recordingOBS{}
 		reg := NewRegistry()
-		require.NoError(t, RegisterBuiltins(reg, Services{OBS: obs}))
+		require.NoError(t, RegisterOBSNodes(reg, obs))
 		act, _ := reg.Action("obs:set-source-visibility")
 		ec := newExecutionContext(context.Background(), sampleRule("ch", "t"), Trigger{})
 

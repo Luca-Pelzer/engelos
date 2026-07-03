@@ -95,12 +95,15 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
-    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Stream Wrapped</h2>
+    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">
+      Recap Template
+      <span class="legacy-badge">Template</span>
+    </h2>
     <p class="text-[13px] text-fg-soft mt-1">
-      Year-in-review recap cards for the channel or a single viewer. Leave the viewer field
-      empty for the channel summary, or set a period like 2026-05 for a single month.
+      Optional analytics/share-card workflow template. Generate channel or viewer recap cards
+      from event-sourced history; set a period like 2026-05 for a single month.
     </p>
   </header>
 

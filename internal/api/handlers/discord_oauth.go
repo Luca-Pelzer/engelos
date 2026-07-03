@@ -154,11 +154,16 @@ func (d *DiscordOAuth) Callback(w http.ResponseWriter, r *http.Request) {
 	login := strings.ToLower(strings.TrimSpace(du.Username))
 
 	// Discord dashboard login is owner-only; there is no bot-token grant
-	// flow here, so a non-owner is always refused with no account created.
+	// flow here, so a non-owner is always refused (no account created) with a
+	// friendly redirect to the denied page.
 	if !d.core.isOwnerLogin(ctx, auth.ProviderDiscord, providerUserID, login) {
 		d.core.logger.WarnContext(ctx, "discord oauth: login refused, not an owner",
 			slog.String("login", login))
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not_authorized"})
+		http.SetCookie(w, &http.Cookie{
+			Name: OAuthStateCookieName, Value: "", Path: "/", MaxAge: -1,
+			HttpOnly: true, Secure: d.core.cookieSecure, SameSite: http.SameSiteLaxMode,
+		})
+		http.Redirect(w, r, "/login?denied=account", http.StatusSeeOther)
 		return
 	}
 

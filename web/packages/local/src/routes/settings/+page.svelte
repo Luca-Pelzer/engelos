@@ -7,11 +7,11 @@
   let tab = $state<Tab>('general');
 
   const tabs: { id: Tab; label: string; danger?: boolean }[] = [
-    { id: 'general', label: 'Allgemein' },
-    { id: 'account', label: 'Konto' },
-    { id: 'appearance', label: 'Darstellung' },
-    { id: 'security', label: 'Sicherheit' },
-    { id: 'danger', label: 'Gefahrenzone', danger: true },
+    { id: 'general', label: 'General' },
+    { id: 'account', label: 'Account' },
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'security', label: 'Security' },
+    { id: 'danger', label: 'Danger zone', danger: true },
   ];
 
   async function logout() {
@@ -19,12 +19,12 @@
       await auth.logout();
       goto('/login');
     } catch {
-      toast('Abmelden fehlgeschlagen.', 'error');
+      toast('Could not sign out.', 'error');
     }
   }
 
   function notYet() {
-    toast('Diese Aktion ist noch nicht angebunden.', 'warn');
+    toast('This action is not wired up yet.', 'warn');
   }
 </script>
 
@@ -40,19 +40,19 @@
   <div class="scontent">
     {#if tab === 'general'}
       <div class="spanel">
-        <div class="spanel-head"><h2>Allgemein</h2><p>Grundlegende Einstellungen deiner EngelOS-Instanz.</p></div>
+        <div class="spanel-head"><h2>General</h2><p>Basic settings of your EngelOS instance.</p></div>
         <div class="card panel">
           <div class="frow">
-            <label class="fld" for="instName">Instanz-Name</label>
+            <label class="fld" for="instName">Instance name</label>
             <div class="input"><input id="instName" type="text" value="EngelOS" /></div>
-            <div class="hint">Wird im Browser-Tab und in geteilten Links angezeigt.</div>
+            <div class="hint">Shown in the browser tab and in shared links.</div>
           </div>
           <div class="frow split">
-            <div class="ftext"><div class="t">Sprache</div><div class="d">Sprache der Benutzeroberflaeche.</div></div>
-            <div class="input" style="min-width:180px"><select><option>Deutsch</option><option>English</option></select></div>
+            <div class="ftext"><div class="t">Language</div><div class="d">Language of the user interface.</div></div>
+            <div class="input" style="min-width:180px"><select><option>English</option><option>Deutsch</option></select></div>
           </div>
           <div class="card-foot">
-            <button class="btn btn-primary btn-sm" onclick={notYet}>Aenderungen speichern</button>
+            <button class="btn btn-primary btn-sm" onclick={notYet}>Save changes</button>
           </div>
         </div>
       </div>
@@ -60,15 +60,15 @@
 
     {#if tab === 'account'}
       <div class="spanel">
-        <div class="spanel-head"><h2>Konto</h2><p>Verwalte deine Anmeldedaten.</p></div>
+        <div class="spanel-head"><h2>Account</h2><p>Manage your sign-in details.</p></div>
         <div class="card panel">
           <div class="frow">
-            <label class="fld" for="acctEmail">E-Mail-Adresse</label>
+            <label class="fld" for="acctEmail">Email address</label>
             <div class="input"><input id="acctEmail" type="email" placeholder="you@yourdomain.com" /></div>
-            <div class="hint">Eine Bestaetigungs-Mail wird an die neue Adresse gesendet.</div>
+            <div class="hint">A confirmation mail is sent to the new address.</div>
           </div>
           <div class="card-foot">
-            <button class="btn btn-primary btn-sm" onclick={notYet}>E-Mail aktualisieren</button>
+            <button class="btn btn-primary btn-sm" onclick={notYet}>Update email</button>
           </div>
         </div>
       </div>
@@ -76,21 +76,21 @@
 
     {#if tab === 'appearance'}
       <div class="spanel">
-        <div class="spanel-head"><h2>Darstellung</h2><p>Passe das Erscheinungsbild an. Aenderungen gelten sofort.</p></div>
+        <div class="spanel-head"><h2>Appearance</h2><p>Customize the look. Changes apply immediately.</p></div>
         <div class="card panel">
           <div class="frow split">
-            <div class="ftext"><div class="t">Theme</div><div class="d">Hell oder dunkel.</div></div>
+            <div class="ftext"><div class="t">Theme</div><div class="d">Light or dark.</div></div>
             <div class="theme-seg">
               <button class:on={$theme === 'dark'} onclick={() => setTheme('dark')}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></svg>Dunkel
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></svg>Dark
               </button>
               <button class:on={$theme === 'light'} onclick={() => setTheme('light')}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>Hell
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>Light
               </button>
             </div>
           </div>
           <div class="frow split">
-            <div class="ftext"><div class="t">Akzentfarbe</div><div class="d">Faerbt Buttons, Highlights und Live-Indikatoren.</div></div>
+            <div class="ftext"><div class="t">Accent color</div><div class="d">Colors buttons, highlights and live indicators.</div></div>
             <div class="accent-big">
               {#each ACCENTS as a (a.id)}
                 <button class:on={$accent.id === a.id} style="background:linear-gradient(135deg,{a.v[0]},{a.v[1]})" title={a.name} aria-label={a.name} onclick={() => setAccent(a)}></button>
@@ -103,13 +103,13 @@
 
     {#if tab === 'security'}
       <div class="spanel">
-        <div class="spanel-head"><h2>Sicherheit</h2><p>Aktive Sitzungen und Konto-Sicherheit.</p></div>
+        <div class="spanel-head"><h2>Security</h2><p>Active sessions and account security.</p></div>
         <div class="card panel">
-          <div class="spanel-head" style="margin:0 0 10px"><h2 style="font-size:1.05rem">Aktive Sitzung</h2><p>Du bist auf diesem Geraet angemeldet.</p></div>
+          <div class="spanel-head" style="margin:0 0 10px"><h2 style="font-size:1.05rem">Active session</h2><p>You are signed in on this device.</p></div>
           <div class="sess-row">
             <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg></span>
-            <span class="meta"><span class="nm">Dieses Geraet <span class="this-tag">Aktiv</span></span><span class="sub">Angemeldet ueber OAuth</span></span>
-            <button class="btn btn-ghost btn-sm" onclick={logout}>Abmelden</button>
+            <span class="meta"><span class="nm">This device <span class="this-tag">Active</span></span><span class="sub">Signed in via OAuth</span></span>
+            <button class="btn btn-ghost btn-sm" onclick={logout}>Sign out</button>
           </div>
         </div>
       </div>
@@ -117,15 +117,15 @@
 
     {#if tab === 'danger'}
       <div class="spanel">
-        <div class="spanel-head danger-head"><h2>Gefahrenzone</h2><p>Irreversible Aktionen. Bitte mit Vorsicht verwenden.</p></div>
+        <div class="spanel-head danger-head"><h2>Danger zone</h2><p>Irreversible actions. Use with care.</p></div>
         <div class="card panel danger-card">
           <div class="frow split">
-            <div class="ftext"><div class="t">Daten exportieren</div><div class="d">Lade ein Archiv deiner Einstellungen und Logs als JSON.</div></div>
-            <button class="btn btn-ghost btn-sm" onclick={notYet}>Export starten</button>
+            <div class="ftext"><div class="t">Export data</div><div class="d">Download an archive of your settings and logs as JSON.</div></div>
+            <button class="btn btn-ghost btn-sm" onclick={notYet}>Start export</button>
           </div>
           <div class="frow split">
-            <div class="ftext"><div class="t">Abmelden</div><div class="d">Beende deine aktuelle Sitzung.</div></div>
-            <button class="btn btn-danger btn-sm" onclick={logout}>Abmelden</button>
+            <div class="ftext"><div class="t">Sign out</div><div class="d">End your current session.</div></div>
+            <button class="btn btn-danger btn-sm" onclick={logout}>Sign out</button>
           </div>
         </div>
       </div>

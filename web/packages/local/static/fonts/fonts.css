@@ -1,0 +1,52 @@
+/*
+ * Self-hosted web fonts (Phase D1.2a).
+ *
+ * Previously loaded from rsms.me / cdn.jsdelivr.net, which the CSP
+ * (style-src 'self') correctly blocked - every page silently fell back to
+ * the system font. Vendoring the files fixes typography AND avoids
+ * third-party requests from every operator's browser (privacy).
+ *
+ * Licenses: Inter (c) Rasmus Andersson, SIL OFL 1.1 - https://rsms.me/inter/
+ *           JetBrains Mono (c) JetBrains, SIL OFL 1.1 - https://jetbrains.com/mono
+ */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/InterVariable-Italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+}
+
+/* Clash Display (c) Indian Type Foundry, ITF FFL - fontshare.com/fonts/clash-display */
+@font-face {
+  font-family: 'Clash Display';
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url('/fonts/ClashDisplay-Variable.woff2') format('woff2');
+}

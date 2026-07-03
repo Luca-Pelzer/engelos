@@ -13,16 +13,21 @@
           document.documentElement.setAttribute('data-theme', t);
           var m = document.querySelector('meta[name="theme-color"]');
           if (m) m.setAttribute('content', t === 'light' ? '#f6f8fb' : '#08090c');
-          var a = JSON.parse(localStorage.getItem('engelos-accent') || '["#ff5d73","#ff9e3d"]');
+          var ids = { magma: ['#ff5d73', '#ff9e3d'], aurora: ['#1fe3b3', '#34c7ff'], violet: ['#8b5cff', '#43a6ff'], lime: ['#b6f23d', '#19d3a2'] };
+          var raw = localStorage.getItem('engelos-accent');
+          var a = ids.magma;
+          if (raw) {
+            if (ids[raw]) { a = ids[raw]; }
+            else { try { var p = JSON.parse(raw); if (p && p[0]) a = p; } catch (e2) {} }
+          }
           document.documentElement.style.setProperty('--brand', a[0]);
           document.documentElement.style.setProperty('--brand-2', a[1]);
         } catch (e) {}
       })();
     </script>
     <title>engelOS</title>
-    <link rel="preconnect" href="https://rsms.me/" />
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/web/css/jetbrains-mono.css" />
+    <link rel="preload" href="%sveltekit.assets%/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="%sveltekit.assets%/fonts/fonts.css" />
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover" class="bg-[var(--color-bg)] text-[var(--color-fg)] antialiased">

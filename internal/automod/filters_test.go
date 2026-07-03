@@ -424,7 +424,8 @@ func TestAllPassReturnsPass(t *testing.T) {
 
 func TestDefaultConfigDisabledButSane(t *testing.T) {
 	cfg := DefaultConfig()
-	assert.Equal(t, ModeActive, cfg.Mode)
+	// Shadow-first: a fresh engine defaults to dry-run, never active enforcement.
+	assert.Equal(t, ModeDryRun, cfg.Mode)
 	assert.False(t, cfg.Caps.Enabled)
 	assert.Equal(t, 15, cfg.Caps.MinLength)
 	assert.InDelta(t, 0.60, cfg.Caps.MaxCapsPercent, 1e-9)

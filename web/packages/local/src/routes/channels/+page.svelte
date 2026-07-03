@@ -16,7 +16,7 @@
       const res = await api.get<{ workspaces: Workspace[] }>('/api/v1/me/workspaces');
       workspaces = res.workspaces ?? [];
     } catch {
-      toast('Workspaces konnten nicht geladen werden.', 'error');
+      toast('Could not load workspaces.', 'error');
     } finally {
       loading = false;
     }
@@ -34,11 +34,11 @@
   <div class="page-wrap">
     <div class="head">
       <h2>Deine Workspaces</h2>
-      <p class="muted">Waehle einen Channel zum Verwalten oder lege einen neuen an.</p>
+      <p class="muted">Pick a channel to manage or create a new one.</p>
     </div>
 
     {#if loading}
-      <div class="muted">Laedt...</div>
+      <div class="muted">Loading…</div>
     {:else}
       <div class="grid">
         {#each workspaces as w (w.slug)}
@@ -54,7 +54,7 @@
 
         <a class="card new" href="/onboard">
           <span class="mark plus">+</span>
-          <span class="info"><span class="name">Neuer Workspace</span><span class="login">Eigenen Channel anlegen</span></span>
+          <span class="info"><span class="name">New workspace</span><span class="login">Create your own channel</span></span>
         </a>
       </div>
 

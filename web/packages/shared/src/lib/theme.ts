@@ -70,12 +70,17 @@ function readAccent(): Accent {
   try {
     const saved = localStorage.getItem(ACCENT_KEY);
     if (saved) {
+      // Legacy format: the login page used to store the accent id string
+      // ('magma') instead of the [primary, secondary] pair. Accept both so
+      // users who picked an accent before the fix keep their choice.
+      const byId = ACCENTS.find((a) => a.id === saved);
+      if (byId) return byId;
       const v = JSON.parse(saved) as [string, string];
       const match = ACCENTS.find((a) => a.v[0] === v[0]);
       if (match) return match;
     }
   } catch {
-    /* localStorage unavailable; fall through to default */
+    /* localStorage unavailable or unparseable; fall through to default */
   }
   return ACCENTS[0];
 }

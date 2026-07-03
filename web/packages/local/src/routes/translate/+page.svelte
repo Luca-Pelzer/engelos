@@ -85,7 +85,7 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
     <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Translation</h2>
     <p class="text-[13px] text-fg-soft mt-1">

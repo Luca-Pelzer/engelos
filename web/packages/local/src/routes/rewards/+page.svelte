@@ -27,7 +27,7 @@
       const res = await channelApi(channel).get<ListResponse>('/rewards');
       rewards = res.rewards ?? [];
     } catch (err) {
-      toast(err instanceof ApiException && err.status === 501 ? 'Rewards-Feature ist nicht aktiviert.' : 'Laden fehlgeschlagen.', 'error');
+      toast(err instanceof ApiException && err.status === 501 ? 'The rewards feature is not enabled.' : 'Could not load.', 'error');
     } finally {
       loading = false;
     }
@@ -37,20 +37,20 @@
   function openEdit(r: Reward) { editing = r.name; fName = r.name; fCost = r.cost; fDesc = r.description; showForm = true; }
 
   async function save() {
-    if (!channel || !fName.trim()) { toast('Name ist erforderlich.', 'warn'); return; }
+    if (!channel || !fName.trim()) { toast('Name is required.', 'warn'); return; }
     try {
       if (editing) {
         const r = await channelApi(channel).put<Reward>(`/rewards/${encodeURIComponent(editing)}`, { cost: fCost, description: fDesc });
         rewards = rewards.map((x) => (x.name === editing ? r : x));
-        toast('Belohnung aktualisiert.', 'success');
+        toast('Reward updated.', 'success');
       } else {
         const r = await channelApi(channel).post<Reward>('/rewards', { name: fName.trim(), cost: fCost, description: fDesc });
         rewards = [...rewards, r];
-        toast('Belohnung angelegt.', 'success');
+        toast('Reward created.', 'success');
       }
       showForm = false;
     } catch (err) {
-      toast(err instanceof ApiException && err.status === 409 ? 'Name existiert bereits.' : 'Speichern fehlgeschlagen.', 'error');
+      toast(err instanceof ApiException && err.status === 409 ? 'Name already exists.' : 'Could not save.', 'error');
     }
   }
 
@@ -58,9 +58,9 @@
     try {
       await channelApi(channel).delete(`/rewards/${encodeURIComponent(name)}`);
       rewards = rewards.filter((x) => x.name !== name);
-      toast('Belohnung geloescht.', 'warn');
+      toast('Reward deleted.', 'warn');
     } catch {
-      toast('Loeschen fehlgeschlagen.', 'error');
+      toast('Could not delete.', 'error');
     }
   }
 
@@ -76,34 +76,35 @@
 
 <section class="page" data-screen-label="rewards">
   <div class="page-wrap">
+    <div class="section-title">Twitch Rewards <span class="sub">native reward definitions for redemption-trigger workflows</span></div>
     <div class="toolbar">
-      <span class="ws-label">{channel ? `@${channel}` : 'Kein Workspace gewaehlt'}</span>
-      <button class="btn btn-ghost btn-sm" onclick={load} disabled={loading || !channel}>{loading ? 'Laedt...' : 'Neu laden'}</button>
+      <span class="ws-label">{channel ? `@${channel}` : 'No workspace selected'}</span>
+      <button class="btn btn-ghost btn-sm" onclick={load} disabled={loading || !channel}>{loading ? 'Loading…' : 'Reload'}</button>
       <div class="input search">
         <span class="lead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" /></svg></span>
-        <input type="text" placeholder="Belohnungen durchsuchen..." bind:value={search} />
+        <input type="text" placeholder="Search rewards…" bind:value={search} />
       </div>
       <div class="grow"></div>
-      <span class="count-pill"><b>{rewards.length}</b> Belohnungen</span>
-      <button class="btn btn-primary btn-sm" onclick={openNew}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>Neue Belohnung</button>
+      <span class="count-pill"><b>{rewards.length}</b> Twitch Rewards</span>
+      <button class="btn btn-primary btn-sm" onclick={openNew}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>Neuer Twitch Reward</button>
     </div>
 
     {#if showForm}
       <div class="form-card">
         <div class="form-grid">
-          <div><label class="fld" for="reward-name">Name</label><div class="input"><input id="reward-name" type="text" placeholder="z. B. Songwunsch" bind:value={fName} disabled={editing !== null} /></div></div>
-          <div><label class="fld" for="reward-cost">Punkte-Kosten</label><div class="input"><input id="reward-cost" type="number" min="0" bind:value={fCost} /></div></div>
+          <div><label class="fld" for="reward-name">Name</label><div class="input"><input id="reward-name" type="text" placeholder="e.g. Song request" bind:value={fName} disabled={editing !== null} /></div></div>
+          <div><label class="fld" for="reward-cost">Point cost</label><div class="input"><input id="reward-cost" type="number" min="0" bind:value={fCost} /></div></div>
         </div>
         <div><label class="fld" for="reward-desc">Beschreibung (optional)</label><div class="input"><input id="reward-desc" type="text" placeholder="Kurzbeschreibung" bind:value={fDesc} /></div></div>
         <div class="form-actions">
-          <button class="btn btn-ghost btn-sm" onclick={() => (showForm = false)}>Abbrechen</button>
-          <button class="btn btn-primary btn-sm" onclick={save}>Speichern</button>
+          <button class="btn btn-ghost btn-sm" onclick={() => (showForm = false)}>Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick={save}>Save</button>
         </div>
       </div>
     {/if}
 
     <table class="dtable" style="margin-top:14px">
-      <thead><tr><th>Belohnung</th><th>Beschreibung</th><th class="right">Kosten</th><th class="right" style="width:96px">Aktion</th></tr></thead>
+      <thead><tr><th>Reward</th><th>Description</th><th class="right">Cost</th><th class="right" style="width:96px">Action</th></tr></thead>
       <tbody>
         {#each filtered as r (r.name)}
           <tr>
@@ -112,8 +113,8 @@
             <td class="right num">{fmt(r.cost)}</td>
             <td>
               <div class="row-actions">
-                <button class="iact" onclick={() => openEdit(r)} aria-label="Bearbeiten"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg></button>
-                <button class="iact del" onclick={() => del(r.name)} aria-label="Loeschen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg></button>
+                <button class="iact" onclick={() => openEdit(r)} aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg></button>
+                <button class="iact del" onclick={() => del(r.name)} aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" /></svg></button>
               </div>
             </td>
           </tr>
@@ -124,8 +125,8 @@
     {#if filtered.length === 0}
       <div class="empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8.5" width="17" height="12" rx="1.6" /><path d="M3.5 12.5h17M12 8.5v12" /></svg>
-        <div class="t">{channel ? 'Keine Belohnungen' : 'Workspace oben auswaehlen'}</div>
-        <div class="d">Lege deine erste Belohnung an.</div>
+        <div class="t">{channel ? 'No Twitch rewards' : 'Select a workspace above'}</div>
+        <div class="d">Create a native reward, then bind it to a workflow.</div>
       </div>
     {/if}
   </div>

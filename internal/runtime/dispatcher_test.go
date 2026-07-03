@@ -131,6 +131,89 @@ func newDispatcher(t *testing.T, platforms []adapters.Platform, pity runtime.Pit
 	})
 }
 
+type actionEventCall struct {
+	Platform, Channel, EventType string
+	Data                         map[string]any
+}
+
+type actionMessageCall struct {
+	Platform, Channel, MessageID, UserID, Username, Text string
+	IsModerator                                          bool
+}
+
+type fakeActionEngine struct {
+	mu       sync.Mutex
+	events   []actionEventCall
+	messages []actionMessageCall
+}
+
+func (f *fakeActionEngine) OnMessage(platform, channel, messageID, userID, username, text string,
+	_, isModerator, _, _ bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.messages = append(f.messages, actionMessageCall{platform, channel, messageID, userID, username, text, isModerator})
+}
+
+func (f *fakeActionEngine) OnEvent(platform, channel, eventType string, data map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, actionEventCall{platform, channel, eventType, data})
+}
+
+func (f *fakeActionEngine) calls() []actionEventCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]actionEventCall(nil), f.events...)
+}
+
+func (f *fakeActionEngine) messageCalls() []actionMessageCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]actionMessageCall(nil), f.messages...)
+}
+
+func TestDispatcher_StreamEventsRouteToActions(t *testing.T) {
+	t.Parallel()
+	plat := mock.New("twitch")
+	require.NoError(t, plat.Connect(context.Background()))
+
+	engine := &fakeActionEngine{}
+	d := runtime.New(runtime.Config{
+		TenantID:  "test",
+		Platforms: []adapters.Platform{plat},
+		Actions:   engine,
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { _ = d.Run(ctx); close(done) }()
+
+	plat.EmitEvent(adapters.Event{
+		ID:         adapters.NewEventID(),
+		Type:       adapters.EventStreamOnline,
+		Platform:   "twitch",
+		Channel:    "broadcaster",
+		OccurredAt: time.Now(),
+		Stream:     &adapters.StreamEvent{IsLive: true},
+	})
+
+	require.Eventually(t, func() bool {
+		return len(engine.calls()) == 1
+	}, time.Second, 5*time.Millisecond)
+
+	got := engine.calls()[0]
+	assert.Equal(t, "twitch", got.Platform)
+	assert.Equal(t, "broadcaster", got.Channel)
+	assert.Equal(t, "stream.online", got.EventType)
+	assert.Equal(t, true, got.Data["is_live"])
+
+	cancel()
+	require.NoError(t, plat.Disconnect(context.Background()))
+	<-done
+}
+
 func TestDispatcher_MessageGrantsPity(t *testing.T) {
 	t.Parallel()
 	plat := mock.New("test-platform")
@@ -841,4 +924,108 @@ func TestDispatcher_ShutdownWithEventsInFlight(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after cancel (possible goroutine leak)")
 	}
+}
+
+func TestDispatcher_DonationRoutesToActions(t *testing.T) {
+	t.Parallel()
+	engine := &fakeActionEngine{}
+	d := runtime.New(runtime.Config{
+		TenantID: "test",
+		Actions:  engine,
+		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	d.Dispatch(context.Background(), adapters.Event{
+		Type:       adapters.EventDonation,
+		Platform:   "kofi",
+		Channel:    "streamer1",
+		OccurredAt: time.Now(),
+		Donation: &adapters.DonationEvent{
+			From:     "Jo Example",
+			Amount:   "5.00",
+			Currency: "USD",
+			Message:  "gg",
+			Kind:     "Donation",
+		},
+	})
+
+	calls := engine.calls()
+	require.Len(t, calls, 1)
+	got := calls[0]
+	assert.Equal(t, "kofi", got.Platform)
+	assert.Equal(t, "streamer1", got.Channel)
+	assert.Equal(t, "donation", got.EventType)
+	assert.Equal(t, "Jo Example", got.Data["donation.from"])
+	assert.Equal(t, "5.00", got.Data["donation.amount"])
+	assert.Equal(t, "USD", got.Data["donation.currency"])
+	assert.Equal(t, "gg", got.Data["donation.message"])
+	assert.Equal(t, "Donation", got.Data["donation.kind"])
+}
+
+func TestDispatcher_DiscordMessageFansOutToActions(t *testing.T) {
+	t.Parallel()
+	engine := &fakeActionEngine{}
+	d := runtime.New(runtime.Config{
+		TenantID:        "test",
+		Actions:         engine,
+		DiscordChannels: func(context.Context) []string { return []string{"streamer1", "streamer2"} },
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	d.Dispatch(context.Background(), adapters.Event{
+		Type:       adapters.EventDiscordMessage,
+		Platform:   "discord",
+		OccurredAt: time.Now(),
+		Discord: &adapters.DiscordMessageEvent{
+			GuildID:     "g1",
+			ChannelID:   "c1",
+			ChannelName: "general",
+			MessageID:   "m1",
+			Username:    "bob",
+			UserID:      "u1",
+			Text:        "!hi",
+			IsModerator: true,
+		},
+	})
+
+	// Event path: discord.message fired per fanned-out channel with discord.* vars.
+	evc := engine.calls()
+	require.Len(t, evc, 2)
+	assert.Equal(t, "discord", evc[0].Platform)
+	assert.Equal(t, "streamer1", evc[0].Channel)
+	assert.Equal(t, "discord.message", evc[0].EventType)
+	assert.Equal(t, "bob", evc[0].Data["discord.username"])
+	assert.Equal(t, "!hi", evc[0].Data["discord.text"])
+	assert.Equal(t, "c1", evc[0].Data["discord.channel_id"])
+	assert.Equal(t, "general", evc[0].Data["discord.channel"])
+	assert.Equal(t, "g1", evc[0].Data["discord.guild"])
+	assert.Equal(t, "discord", evc[0].Data["source"])
+	assert.Equal(t, "streamer2", evc[1].Channel)
+
+	// Command path: OnMessage fired per channel so command-kind rules fire.
+	mc := engine.messageCalls()
+	require.Len(t, mc, 2)
+	assert.Equal(t, "discord", mc[0].Platform)
+	assert.Equal(t, "streamer1", mc[0].Channel)
+	assert.Equal(t, "!hi", mc[0].Text)
+	assert.Equal(t, "bob", mc[0].Username)
+	assert.True(t, mc[0].IsModerator)
+}
+
+func TestDispatcher_DiscordMessage_NoChannelsNoFire(t *testing.T) {
+	t.Parallel()
+	engine := &fakeActionEngine{}
+	d := runtime.New(runtime.Config{
+		TenantID:        "test",
+		Actions:         engine,
+		DiscordChannels: func(context.Context) []string { return nil },
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	d.Dispatch(context.Background(), adapters.Event{
+		Type:     adapters.EventDiscordMessage,
+		Platform: "discord",
+		Discord:  &adapters.DiscordMessageEvent{ChannelID: "c1", UserID: "u1", Username: "bob", Text: "hi"},
+	})
+	assert.Empty(t, engine.calls())
+	assert.Empty(t, engine.messageCalls())
 }

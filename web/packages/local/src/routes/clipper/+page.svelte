@@ -81,12 +81,12 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
-    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Auto-Clipper</h2>
+    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Clip Workflow</h2>
     <p class="text-[13px] text-fg-soft mt-1">
-      Detect hype moments and clip them automatically. Set 0 on any field to keep the smart default.
-      Lower the thresholds for a small channel where few viewers coincide.
+      Optional workflow template for detecting hype moments and calling Twitch.CreateClip.
+      Set 0 on any field to keep the smart default; lower thresholds for small channels.
     </p>
   </header>
 
@@ -103,7 +103,7 @@
         <Badge tone={enabled ? 'accent' : 'neutral'}>{enabled ? 'On' : 'Off'}</Badge>
       </div>
       <p class="text-[12.5px] text-fg-soft mb-5">
-        When on, a clip is captured once enough distinct viewers signal hype within a few seconds.
+        When on, the workflow captures a native Twitch clip once enough viewers signal hype.
       </p>
 
       <label class="flex items-center justify-between py-2 border-b border-soft cursor-pointer">

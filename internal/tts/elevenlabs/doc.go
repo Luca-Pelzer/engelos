@@ -1,5 +1,5 @@
 // Package elevenlabs is a thin bring-your-own-key client for the ElevenLabs
-// text-to-speech API. It mirrors the shape of internal/translate/claude: a
+// text-to-speech API. It mirrors the shape of internal/aibackend/anthropic: a
 // small net/http wrapper with functional options, sentinel errors, and no
 // dependencies under engelos/internal, so it can be reused and tested in
 // isolation.

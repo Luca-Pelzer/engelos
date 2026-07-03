@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Luca-Pelzer/engelos/internal/automod"
+	"github.com/Luca-Pelzer/engelos/internal/automodstate"
 	"github.com/Luca-Pelzer/engelos/internal/moderation"
 )
 
@@ -81,7 +82,9 @@ func (a *AutoMod) Audit(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	rows, err := a.svc.AuditList(r.Context(), channel, limit)
+	// source=ai|fast filters on ai_consulted; anything else returns both.
+	source := automodstate.ParseAuditSource(r.URL.Query().Get("source"))
+	rows, err := a.svc.AuditListBySource(r.Context(), channel, source, limit)
 	if err != nil {
 		a.logger.WarnContext(r.Context(), "automod audit list failed", slog.Any("err", err))
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "audit_unavailable"})
@@ -89,7 +92,7 @@ func (a *AutoMod) Audit(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, len(rows))
 	for i, e := range rows {
-		out[i] = map[string]any{
+		m := map[string]any{
 			"id":           e.ID,
 			"channel":      e.Channel,
 			"username":     e.Username,
@@ -102,6 +105,21 @@ func (a *AutoMod) Audit(w http.ResponseWriter, r *http.Request) {
 			"dry_run":      e.DryRun,
 			"created_at":   e.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		}
+		// AI fields are present only on AI-escalation rows (omitempty for
+		// fast-path rows), keeping the response additive for existing consumers.
+		if e.AICategory != nil {
+			m["ai_category"] = *e.AICategory
+		}
+		if e.AISeverity != nil {
+			m["ai_severity"] = *e.AISeverity
+		}
+		if e.AIConfidence != nil {
+			m["ai_confidence"] = *e.AIConfidence
+		}
+		if e.AIConsulted != nil {
+			m["ai_consulted"] = *e.AIConsulted
+		}
+		out[i] = m
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"channel": channel,

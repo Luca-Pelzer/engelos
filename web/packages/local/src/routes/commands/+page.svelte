@@ -163,9 +163,10 @@
 <section class="space-y-6">
   <header class="flex items-end justify-between gap-4 reveal-up">
     <div>
-      <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Commands</h2>
+      <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Command Triggers</h2>
       <p class="text-[13px] text-fg-soft mt-1">
-        Text replies with role gates. Use $user, $channel and $args in responses.
+        Chat commands are workflow triggers with role gates and templated responses.
+        Use $user, $channel and $args in response actions.
       </p>
     </div>
     {#if loaded}
@@ -189,7 +190,7 @@
       {#if commands.length === 0}
         <EmptyState
           title="No commands yet"
-          description="Even a simple !discord makes the bot feel alive."
+          description="Start with a simple !discord trigger, then graduate it into a fuller workflow."
         >
           {#snippet actions()}
             <Button onclick={openCreate}>

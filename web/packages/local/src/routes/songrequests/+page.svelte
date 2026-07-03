@@ -87,12 +87,15 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
-    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Song Requests</h2>
+    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">
+      Music Plugin
+      <span class="legacy-badge">Legacy</span>
+    </h2>
     <p class="text-[13px] text-fg-soft mt-1">
-      Let viewers queue tracks from chat. Pick a provider, cap the track length, and point
-      Spotify at the playlist requests are added to.
+      Optional music workflow plugin: let viewers queue tracks from chat or redemptions.
+      Pick a provider, cap the track length, and point Spotify at the request playlist.
     </p>
   </header>
 
@@ -109,7 +112,7 @@
         <Badge tone={enabled ? 'accent' : 'neutral'}>{enabled ? 'On' : 'Off'}</Badge>
       </div>
       <p class="text-[12.5px] text-fg-soft mb-5">
-        When on, viewers can queue tracks with the song-request command.
+        When on, viewers can queue tracks through the song-request workflow trigger.
       </p>
 
       <label class="flex items-center justify-between py-2 border-b border-soft cursor-pointer">

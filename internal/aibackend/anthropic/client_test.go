@@ -1,4 +1,4 @@
-package claude
+package anthropic
 
 import (
 	"context"
@@ -22,6 +22,9 @@ func testClient(t *testing.T, h http.Handler, opts ...Option) *Client {
 		WithBaseURL(srv.URL),
 		WithHTTPClient(srv.Client()),
 		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		// Default caching off here so these tests assert the plain-string
+		// system wire; the prompt-caching wire has its own dedicated tests.
+		WithPromptCaching(false),
 	}
 	return New(append(base, opts...)...)
 }

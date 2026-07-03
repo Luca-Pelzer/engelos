@@ -12,9 +12,9 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
-// Backend performs the actual translation of a single message. The Claude
-// client in the claude subpackage satisfies this; it is an interface here so
-// the orchestrator stays decoupled and testable without HTTP.
+// Backend performs the actual translation of a single message. The Anthropic
+// client in internal/aibackend/anthropic satisfies this; it is an interface
+// here so the orchestrator stays decoupled and testable without HTTP.
 type Backend interface {
 	// Translate returns text rendered into targetLang (an ISO 639-1 code), or
 	// the empty string when nothing was produced.

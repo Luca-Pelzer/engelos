@@ -97,7 +97,12 @@ func TestDiscordOAuth_Callback_RejectsStranger(t *testing.T) {
 	resp := runDiscordCallback(t, h, discordUser{ID: "disc-x", Username: "stranger", Email: "x@d.com"})
 	defer resp.Body.Close()
 
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	// Closed mode: stranger is refused with a friendly redirect (not a raw
+	// 403) and no account or session is created.
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	loc, _ := resp.Location()
+	require.NotNil(t, loc)
+	assert.Equal(t, "/login?denied=account", loc.String())
 	for _, c := range resp.Cookies() {
 		require.NotEqual(t, DefaultCookieName, c.Name)
 	}

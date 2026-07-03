@@ -880,7 +880,12 @@ func TestOAuth_Callback_RejectsStrangerWhenNotBootstrap(t *testing.T) {
 	resp := runCallbackHappyPath(t, h, fake, tok)
 	defer resp.Body.Close()
 
-	require.Equal(t, http.StatusForbidden, resp.StatusCode, "stranger must be refused")
+	// Closed mode (the default): a non-owner is refused with a friendly
+	// redirect to the denied page, and no account or session is created.
+	require.Equal(t, http.StatusSeeOther, resp.StatusCode, "stranger must be redirected, not served")
+	loc, _ := resp.Location()
+	require.NotNil(t, loc)
+	assert.Equal(t, "/login?denied=account", loc.String())
 	for _, c := range resp.Cookies() {
 		require.NotEqual(t, DefaultCookieName, c.Name, "no session cookie for a stranger")
 	}

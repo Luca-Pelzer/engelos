@@ -76,6 +76,38 @@
     font-family: var(--font-mono);
     font-feature-settings: "calt", "liga";
   }
+
+}
+
+/*
+ * Unlayered on purpose: engelos-dashboard.css ships an unlayered *{padding:0}
+ * reset, and unlayered rules beat anything inside @layer. These shell rules
+ * must therefore live outside @layer to win.
+ *
+ * Page shell for the modern route pattern (<section class="space-y-*">):
+ * .main is overflow:hidden, and unlike the legacy .page these sections had no
+ * scroll container of their own — anything below the fold was simply
+ * unreachable. The section becomes the scroll region and its direct children
+ * get capped and centered like the legacy .page-wrap.
+ */
+h1, h2, .font-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+}
+
+.main > section[class^="space-y"],
+.main > section[class*=" space-y"] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px clamp(20px, 3vw, 44px) 72px;
+}
+.main > section[class^="space-y"] > :where(*),
+.main > section[class*=" space-y"] > :where(*) {
+  max-width: 1280px;
+  margin-inline: auto;
+  width: 100%;
 }
 
 @layer utilities {

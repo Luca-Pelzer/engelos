@@ -22,7 +22,9 @@ const (
 	keepaliveReadGrace         = 5 * time.Second
 	maxMessageBytes            = 1 << 20
 
-	redemptionSubscriptionPrefix = "channel.channel_points_custom_reward_redemption"
+	redemptionSubscriptionPrefix  = "channel.channel_points_custom_reward_redemption"
+	streamOnlineSubscriptionType  = "stream.online"
+	streamOfflineSubscriptionType = "stream.offline"
 )
 
 // RedemptionEvent is the neutral, helix-free view of a
@@ -40,6 +42,16 @@ type RedemptionEvent struct {
 	RewardTitle          string
 	RewardCost           int
 	RedeemedAt           time.Time
+}
+
+// StreamEvent is the neutral, helix-free view of a stream.online or
+// stream.offline notification. Online is true for stream.online; StartedAt is
+// set only for an online event.
+type StreamEvent struct {
+	Online               bool
+	BroadcasterUserID    string
+	BroadcasterUserLogin string
+	StartedAt            time.Time
 }
 
 // Config configures a [Client]. The zero Config is usable but useless without
@@ -61,6 +73,10 @@ type Config struct {
 	// non-nil to receive events. Called synchronously from the read loop;
 	// keep it fast or hand off to a goroutine.
 	Handler func(ctx context.Context, evt RedemptionEvent)
+	// StreamHandler is called for every decoded stream.online/stream.offline
+	// notification. May be nil (stream events are then ignored). Called
+	// synchronously from the read loop.
+	StreamHandler func(ctx context.Context, evt StreamEvent)
 	// Logger; nil -> slog.Default().
 	Logger *slog.Logger
 	// ReconnectMinBackoff/ReconnectMaxBackoff bound the exponential backoff
@@ -72,13 +88,14 @@ type Config struct {
 // Client is an EventSub WebSocket transport client. Construct via [New] and
 // drive with [Client.Run].
 type Client struct {
-	url        string
-	dialer     func(ctx context.Context, url string) (*websocket.Conn, error)
-	onSession  func(ctx context.Context, sessionID string) error
-	handler    func(ctx context.Context, evt RedemptionEvent)
-	logger     *slog.Logger
-	minBackoff time.Duration
-	maxBackoff time.Duration
+	url           string
+	dialer        func(ctx context.Context, url string) (*websocket.Conn, error)
+	onSession     func(ctx context.Context, sessionID string) error
+	handler       func(ctx context.Context, evt RedemptionEvent)
+	streamHandler func(ctx context.Context, evt StreamEvent)
+	logger        *slog.Logger
+	minBackoff    time.Duration
+	maxBackoff    time.Duration
 }
 
 type metadata struct {
@@ -120,16 +137,30 @@ type wireRedemption struct {
 	RedeemedAt time.Time `json:"redeemed_at"`
 }
 
+type wireStreamOnline struct {
+	ID                   string    `json:"id"`
+	BroadcasterUserID    string    `json:"broadcaster_user_id"`
+	BroadcasterUserLogin string    `json:"broadcaster_user_login"`
+	Type                 string    `json:"type"`
+	StartedAt            time.Time `json:"started_at"`
+}
+
+type wireStreamOffline struct {
+	BroadcasterUserID    string `json:"broadcaster_user_id"`
+	BroadcasterUserLogin string `json:"broadcaster_user_login"`
+}
+
 // New constructs a Client from cfg, applying defaults for any zero fields.
 func New(cfg Config) *Client {
 	c := &Client{
-		url:        cfg.URL,
-		dialer:     cfg.Dialer,
-		onSession:  cfg.OnSession,
-		handler:    cfg.Handler,
-		logger:     cfg.Logger,
-		minBackoff: cfg.ReconnectMinBackoff,
-		maxBackoff: cfg.ReconnectMaxBackoff,
+		url:           cfg.URL,
+		dialer:        cfg.Dialer,
+		onSession:     cfg.OnSession,
+		handler:       cfg.Handler,
+		streamHandler: cfg.StreamHandler,
+		logger:        cfg.Logger,
+		minBackoff:    cfg.ReconnectMinBackoff,
+		maxBackoff:    cfg.ReconnectMaxBackoff,
 	}
 	if c.url == "" {
 		c.url = DefaultEventSubURL
@@ -307,13 +338,22 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, keepalive t
 	}
 }
 
-// dispatchNotification decodes a redemption notification and forwards it to the
-// handler. Non-redemption subscription types are ignored.
+// dispatchNotification routes a decoded notification to the matching handler by
+// its subscription type. Unrecognised types are ignored.
 func (c *Client) dispatchNotification(ctx context.Context, env envelope) {
-	if !strings.HasPrefix(env.Metadata.SubscriptionType, redemptionSubscriptionPrefix) {
+	switch {
+	case strings.HasPrefix(env.Metadata.SubscriptionType, redemptionSubscriptionPrefix):
+		c.dispatchRedemption(ctx, env)
+	case env.Metadata.SubscriptionType == streamOnlineSubscriptionType:
+		c.dispatchStream(ctx, env, true)
+	case env.Metadata.SubscriptionType == streamOfflineSubscriptionType:
+		c.dispatchStream(ctx, env, false)
+	default:
 		c.logger.Debug("eventsub notification ignored", "subscription_type", env.Metadata.SubscriptionType)
-		return
 	}
+}
+
+func (c *Client) dispatchRedemption(ctx context.Context, env envelope) {
 	if c.handler == nil {
 		return
 	}
@@ -336,6 +376,32 @@ func (c *Client) dispatchNotification(ctx context.Context, env envelope) {
 		RewardCost:           wire.Reward.Cost,
 		RedeemedAt:           wire.RedeemedAt,
 	})
+}
+
+func (c *Client) dispatchStream(ctx context.Context, env envelope, online bool) {
+	if c.streamHandler == nil {
+		return
+	}
+	evt := StreamEvent{Online: online}
+	if online {
+		var wire wireStreamOnline
+		if err := json.Unmarshal(env.Payload.Event, &wire); err != nil {
+			c.logger.Warn("eventsub stream.online decode failed", "err", err)
+			return
+		}
+		evt.BroadcasterUserID = wire.BroadcasterUserID
+		evt.BroadcasterUserLogin = wire.BroadcasterUserLogin
+		evt.StartedAt = wire.StartedAt
+	} else {
+		var wire wireStreamOffline
+		if err := json.Unmarshal(env.Payload.Event, &wire); err != nil {
+			c.logger.Warn("eventsub stream.offline decode failed", "err", err)
+			return
+		}
+		evt.BroadcasterUserID = wire.BroadcasterUserID
+		evt.BroadcasterUserLogin = wire.BroadcasterUserLogin
+	}
+	c.streamHandler(ctx, evt)
 }
 
 // readEnvelope reads one text frame and decodes it into an envelope. It derives

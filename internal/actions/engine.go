@@ -29,6 +29,10 @@ type Config struct {
 	// ActionTimeout bounds a single action's run time. Defaults to 15s.
 	ActionTimeout time.Duration
 
+	// Recorder persists a per-firing run trace. Nil disables recording at zero
+	// cost (the engine builds no trace).
+	Recorder RunRecorder
+
 	Logger *slog.Logger
 }
 
@@ -41,6 +45,7 @@ type Engine struct {
 	registry      *Registry
 	actionTimeout time.Duration
 	workers       int
+	recorder      RunRecorder
 	log           *slog.Logger
 
 	jobs chan job
@@ -91,6 +96,7 @@ func New(cfg Config) (*Engine, error) {
 		source:        cfg.Source,
 		registry:      cfg.Registry,
 		actionTimeout: cfg.ActionTimeout,
+		recorder:      cfg.Recorder,
 		log:           logger.With("component", "actions.engine"),
 		jobs:          make(chan job, jobBuffer),
 		queues:        make(map[string]chan job),
@@ -248,22 +254,35 @@ func (e *Engine) run(j job) {
 	ctx := context.Background()
 	ec := newExecutionContext(ctx, j.rule, j.trigger)
 
-	pass, err := e.evaluateConditions(ec, j.rule.Conditions)
+	var tb *traceBuilder
+	if e.recorder != nil {
+		tb = newTraceBuilder(j.rule, j.trigger)
+	}
+
+	pass, err := e.evaluateConditions(ec, j.rule.Conditions, tb)
 	if err != nil {
 		e.log.Warn("condition evaluation failed",
 			"rule", j.rule.Name, "err", err)
 		return
 	}
 	if !pass {
+		// Conditions failed: the rule never entered the action phase, so the
+		// in-progress trace is discarded and nothing is recorded.
 		return
 	}
-	e.executeActions(ec, j.rule.Actions)
+	e.executeActions(ec, j.rule.Actions, tb)
+
+	if tb != nil {
+		if rerr := e.recorder.Record(context.Background(), tb.finish()); rerr != nil {
+			e.log.Warn("run recording failed", "rule", j.rule.Name, "err", rerr)
+		}
+	}
 }
 
 // evaluateConditions applies the rule's condition list under its combine mode.
 // An empty list always passes. A missing plugin fails closed (the rule does not
 // fire) so a deleted or unregistered condition can never silently open a gate.
-func (e *Engine) evaluateConditions(ec *ExecutionContext, list ConditionList) (bool, error) {
+func (e *Engine) evaluateConditions(ec *ExecutionContext, list ConditionList, tb *traceBuilder) (bool, error) {
 	if len(list.Conditions) == 0 {
 		return true, nil
 	}
@@ -279,9 +298,13 @@ func (e *Engine) evaluateConditions(ec *ExecutionContext, list ConditionList) (b
 				"type_id", ci.TypeID, "rule", ec.RuleName)
 			return false, nil
 		}
+		start := time.Now()
 		ok, err := plugin.Evaluate(ec, ci.Config)
 		if err != nil {
 			return false, err
+		}
+		if tb != nil {
+			tb.addCondition(ci.TypeID, ok, time.Since(start))
 		}
 		switch mode {
 		case ConditionModeAll:
@@ -310,34 +333,53 @@ func (e *Engine) evaluateConditions(ec *ExecutionContext, list ConditionList) (b
 // executeActions runs each enabled action in order, applying variable
 // substitution to its config first. A failing action is logged and skipped so
 // one bad step never aborts the rest; an action may explicitly Stop the list.
-func (e *Engine) executeActions(ec *ExecutionContext, list ActionList) {
-	for _, ai := range list.Actions {
+func (e *Engine) executeActions(ec *ExecutionContext, list ActionList, tb *traceBuilder) {
+	for i, ai := range list.Actions {
 		if !ai.Enabled {
+			if tb != nil {
+				tb.addAction(ai.TypeID, nodeStatusSkipped, nil, 0, nil)
+			}
 			continue
 		}
 		plugin, ok := e.registry.Action(ai.TypeID)
 		if !ok {
 			e.log.Warn("unknown action type, skipping",
 				"type_id", ai.TypeID, "rule", ec.RuleName)
+			if tb != nil {
+				tb.addAction(ai.TypeID, nodeStatusSkipped, nil, 0, nil)
+			}
 			continue
 		}
 		cfg := substituteRaw(ec, ai.Config)
 
+		start := time.Now()
 		actx, cancel := context.WithTimeout(ec.Ctx, e.actionTimeout)
 		res, err := plugin.Execute(ec.withCtx(actx), cfg)
 		cancel()
+		dur := time.Since(start)
 		if err != nil {
 			e.log.Warn("action failed",
 				"type_id", ai.TypeID, "rule", ec.RuleName, "err", err)
+			if tb != nil {
+				tb.addAction(ai.TypeID, nodeStatusFail, err, dur, nil)
+			}
 			continue
 		}
+		var outputs map[string]any
 		if res != nil {
 			for k, v := range res.Outputs {
 				ec.SetOutput(k, v)
 			}
-			if res.Stop {
-				return
+			outputs = res.Outputs
+		}
+		if tb != nil {
+			tb.addAction(ai.TypeID, nodeStatusOK, nil, dur, outputs)
+		}
+		if res != nil && res.Stop {
+			if tb != nil {
+				tb.markStopped(list.Actions[i+1:])
 			}
+			return
 		}
 	}
 }

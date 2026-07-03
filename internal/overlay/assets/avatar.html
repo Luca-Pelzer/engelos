@@ -1,0 +1,306 @@
+<!doctype html>
+<!--
+  engelOS overlay: avatar (PNGtuber stream companion)
+  ==============================================================
+  OBS browser source rendering the bot as an animated character.
+  Connects to the avatar relay WebSocket (token-gated) and reacts to
+  workflow directives:
+
+    {"type":"speak","id":"..","text":"..","audio_b64":"<mp3>"}
+    {"type":"expression","expression":"hype","hold_seconds":5}
+    {"type":"end","id":".."}
+
+  Expressions: idle | talking | happy | thinking | confused | hype | error
+  While audio plays the mouth is driven by a WebAudio amplitude analyser.
+  Custom art can replace the built-in vector character per expression via
+  query params (img_idle=https://...&img_talking=... etc.); the built-in
+  character needs no assets at all.
+
+  The ElevenLabs key never reaches this page: audio arrives pre-rendered.
+
+  Example: /overlay/avatar?channel=mychannel&token=<overlay token>&scale=1
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>engelOS / avatar</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent !important;overflow:hidden;width:100%;height:100%}
+  #conn{position:fixed;top:8px;right:10px;font-size:10px;letter-spacing:.08em;opacity:.4;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);font-family:ui-sans-serif,system-ui,sans-serif}
+  #stage{position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:center}
+  #tuber{transform-origin:50% 100%;will-change:transform;transition:transform .18s cubic-bezier(.34,1.56,.64,1)}
+  #tuber.talking{animation:bob 0.55s ease-in-out infinite}
+  #tuber.hype{animation:bounce 0.45s cubic-bezier(.36,.07,.19,.97) infinite}
+  #tuber.thinking{animation:sway 2.6s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0) scale(var(--s,1))}50%{transform:translateY(-6px) scale(var(--s,1))}}
+  @keyframes bounce{0%,100%{transform:translateY(0) scale(var(--s,1))}40%{transform:translateY(-16px) scale(var(--s,1))}}
+  @keyframes sway{0%,100%{transform:rotate(-2deg) scale(var(--s,1))}50%{transform:rotate(2deg) scale(var(--s,1))}}
+  #custom{max-height:86vh;max-width:92vw;display:none}
+  .blink #eyeL,.blink #eyeR{transform:scaleY(.08)}
+  #eyeL,#eyeR{transform-origin:center;transition:transform .08s ease}
+  #mouth{transform-origin:50% 50%}
+  #caption{position:fixed;left:50%;bottom:4vh;transform:translateX(-50%);max-width:70vw;padding:10px 18px;border-radius:14px;
+    background:rgba(10,14,22,.82);color:#fff;font:600 clamp(14px,2.2vh,22px)/1.45 ui-sans-serif,system-ui,sans-serif;
+    text-align:center;opacity:0;transition:opacity .25s ease;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  #caption.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="conn">●</div>
+<div id="stage">
+  <svg id="tuber" width="340" height="380" viewBox="0 0 340 380" aria-hidden="true">
+    <defs>
+      <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#8b7dff"/><stop offset="1" stop-color="#4dc9ff"/>
+      </linearGradient>
+      <linearGradient id="bellyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff" stop-opacity=".28"/><stop offset="1" stop-color="#ffffff" stop-opacity=".06"/>
+      </linearGradient>
+    </defs>
+    <ellipse cx="170" cy="368" rx="96" ry="12" fill="#000" opacity=".28"/>
+    <path id="body" d="M170 28c72 0 118 54 118 132 0 96-44 200-118 200S52 256 52 160C52 82 98 28 170 28z" fill="url(#bodyGrad)"/>
+    <path d="M170 130c44 0 72 34 72 92 0 66-28 128-72 128s-72-62-72-128c0-58 28-92 72-92z" fill="url(#bellyGrad)"/>
+    <g id="face">
+      <g id="eyes">
+        <ellipse id="eyeL" cx="128" cy="150" rx="16" ry="22" fill="#0e1320"/>
+        <ellipse id="eyeR" cx="212" cy="150" rx="16" ry="22" fill="#0e1320"/>
+        <circle id="glintL" cx="134" cy="141" r="5.5" fill="#fff"/>
+        <circle id="glintR" cx="218" cy="141" r="5.5" fill="#fff"/>
+      </g>
+      <g id="brows" stroke="#0e1320" stroke-width="7" stroke-linecap="round" fill="none" opacity="0">
+        <path id="browL" d="M110 118 Q128 108 146 116"/>
+        <path id="browR" d="M194 116 Q212 108 230 118"/>
+      </g>
+      <ellipse id="blushL" cx="106" cy="186" rx="14" ry="8" fill="#ff7ab8" opacity="0"/>
+      <ellipse id="blushR" cx="234" cy="186" rx="14" ry="8" fill="#ff7ab8" opacity="0"/>
+      <g id="mouthWrap">
+        <ellipse id="mouth" cx="170" cy="212" rx="18" ry="10" fill="#0e1320"/>
+      </g>
+      <g id="extras">
+        <text id="sweat" x="252" y="120" font-size="34" opacity="0">💧</text>
+        <text id="spark" x="66" y="112" font-size="34" opacity="0">✨</text>
+        <text id="bolt" x="252" y="118" font-size="34" opacity="0">⚡</text>
+        <text id="zzz" x="248" y="112" font-size="30" opacity="0">💭</text>
+      </g>
+    </g>
+  </svg>
+  <img id="custom" alt="">
+</div>
+<div id="caption"></div>
+<script>
+(() => {
+  const qs = new URLSearchParams(location.search);
+  const channel = (qs.get("channel") || "").trim();
+  const token = (qs.get("token") || "").trim();
+  const scale = parseFloat(qs.get("scale") || "1") || 1;
+  const showCaption = qs.get("caption") !== "0";
+
+  const conn = document.getElementById("conn");
+  const tuber = document.getElementById("tuber");
+  const custom = document.getElementById("custom");
+  const caption = document.getElementById("caption");
+  const mouth = document.getElementById("mouth");
+  const eyeL = document.getElementById("eyeL"), eyeR = document.getElementById("eyeR");
+  const browL = document.getElementById("browL"), browR = document.getElementById("browR");
+  const brows = document.getElementById("brows");
+  tuber.style.setProperty("--s", String(scale));
+  tuber.style.transform = "scale(" + scale + ")";
+
+  const EXPRESSIONS = ["idle","talking","happy","thinking","confused","hype","error"];
+  const customImages = {};
+  for (const e of EXPRESSIONS) {
+    const u = qs.get("img_" + e);
+    if (u) customImages[e] = u;
+  }
+  const useCustom = Object.keys(customImages).length > 0;
+
+  let expression = "idle";
+  let holdTimer = null;
+  let talkingBase = null;
+
+  function setOpacity(el, v) { if (el) el.setAttribute("opacity", String(v)); }
+
+  function applyBuiltin(expr) {
+    tuber.classList.remove("talking","hype","thinking");
+    setOpacity(brows, 0);
+    setOpacity(document.getElementById("sweat"), 0);
+    setOpacity(document.getElementById("spark"), 0);
+    setOpacity(document.getElementById("bolt"), 0);
+    setOpacity(document.getElementById("zzz"), 0);
+    setOpacity(document.getElementById("blushL"), 0);
+    setOpacity(document.getElementById("blushR"), 0);
+    eyeL.setAttribute("ry", "22"); eyeR.setAttribute("ry", "22");
+    mouth.setAttribute("rx", "18"); mouth.setAttribute("ry", "10");
+    mouth.setAttribute("fill", "#0e1320");
+    switch (expr) {
+      case "talking":
+        tuber.classList.add("talking");
+        break;
+      case "happy":
+        eyeL.setAttribute("ry", "6"); eyeR.setAttribute("ry", "6");
+        setOpacity(document.getElementById("blushL"), .8);
+        setOpacity(document.getElementById("blushR"), .8);
+        mouth.setAttribute("rx", "26"); mouth.setAttribute("ry", "14");
+        setOpacity(document.getElementById("spark"), 1);
+        break;
+      case "thinking":
+        tuber.classList.add("thinking");
+        setOpacity(brows, 1);
+        browL.setAttribute("d", "M110 122 Q128 112 146 118");
+        browR.setAttribute("d", "M194 112 Q212 104 230 110");
+        mouth.setAttribute("rx", "9"); mouth.setAttribute("ry", "5");
+        setOpacity(document.getElementById("zzz"), .9);
+        break;
+      case "confused":
+        setOpacity(brows, 1);
+        browL.setAttribute("d", "M110 112 Q128 122 146 114");
+        browR.setAttribute("d", "M194 118 Q212 106 230 120");
+        mouth.setAttribute("rx", "10"); mouth.setAttribute("ry", "8");
+        setOpacity(document.getElementById("sweat"), .95);
+        break;
+      case "hype":
+        tuber.classList.add("hype");
+        eyeL.setAttribute("ry", "26"); eyeR.setAttribute("ry", "26");
+        setOpacity(document.getElementById("blushL"), .9);
+        setOpacity(document.getElementById("blushR"), .9);
+        mouth.setAttribute("rx", "24"); mouth.setAttribute("ry", "18");
+        setOpacity(document.getElementById("bolt"), 1);
+        break;
+      case "error":
+        setOpacity(brows, 1);
+        browL.setAttribute("d", "M112 124 Q128 114 144 122");
+        browR.setAttribute("d", "M196 122 Q212 114 228 124");
+        eyeL.setAttribute("ry", "12"); eyeR.setAttribute("ry", "12");
+        mouth.setAttribute("rx", "16"); mouth.setAttribute("ry", "4");
+        mouth.setAttribute("fill", "#ff5470");
+        break;
+    }
+  }
+
+  function setExpression(expr, holdSeconds) {
+    if (!EXPRESSIONS.includes(expr)) return;
+    expression = expr;
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    if (useCustom) {
+      const src = customImages[expr] || customImages.idle;
+      if (src) { custom.src = src; custom.style.display = "block"; tuber.style.display = "none"; }
+    } else {
+      applyBuiltin(expr);
+    }
+    if (holdSeconds > 0 && expr !== "idle") {
+      holdTimer = setTimeout(() => setExpression(talkingBase ? "talking" : "idle", 0), holdSeconds * 1000);
+    }
+  }
+
+  // Blink loop for the built-in character.
+  setInterval(() => {
+    if (useCustom) return;
+    tuber.classList.add("blink");
+    setTimeout(() => tuber.classList.remove("blink"), 130);
+  }, 3800 + Math.random() * 1400);
+
+  // ---- speech queue with amplitude-driven mouth ----
+  const queue = [];
+  let playing = false;
+  let audioCtx = null;
+
+  function mouthFromAmplitude(level) {
+    if (useCustom) return;
+    const ry = 6 + Math.min(1, level * 3.2) * 20;
+    mouth.setAttribute("ry", String(ry));
+    mouth.setAttribute("rx", String(14 + Math.min(1, level * 2) * 10));
+  }
+
+  async function playNext() {
+    if (playing) return;
+    const item = queue.shift();
+    if (!item) return;
+    playing = true;
+    talkingBase = expression;
+    setExpression(item.expression || "talking", 0);
+    if (showCaption && item.text) { caption.textContent = item.text; caption.classList.add("show"); }
+    try {
+      const audio = new Audio(item.audioURL || ("data:audio/mp3;base64," + item.audioB64));
+      audio.crossOrigin = "anonymous";
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaElementSource(audio);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      src.connect(analyser); analyser.connect(audioCtx.destination);
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      let raf = 0;
+      const tick = () => {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const d = (buf[i] - 128) / 128; sum += d * d; }
+        mouthFromAmplitude(Math.sqrt(sum / buf.length));
+        raf = requestAnimationFrame(tick);
+      };
+      tick();
+      await new Promise((resolve) => {
+        audio.onended = resolve;
+        audio.onerror = resolve;
+        const p = audio.play();
+        if (p && typeof p.catch === "function") p.catch(() => resolve());
+      });
+      cancelAnimationFrame(raf);
+    } catch {
+      // a bad clip must never wedge the queue
+    } finally {
+      caption.classList.remove("show");
+      playing = false;
+      talkingBase = null;
+      setExpression("idle", 0);
+      playNext();
+    }
+  }
+
+  function handle(msg) {
+    if (!msg || typeof msg.type !== "string") return;
+    if (msg.type === "speak") {
+      if (!msg.audio_b64 && !msg.audio_url) {
+        if (showCaption && msg.text) {
+          caption.textContent = msg.text;
+          caption.classList.add("show");
+          setTimeout(() => caption.classList.remove("show"), 4000);
+        }
+        return;
+      }
+      queue.push({ audioB64: msg.audio_b64, audioURL: msg.audio_url, text: msg.text, expression: "talking" });
+      playNext();
+      return;
+    }
+    if (msg.type === "expression") {
+      setExpression(String(msg.expression || "idle"), Number(msg.hold_seconds) || 0);
+      return;
+    }
+  }
+
+  // ---- websocket with backoff (mirrors the tts overlay) ----
+  let backoff = 500;
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const url = proto + "://" + location.host + "/api/v1/overlay/avatar/ws?channel=" +
+      encodeURIComponent(channel) + "&token=" + encodeURIComponent(token);
+    const ws = new WebSocket(url);
+    ws.onopen = () => { backoff = 500; conn.style.color = "#3dd68c"; };
+    ws.onmessage = (ev) => {
+      try { handle(JSON.parse(ev.data)); } catch { /* ignore malformed frames */ }
+    };
+    ws.onclose = () => {
+      conn.style.color = "#ff5470";
+      setTimeout(connect, backoff);
+      backoff = Math.min(backoff * 2, 15000);
+    };
+  }
+  if (!channel || !token) {
+    conn.textContent = "● missing ?channel= or ?token=";
+    conn.style.opacity = ".9";
+    return;
+  }
+  setExpression("idle", 0);
+  connect();
+})();
+</script>
+</body>
+</html>

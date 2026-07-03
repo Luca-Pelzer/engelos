@@ -20,8 +20,12 @@ type ChatSender interface {
 // (they no-op with a registration that still exists), so the engine runs even
 // in a headless test with no platform attached.
 type Services struct {
-	Chat ChatSender
-	OBS  OBSController
+	Chat          ChatSender
+	Discord       DiscordPoster
+	TwitchMod     TwitchModerator
+	TwitchChannel TwitchChannel
+	StreamState   StreamStateProvider
+	KB            KBSearcher
 }
 
 // RegisterBuiltins installs the first-party condition and action plugins into
@@ -32,18 +36,37 @@ func RegisterBuiltins(reg *Registry, svc Services) error {
 	conds := []ConditionType{
 		messageContainsCondition{},
 		userRoleCondition{},
+		regexCondition{},
+		timeWindowCondition{},
+		streamStateCondition{provider: svc.StreamState},
+		outputCondition{},
+		cooldownCondition{store: newCooldownStore()},
 	}
 	for _, c := range conds {
 		if err := reg.RegisterCondition(c); err != nil {
 			return err
 		}
 	}
+	// obs:*, ai:* and tts:speak come from their integrations via
+	// Register{OBS,AI,TTS}Nodes, not from the builtin set below.
 	acts := []ActionType{
 		sendChatAction{chat: svc.Chat},
 		delayAction{},
 		logAction{},
-		switchSceneAction{obs: svc.OBS},
-		toggleSourceAction{obs: svc.OBS},
+		httpRequestAction{},
+		discordPostAction{discord: svc.Discord},
+		twitchDeleteMessageAction{mod: svc.TwitchMod},
+		twitchTimeoutAction{mod: svc.TwitchMod},
+		twitchBanAction{mod: svc.TwitchMod},
+		twitchCreateClipAction{ch: svc.TwitchChannel},
+		twitchCreateMarkerAction{ch: svc.TwitchChannel},
+		twitchCreatePollAction{ch: svc.TwitchChannel},
+		twitchSetTitleAction{ch: svc.TwitchChannel},
+		twitchSetCategoryAction{ch: svc.TwitchChannel},
+		twitchRedemptionAction{ch: svc.TwitchChannel},
+		stopIfAction{},
+		transformTemplateAction{},
+		kbLookupAction{kb: svc.KB},
 	}
 	for _, a := range acts {
 		if err := reg.RegisterAction(a); err != nil {
@@ -100,10 +123,10 @@ func matchTriggerFilter(r Rule, t Trigger) bool {
 		}
 		got := firstToken(t.Text)
 		return got == want
-	case TriggerTimer, TriggerManual:
-		// The scheduler tick and the manual fire endpoint both target one
-		// specific rule via Engine.RunRule, so a kind match is sufficient and
-		// the interval/payload need not be re-checked here.
+	case TriggerTimer, TriggerManual, TriggerWebhook:
+		// The scheduler tick, the manual fire endpoint and the inbound webhook
+		// each target one specific rule via Engine.RunRule, so a kind match is
+		// sufficient and the interval/secret/payload need not be re-checked here.
 		return true
 	default:
 		return true

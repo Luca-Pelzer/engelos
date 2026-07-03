@@ -176,7 +176,8 @@ func TestAddEvent(t *testing.T) {
 		assert.Equal(t, "", store.addCalls[0].description)
 		assert.Nil(t, store.addCalls[0].endsAt)
 		assert.Contains(t, reply.Text, "added 'Double Points Weekend' (#7)")
-		assert.Contains(t, reply.Text, "in 1d")
+		assert.WithinDuration(t, time.Now().UTC().Add(48*time.Hour), store.addCalls[0].startsAt, time.Second)
+		assert.Contains(t, reply.Text, "in ")
 	})
 
 	t.Run("store error", func(t *testing.T) {

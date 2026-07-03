@@ -54,7 +54,7 @@
   {#if workspaces.length === 0}
     <button class="ws-empty" onclick={newWorkspace}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-      Workspace anlegen
+      Create workspace
     </button>
   {:else}
     <div class="ws" class:open>

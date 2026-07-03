@@ -5,83 +5,83 @@
   const cloudPrice = $derived(prices.cloud[bill]);
   const proPrice = $derived(prices.pro[bill]);
   const billedLabel = (k: 'cloud' | 'pro') =>
-    bill === 'yearly' ? `jaehrlich, ${prices[k].yearly * 12} EUR/Jahr` : 'monatlich abgerechnet';
+    bill === 'yearly' ? `billed yearly, ${prices[k].yearly * 12} EUR/year` : 'billed monthly';
 
   const rows: [string, string, string, string][] = [
-    ['Verbundene Plattformen', '2', 'Unbegrenzt', 'Unbegrenzt'],
-    ['Moderatoren-Sitze', '1', '5', 'Unbegrenzt'],
-    ['Chat-Verlauf', '7 Tage', '90 Tage', 'Unbegrenzt'],
-    ['Auto-Mod und Filter', 'yes', 'yes', 'yes'],
+    ['Connected platforms', '2', 'Unlimited', 'Unlimited'],
+    ['Moderator seats', '1', '5', 'Unlimited'],
+    ['Chat history', '7 days', '90 days', 'Unlimited'],
+    ['Auto-mod and filters', 'yes', 'yes', 'yes'],
     ['Custom Overlays', 'no', 'yes', 'yes'],
     ['Auto-Backups', 'no', 'yes', 'yes'],
-    ['Team-Rollen und Audit-Log', 'no', 'no', 'yes'],
+    ['Team roles and audit log', 'no', 'no', 'yes'],
     ['Priority-Support (SLA)', 'no', 'no', 'yes'],
   ];
 </script>
 
 <section class="up-scroll" data-screen-label="upgrade">
   <div class="up-hero">
-    <span class="up-eyebrow">Plaene und Cloud</span>
-    <h2>Dein Control Room, <span class="grad">ohne Limits</span></h2>
-    <p>Starte kostenlos auf deiner eigenen Hardware oder lass EngelOS in der Cloud laufen, mit Auto-Updates, Backups und Team-Funktionen.</p>
+    <span class="up-eyebrow">Plans and Cloud</span>
+    <h2>Your control room, <span class="grad">without limits</span></h2>
+    <p>Start free on your own hardware, or let EngelOS run in the cloud with auto-updates, backups and team features.</p>
     <div class="bill">
-      <button class:on={bill === 'monthly'} onclick={() => (bill = 'monthly')}>Monatlich</button>
-      <button class:on={bill === 'yearly'} onclick={() => (bill = 'yearly')}>Jaehrlich <span class="tag">-20%</span></button>
+      <button class:on={bill === 'monthly'} onclick={() => (bill = 'monthly')}>Monthly</button>
+      <button class:on={bill === 'yearly'} onclick={() => (bill = 'yearly')}>Yearly <span class="tag">-20%</span></button>
     </div>
   </div>
 
   <div class="plans">
     <div class="plan">
       <div class="pname">Self-Hosted</div>
-      <div class="ptag">Open-Source. Laeuft auf deinem eigenen Server.</div>
-      <div class="price"><span class="cur">EUR</span><span class="amt">0</span><span class="per">/ fuer immer</span></div>
-      <div class="billed">Keine Kreditkarte noetig</div>
-      <div class="cta"><button class="btn btn-ghost">Selbst hosten</button></div>
+      <div class="ptag">Open source. Runs on your own server.</div>
+      <div class="price"><span class="cur">EUR</span><span class="amt">0</span><span class="per">/ forever</span></div>
+      <div class="billed">No credit card required</div>
+      <div class="cta"><button class="btn btn-ghost">Self-host</button></div>
       <ul>
-        <li><b>2</b> Plattformen verbinden</li>
-        <li>Live-Chat und Moderation</li>
-        <li>7 Tage Chat-Verlauf</li>
+        <li>Connect <b>2</b> platforms</li>
+        <li>Live chat and moderation</li>
+        <li>7 days of chat history</li>
         <li>Community-Support</li>
       </ul>
     </div>
 
     <div class="plan feat">
-      <span class="popular">Beliebt</span>
+      <span class="popular">Popular</span>
       <div class="pname">Cloud</div>
-      <div class="ptag">Gehostet, gewartet und gesichert von uns.</div>
-      <div class="price"><span class="cur">EUR</span><span class="amt">{cloudPrice}</span><span class="per">/ Monat</span></div>
+      <div class="ptag">Hosted, maintained and backed up by us.</div>
+      <div class="price"><span class="cur">EUR</span><span class="amt">{cloudPrice}</span><span class="per">/ month</span></div>
       <div class="billed">{billedLabel('cloud')}</div>
-      <div class="cta"><button class="btn btn-primary">Cloud starten</button></div>
+      <div class="cta"><button class="btn btn-primary">Start with Cloud</button></div>
       <ul>
-        <li><b>Unbegrenzt</b> Plattformen</li>
-        <li><b>5</b> Moderatoren-Sitze</li>
-        <li>90 Tage Chat-Verlauf</li>
-        <li>Custom Overlays und API</li>
+        <li><b>Unlimited</b> platforms</li>
+        <li><b>5</b> moderator seats</li>
+        <li>90 days of chat history</li>
+        <li>Custom overlays and API</li>
         <li>Auto-Backups</li>
       </ul>
     </div>
 
     <div class="plan">
       <div class="pname">Pro</div>
-      <div class="ptag">Fuer Teams, Netzwerke und Agenturen.</div>
-      <div class="price"><span class="cur">EUR</span><span class="amt">{proPrice}</span><span class="per">/ Monat</span></div>
+      <div class="ptag">For teams, networks and agencies.</div>
+      <div class="price"><span class="cur">EUR</span><span class="amt">{proPrice}</span><span class="per">/ month</span></div>
       <div class="billed">{billedLabel('pro')}</div>
-      <div class="cta"><button class="btn btn-ghost">Pro waehlen</button></div>
+      <div class="cta"><button class="btn btn-ghost">Choose Pro</button></div>
       <ul>
-        <li><b>Alles aus Cloud</b>, plus:</li>
-        <li><b>Unbegrenzt</b> Mod-Sitze</li>
-        <li>Team-Rollen und Audit-Log</li>
-        <li>Unbegrenzter Verlauf</li>
+        <li><b>Everything in Cloud</b>, plus:</li>
+        <li><b>Unlimited</b> mod seats</li>
+        <li>Team roles and audit log</li>
+        <li>Unlimited history</li>
         <li>Priority-Support (SLA)</li>
       </ul>
     </div>
   </div>
 
   <div class="cmp-wrap">
-    <div class="cmp-title">Plaene im Vergleich</div>
-    <div class="cmp-sub">Alle Plaene enthalten Auto-Mod, Filter und unbegrenzte Zuschauer.</div>
+    <div class="cmp-title">Compare plans</div>
+    <div class="cmp-sub">All plans include auto-mod, filters and unlimited viewers.</div>
     <table class="cmp">
-      <thead><tr><th class="row-h">Funktion</th><th>Self-Hosted</th><th class="feat">Cloud</th><th>Pro</th></tr></thead>
+      <thead><tr><th class="row-h">Feature</th><th>Self-Hosted</th><th class="feat">Cloud</th><th>Pro</th></tr></thead>
       <tbody>
         {#each rows as r (r[0])}
           <tr>
@@ -97,7 +97,7 @@
     </table>
   </div>
 
-  <p class="up-foot">Preise zzgl. MwSt. Jederzeit kuendbar. Beim Wechsel von Self-Hosted zu Cloud werden deine Einstellungen automatisch migriert.</p>
+  <p class="up-foot">Prices excl. VAT. Cancel anytime. Moving from self-hosted to Cloud migrates your settings automatically.</p>
 </section>
 
 <style>

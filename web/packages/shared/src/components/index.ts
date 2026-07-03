@@ -5,6 +5,7 @@ export { default as Input } from './Input.svelte';
 export { default as Badge } from './Badge.svelte';
 export { default as StatusDot } from './StatusDot.svelte';
 export { default as EmptyState } from './EmptyState.svelte';
+export { default as Skeleton } from './Skeleton.svelte';
 export { default as Sidebar } from './Sidebar.svelte';
 export { default as TopBar } from './TopBar.svelte';
 export { default as ThemeToggle } from './ThemeToggle.svelte';

@@ -192,19 +192,22 @@
   }
 </script>
 
-<section class="space-y-6 max-w-3xl">
+<section class="space-y-6">
   <header class="reveal-up">
-    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">Pity</h2>
+    <h2 class="text-xl font-semibold tracking-tight text-fg-strong">
+      Pity Template
+      <span class="legacy-badge">Template</span>
+    </h2>
     <p class="text-[13px] text-fg-soft mt-1">
-      Inspect and manage the pity loyalty system. Points build up until a win becomes
-      near-guaranteed, so engaged viewers always pay off eventually.
+      Optional loyalty workflow template. Inspect and manage pity state that workflows
+      can grant, reset or use to shape reward outcomes.
     </p>
   </header>
 
   <Card class="reveal-up reveal-up-delay-1">
     <h3 class="text-[14px] font-semibold tracking-tight text-fg">Viewer lookup</h3>
     <p class="text-[12.5px] text-fg-soft mt-1 mb-4">
-      Enter a channel and a viewer id to inspect or adjust their pity.
+      Enter a channel and a viewer id to inspect or adjust this workflow state.
     </p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Input label="Channel" placeholder="engelswtf" bind:value={channel} />

@@ -26,70 +26,30 @@ func TestTranslateMessageCreate_FullMessage(t *testing.T) {
 		},
 	}
 
-	ev := translateMessageCreate(m, nil)
+	ev := translateMessageCreate(m, "general", nil)
 
-	assert.Equal(t, adapters.EventMessageCreated, ev.Type)
+	assert.Equal(t, adapters.EventDiscordMessage, ev.Type)
 	assert.Equal(t, platformName, ev.Platform)
 	assert.Equal(t, "chan-1", ev.Channel)
-	require.NotNil(t, ev.Message)
-	assert.Equal(t, "msg-1", ev.Message.ID)
-	assert.Equal(t, "user-1", ev.Message.UserID)
-	assert.Equal(t, "alice", ev.Message.Username)
-	assert.Equal(t, "hello", ev.Message.Content)
-	assert.False(t, ev.Message.IsModerator)
-	assert.Empty(t, ev.Message.EmotesUsed)
-	assert.Empty(t, ev.Message.ReplyTo)
+	require.NotNil(t, ev.Discord)
+	assert.Equal(t, "msg-1", ev.Discord.MessageID)
+	assert.Equal(t, "user-1", ev.Discord.UserID)
+	assert.Equal(t, "alice", ev.Discord.Username)
+	assert.Equal(t, "hello", ev.Discord.Text)
+	assert.Equal(t, "guild-1", ev.Discord.GuildID)
+	assert.Equal(t, "chan-1", ev.Discord.ChannelID)
+	assert.Equal(t, "general", ev.Discord.ChannelName)
+	assert.False(t, ev.Discord.IsDM)
+	assert.False(t, ev.Discord.IsModerator)
 	assert.NotEmpty(t, ev.ID, "event id should be populated")
 	assert.False(t, ev.OccurredAt.IsZero())
-}
-
-func TestTranslateMessageCreate_ReplyReference(t *testing.T) {
-	t.Parallel()
-
-	m := &discordgo.MessageCreate{
-		Message: &discordgo.Message{
-			ID:        "msg-2",
-			ChannelID: "chan-1",
-			Content:   "replying",
-			Author:    &discordgo.User{ID: "user-1", Username: "bob"},
-			MessageReference: &discordgo.MessageReference{
-				MessageID: "msg-parent",
-				ChannelID: "chan-1",
-			},
-		},
-	}
-	ev := translateMessageCreate(m, nil)
-	require.NotNil(t, ev.Message)
-	assert.Equal(t, "msg-parent", ev.Message.ReplyTo)
-}
-
-func TestTranslateMessageCreate_CustomEmotes(t *testing.T) {
-	t.Parallel()
-
-	m := &discordgo.MessageCreate{
-		Message: &discordgo.Message{
-			ID:        "msg-3",
-			ChannelID: "chan-1",
-			Content:   "hi <:peepoHappy:111> and <a:wave:222> and <:other:333>",
-			Author:    &discordgo.User{ID: "user-1", Username: "c"},
-		},
-	}
-	ev := translateMessageCreate(m, nil)
-	require.NotNil(t, ev.Message)
-	assert.Equal(t, []string{"111", "222", "333"}, ev.Message.EmotesUsed)
 }
 
 func TestTranslateMessageCreate_ModeratorRole(t *testing.T) {
 	t.Parallel()
 
-	modRole := &discordgo.Role{
-		ID:          "role-mod",
-		Permissions: discordgo.PermissionManageMessages,
-	}
-	plebRole := &discordgo.Role{
-		ID:          "role-pleb",
-		Permissions: 0,
-	}
+	modRole := &discordgo.Role{ID: "role-mod", Permissions: discordgo.PermissionManageMessages}
+	plebRole := &discordgo.Role{ID: "role-pleb", Permissions: 0}
 	roleByID := func(id string) *discordgo.Role {
 		switch id {
 		case "role-mod":
@@ -104,81 +64,68 @@ func TestTranslateMessageCreate_ModeratorRole(t *testing.T) {
 		t.Parallel()
 		m := &discordgo.MessageCreate{
 			Message: &discordgo.Message{
-				ID:        "msg-4",
-				ChannelID: "chan-1",
-				GuildID:   "guild-1",
-				Author:    &discordgo.User{ID: "u", Username: "n"},
-				Member:    &discordgo.Member{Roles: []string{"role-mod", "role-pleb"}},
+				ID: "msg-4", ChannelID: "chan-1", GuildID: "guild-1",
+				Author: &discordgo.User{ID: "u", Username: "n"},
+				Member: &discordgo.Member{Roles: []string{"role-mod", "role-pleb"}},
 			},
 		}
-		ev := translateMessageCreate(m, roleByID)
-		require.NotNil(t, ev.Message)
-		assert.True(t, ev.Message.IsModerator)
+		ev := translateMessageCreate(m, "", roleByID)
+		require.NotNil(t, ev.Discord)
+		assert.True(t, ev.Discord.IsModerator)
 	})
 
 	t.Run("member only has non-mod roles", func(t *testing.T) {
 		t.Parallel()
 		m := &discordgo.MessageCreate{
 			Message: &discordgo.Message{
-				ID:        "msg-5",
-				ChannelID: "chan-1",
-				GuildID:   "guild-1",
-				Author:    &discordgo.User{ID: "u", Username: "n"},
-				Member:    &discordgo.Member{Roles: []string{"role-pleb"}},
+				ID: "msg-5", ChannelID: "chan-1", GuildID: "guild-1",
+				Author: &discordgo.User{ID: "u", Username: "n"},
+				Member: &discordgo.Member{Roles: []string{"role-pleb"}},
 			},
 		}
-		ev := translateMessageCreate(m, roleByID)
-		require.NotNil(t, ev.Message)
-		assert.False(t, ev.Message.IsModerator)
+		ev := translateMessageCreate(m, "", roleByID)
+		require.NotNil(t, ev.Discord)
+		assert.False(t, ev.Discord.IsModerator)
 	})
 }
 
-func TestTranslateMessageCreate_NoGuildID(t *testing.T) {
+func TestTranslateMessageCreate_DirectMessage(t *testing.T) {
 	t.Parallel()
 
 	m := &discordgo.MessageCreate{
 		Message: &discordgo.Message{
-			ID:        "dm-1",
-			ChannelID: "dm-chan",
-			GuildID:   "",
-			Content:   "DM",
-			Author:    &discordgo.User{ID: "u", Username: "n"},
+			ID: "dm-1", ChannelID: "dm-chan", GuildID: "", Content: "DM",
+			Author: &discordgo.User{ID: "u", Username: "n"},
 		},
 	}
-	ev := translateMessageCreate(m, nil)
-	require.NotNil(t, ev.Message)
+	ev := translateMessageCreate(m, "", nil)
+	require.NotNil(t, ev.Discord)
 	assert.Equal(t, "dm-chan", ev.Channel)
-	assert.False(t, ev.Message.IsModerator)
+	assert.True(t, ev.Discord.IsDM, "empty GuildID marks a direct message")
+	assert.False(t, ev.Discord.IsModerator)
 }
 
 func TestTranslateMessageCreate_NilMessage(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, adapters.Event{}, translateMessageCreate(nil, nil))
-	assert.Equal(t, adapters.Event{}, translateMessageCreate(&discordgo.MessageCreate{}, nil))
+	assert.Equal(t, adapters.Event{}, translateMessageCreate(nil, "", nil))
+	assert.Equal(t, adapters.Event{}, translateMessageCreate(&discordgo.MessageCreate{}, "", nil))
 }
 
 func TestTranslateMessageCreate_NilAuthor(t *testing.T) {
 	t.Parallel()
 	m := &discordgo.MessageCreate{
-		Message: &discordgo.Message{
-			ID:        "x",
-			ChannelID: "c",
-			Content:   "no-author",
-		},
+		Message: &discordgo.Message{ID: "x", ChannelID: "c", Content: "no-author"},
 	}
-	ev := translateMessageCreate(m, nil)
-	require.NotNil(t, ev.Message)
-	assert.Empty(t, ev.Message.UserID)
-	assert.Empty(t, ev.Message.Username)
+	ev := translateMessageCreate(m, "", nil)
+	require.NotNil(t, ev.Discord)
+	assert.Empty(t, ev.Discord.UserID)
+	assert.Empty(t, ev.Discord.Username)
 }
 
 func TestTranslateMessageDelete(t *testing.T) {
 	t.Parallel()
 	m := &discordgo.MessageDelete{
-		Message: &discordgo.Message{
-			ID:        "msg-del",
-			ChannelID: "chan-1",
-		},
+		Message: &discordgo.Message{ID: "msg-del", ChannelID: "chan-1"},
 	}
 	ev := translateMessageDelete(m)
 	assert.Equal(t, adapters.EventMessageDeleted, ev.Type)
@@ -208,12 +155,6 @@ func TestConnectionEvent(t *testing.T) {
 	assert.Equal(t, adapters.EventDisconnected, d.Type)
 	require.NotNil(t, d.Connection)
 	assert.Equal(t, "boom", d.Connection.Error)
-}
-
-func TestParseEmotes_Empty(t *testing.T) {
-	t.Parallel()
-	assert.Nil(t, parseEmotes(""))
-	assert.Nil(t, parseEmotes("plain text only"))
 }
 
 func TestRoleHasManageMessages(t *testing.T) {

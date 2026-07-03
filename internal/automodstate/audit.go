@@ -52,6 +52,47 @@ type ModAction struct {
 	DryRun bool
 	// CreatedAt is when the action occurred (UTC); assigned on Log if zero.
 	CreatedAt time.Time
+
+	// The AI* fields are set only on rows written for an AI-escalation
+	// (contextmod) decision; fast-path rule-engine rows leave them nil (stored
+	// NULL). A non-nil AIConsulted is what marks a row as "AI" for the audit
+	// API's source filter and the dashboard's source tag.
+	//
+	// AICategory is the contextmod category label (e.g. "spam", "harassment").
+	AICategory *string
+	// AISeverity is the AI severity, 0-3.
+	AISeverity *int
+	// AIConfidence is the AI confidence, 0.0-1.0.
+	AIConfidence *float64
+	// AIConsulted is true when the AI backend was actually called for this row
+	// (false when the decision was pre-filtered or served from the dedup cache).
+	AIConsulted *bool
+}
+
+// AuditSource filters List/ListBySource by whether a row was written by the AI
+// escalator or the fast-path rule engine.
+type AuditSource int
+
+const (
+	// SourceAll returns both AI and fast-path rows.
+	SourceAll AuditSource = iota
+	// SourceAI returns only AI-escalation rows (ai_consulted IS NOT NULL).
+	SourceAI
+	// SourceFast returns only fast-path rows (ai_consulted IS NULL).
+	SourceFast
+)
+
+// ParseAuditSource maps the audit API's ?source= query value to an AuditSource.
+// Anything other than "ai" or "fast" (including empty) is SourceAll.
+func ParseAuditSource(s string) AuditSource {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "ai":
+		return SourceAI
+	case "fast":
+		return SourceFast
+	default:
+		return SourceAll
+	}
 }
 
 // AuditStore persists ModAction rows in SQLite. It mirrors the conventions of
@@ -132,6 +173,12 @@ func (s *AuditStore) migrate(ctx context.Context) error {
 			return fmt.Errorf("automodstate: read migration %s: %w", name, err)
 		}
 		if _, err := s.db.ExecContext(ctx, string(body)); err != nil {
+			// The runner re-executes every migration on each boot, so an
+			// "ALTER TABLE ADD COLUMN" re-run reports the column already
+			// exists. Treat that as already-applied; any other error is fatal.
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
 			return fmt.Errorf("automodstate: apply migration %s: %w", name, err)
 		}
 		s.log.Debug("automodstate: migration applied", "name", name)
@@ -166,20 +213,34 @@ func (s *AuditStore) Log(ctx context.Context, a ModAction) (ModAction, error) {
 	const ins = `
 INSERT INTO automod_audit (
     id, tenant_id, channel, user_id, username, message_id, message_text,
-    filter_name, reason, matched_text, action, duration_sec, dry_run, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    filter_name, reason, matched_text, action, duration_sec, dry_run, created_at,
+    ai_category, ai_severity, ai_confidence, ai_consulted
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	if _, err := s.db.ExecContext(ctx, ins,
 		a.ID, a.TenantID, a.Channel, a.UserID, a.Username, a.MessageID,
 		a.MessageText, a.FilterName, a.Reason, a.MatchedText, a.Action,
-		a.DurationSec, dryRun, a.CreatedAt.Unix()); err != nil {
+		a.DurationSec, dryRun, a.CreatedAt.Unix(),
+		a.AICategory, a.AISeverity, a.AIConfidence, nullableBoolInt(a.AIConsulted)); err != nil {
 		return ModAction{}, fmt.Errorf("automodstate: log: %w", err)
 	}
 	return a, nil
 }
 
+// nullableBoolInt renders an optional bool as the 0/1 INTEGER the ai_consulted
+// column stores, or nil (NULL) when unset.
+func nullableBoolInt(b *bool) any {
+	if b == nil {
+		return nil
+	}
+	if *b {
+		return 1
+	}
+	return 0
+}
+
 const auditSelect = `SELECT id, tenant_id, channel, user_id, username, message_id,
        message_text, filter_name, reason, matched_text, action, duration_sec,
-       dry_run, created_at
+       dry_run, created_at, ai_category, ai_severity, ai_confidence, ai_consulted
 FROM automod_audit `
 
 // clampLimit applies the default-and-ceiling policy shared by List/ListByUser.
@@ -200,24 +261,60 @@ func scanAction(row interface{ Scan(...any) error }) (ModAction, error) {
 		a       ModAction
 		dryRun  int
 		created int64
+		aiCat   sql.NullString
+		aiSev   sql.NullInt64
+		aiConf  sql.NullFloat64
+		aiCons  sql.NullBool
 	)
 	err := row.Scan(&a.ID, &a.TenantID, &a.Channel, &a.UserID, &a.Username,
 		&a.MessageID, &a.MessageText, &a.FilterName, &a.Reason, &a.MatchedText,
-		&a.Action, &a.DurationSec, &dryRun, &created)
+		&a.Action, &a.DurationSec, &dryRun, &created,
+		&aiCat, &aiSev, &aiConf, &aiCons)
 	if err != nil {
 		return ModAction{}, err
 	}
 	a.DryRun = dryRun != 0
 	a.CreatedAt = time.Unix(created, 0).UTC()
+	if aiCat.Valid {
+		c := aiCat.String
+		a.AICategory = &c
+	}
+	if aiSev.Valid {
+		v := int(aiSev.Int64)
+		a.AISeverity = &v
+	}
+	if aiConf.Valid {
+		v := aiConf.Float64
+		a.AIConfidence = &v
+	}
+	if aiCons.Valid {
+		v := aiCons.Bool
+		a.AIConsulted = &v
+	}
 	return a, nil
 }
 
 // List returns the most recent actions for (tenantID, channel), newest first.
 // limit is clamped to [1, 500] with a default of 100 when non-positive.
 func (s *AuditStore) List(ctx context.Context, tenantID, channel string, limit int) ([]ModAction, error) {
+	return s.ListBySource(ctx, tenantID, channel, SourceAll, limit)
+}
+
+// ListBySource is List filtered by source: SourceAI returns only AI-escalation
+// rows (ai_consulted IS NOT NULL), SourceFast only fast-path rows (ai_consulted
+// IS NULL), and SourceAll both. limit is clamped to [1, 500] with a default of
+// 100 when non-positive.
+func (s *AuditStore) ListBySource(ctx context.Context, tenantID, channel string, source AuditSource, limit int) ([]ModAction, error) {
 	limit = clampLimit(limit)
+	where := "WHERE tenant_id = ? AND channel = ?"
+	switch source {
+	case SourceAI:
+		where += " AND ai_consulted IS NOT NULL"
+	case SourceFast:
+		where += " AND ai_consulted IS NULL"
+	}
 	rows, err := s.db.QueryContext(ctx,
-		auditSelect+`WHERE tenant_id = ? AND channel = ?
+		auditSelect+where+`
 ORDER BY created_at DESC, id DESC LIMIT ?`,
 		tenantID, channel, limit)
 	if err != nil {

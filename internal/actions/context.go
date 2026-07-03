@@ -17,6 +17,11 @@ type Trigger struct {
 	Username string
 	Text     string
 
+	// MessageID is the platform's native id of the triggering chat message
+	// (empty for non-message triggers). Moderation actions like
+	// twitch:delete-message read it via $(message.id).
+	MessageID string
+
 	IsBroadcaster bool
 	IsModerator   bool
 	IsVIP         bool
@@ -24,6 +29,12 @@ type Trigger struct {
 
 	EventType string
 	Data      map[string]any
+
+	// RunID, when set by the caller (e.g. the manual-fire endpoint), is the
+	// pre-allocated id the run recorder uses for this firing's trace, so the
+	// caller can correlate its response with the recorded run. Empty means the
+	// engine mints a fresh id.
+	RunID string
 }
 
 // ExecutionContext is handed to every [ConditionType] and [ActionType] for a

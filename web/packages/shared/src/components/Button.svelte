@@ -36,7 +36,7 @@
 
   const variants: Record<Variant, string> = {
     primary:
-      'bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[0_1px_0_0_rgba(255,255,255,0.08)_inset,0_4px_18px_-6px_var(--color-accent-glow)] hover:bg-[var(--color-accent-hover)] active:bg-[var(--color-accent-active)]',
+      'bg-[linear-gradient(105deg,var(--color-accent),var(--color-accent-2))] text-[var(--color-accent-fg)] shadow-[0_0_0_1px_rgba(255,255,255,0.14)_inset,0_12px_28px_-12px_var(--color-accent-glow)] hover:brightness-110 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2)_inset,0_18px_42px_-14px_var(--color-accent-glow)] active:brightness-95',
     secondary:
       'bg-[var(--color-surface-2)] text-[var(--color-fg)] border border-[var(--color-border)] hover:bg-[color-mix(in_srgb,var(--color-surface-2)_70%,var(--color-accent-soft))] hover:border-[color-mix(in_srgb,var(--color-border)_60%,var(--color-accent))]',
     ghost:

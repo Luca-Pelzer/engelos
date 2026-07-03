@@ -34,7 +34,7 @@
 <section class="page" data-screen-label="channel">
   <div class="page-wrap">
     {#if loading}
-      <div class="muted">Laedt...</div>
+      <div class="muted">Loading…</div>
     {:else if ws}
       <div class="welcome">
         <span class="mark">{ws.display_name.charAt(0).toUpperCase()}</span>
@@ -50,8 +50,8 @@
     {:else}
       <div class="empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6z"/></svg>
-        <div class="t">{errorCode === 'not_found' ? 'Channel nicht gefunden' : errorCode === 'forbidden' ? 'Kein Zugriff' : 'Fehler'}</div>
-        <div class="d">{errorCode === 'forbidden' ? 'Du bist kein Mitglied dieses Workspace.' : 'Bitte einen Workspace aus der Liste waehlen.'}</div>
+        <div class="t">{errorCode === 'not_found' ? 'Channel not found' : errorCode === 'forbidden' ? 'No access' : 'Error'}</div>
+        <div class="d">{errorCode === 'forbidden' ? 'You are not a member of this workspace.' : 'Please pick a workspace from the list.'}</div>
         <a class="btn btn-primary btn-sm" href="/channels" style="margin-top:12px">Zu meinen Workspaces</a>
       </div>
     {/if}

@@ -121,6 +121,13 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("discord: create session: %w", err)
 	}
+	// Read guild + DM text and their content. IntentMessageContent is a
+	// privileged intent that must also be enabled in the bot's Developer Portal;
+	// without it the gateway delivers empty message bodies.
+	session.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsDirectMessages |
+		discordgo.IntentMessageContent
 
 	a.mu.Lock()
 	a.session = session
@@ -378,7 +385,12 @@ func (a *Adapter) onDisconnect() {
 }
 
 func (a *Adapter) onMessageCreate(m *discordgo.MessageCreate) {
-	if m == nil || m.Message == nil {
+	if m == nil || m.Message == nil || m.Author == nil {
+		return
+	}
+	// Ignore messages from any bot account, including our own, so the bot never
+	// reacts to itself and rules cannot loop.
+	if m.Author.Bot || a.isSelf(m.Author.ID) {
 		return
 	}
 	if !a.channelAllowedID(m.ChannelID) {
@@ -389,7 +401,35 @@ func (a *Adapter) onMessageCreate(m *discordgo.MessageCreate) {
 		a.channelToGuild[m.ChannelID] = m.GuildID
 		a.mu.Unlock()
 	}
-	a.emit(translateMessageCreate(m, a.roleLookup(m.GuildID)))
+	a.emit(translateMessageCreate(m, a.channelName(m.ChannelID), a.roleLookup(m.GuildID)))
+}
+
+// isSelf reports whether userID is the bot's own account, a defensive backstop
+// to the Author.Bot check for dropping the bot's own messages.
+func (a *Adapter) isSelf(userID string) bool {
+	a.mu.Lock()
+	s := a.session
+	a.mu.Unlock()
+	if s == nil || s.State == nil || s.State.User == nil {
+		return false
+	}
+	return s.State.User.ID == userID
+}
+
+// channelName resolves a channel id to its guild-channel name from the session
+// state cache, or "" when unknown (a DM or before the channel is cached).
+func (a *Adapter) channelName(channelID string) string {
+	a.mu.Lock()
+	s := a.session
+	a.mu.Unlock()
+	if s == nil || s.State == nil {
+		return ""
+	}
+	ch, err := s.State.Channel(channelID)
+	if err != nil || ch == nil {
+		return ""
+	}
+	return ch.Name
 }
 
 func (a *Adapter) onMessageDelete(m *discordgo.MessageDelete) {
